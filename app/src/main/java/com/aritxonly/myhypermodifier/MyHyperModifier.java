@@ -415,6 +415,9 @@ public final class MyHyperModifier extends XposedModule {
                 || "miui.systemui.controlcenter.qs.tileview.QSCardItemView".equals(className)
                 || "miui.systemui.controlcenter.panel.main.recyclerview.ToggleSliderViewHolder".equals(className)
                 || "miui.systemui.controlcenter.panel.secondary.SecondaryPanelControllerBase".equals(className)
+                || "miui.systemui.controlcenter.panel.secondary.brightness.BrightnessPanelSliderDelegate"
+                .equals(className)
+                || "com.android.systemui.miui.volume.VolumeColumnRes".equals(className)
                 || "miui.systemui.controlcenter.panel.main.media.MediaPlayerController$MediaPlayerViewHolder"
                 .equals(className);
     }
@@ -444,6 +447,15 @@ public final class MyHyperModifier extends XposedModule {
         hookPluginCornerSetter(classLoader,
                 "miui.systemui.controlcenter.panel.main.recyclerview.ToggleSliderViewHolder",
                 "setOutlineRadius", ControlCenterSurface.SLIDER);
+        // Brightness is not a regular ToggleSliderViewHolder in the secondary panel.  It
+        // recreates its outline and progress radius on every show/configuration change.
+        hookPluginCornerSetter(classLoader,
+                "miui.systemui.controlcenter.panel.secondary.brightness.BrightnessPanelSliderDelegate",
+                "setOutlineRadius", ControlCenterSurface.DETAIL_SLIDER);
+        hookPluginCornerSetter(classLoader,
+                "miui.systemui.controlcenter.panel.secondary.brightness.BrightnessPanelSliderDelegate",
+                "setProgressRadius", ControlCenterSurface.DETAIL_SLIDER);
+        hookSecondaryVolumeRadiusResolver(classLoader);
         installPluginDrawableHooks();
     }
 
@@ -471,6 +483,15 @@ public final class MyHyperModifier extends XposedModule {
                         if (!controlCenterEnabled || (advancedOnly && !advancedControlCenterCorners)) {
                             return chain.proceed();
                         }
+                        // Secondary brightness tiles (auto brightness, reading mode, etc.) are
+                        // non-card icon views.  MIUI deliberately gives them half their tile
+                        // size, i.e. a circle.  Replacing that value turns them into rounded
+                        // rectangles after a panel refresh.  Only card tiles use the configurable
+                        // corner radius.
+                        if (surface == ControlCenterSurface.TILE
+                                && !booleanDeclaredField(chain.getThisObject(), "card", true)) {
+                            return chain.proceed();
+                        }
                         Object argument = chain.getArg(0);
                         float originalPixels = argument instanceof Float ? (Float) argument : 0f;
                         float replacement = cornerPixels(chain.getThisObject(), surface, originalPixels);
@@ -478,6 +499,40 @@ public final class MyHyperModifier extends XposedModule {
                     });
         } catch (Throwable throwable) {
             Log.w(TAG, "Control-centre hook unavailable: " + className + '#' + methodName, throwable);
+        }
+    }
+
+    /**
+     * The secondary volume panel owns a SystemUI VolumeColumn rather than the plugin's
+     * ToggleSliderView.  VolumeColumn asks this resolver again for every panel show and during
+     * its transition animation, so changing only its initial drawable is immediately overwritten.
+     */
+    private void hookSecondaryVolumeRadiusResolver(ClassLoader classLoader) {
+        try {
+            Class<?> resolver = Class.forName(
+                    "com.android.systemui.miui.volume.VolumeColumnRes", false, classLoader);
+            Method getRadius = resolver.getDeclaredMethod(
+                    "getRadius", Context.class, boolean.class, boolean.class);
+            hook(getRadius)
+                    .setId("secondary-volume-slider-radius")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        Object result = chain.proceed();
+                        ensureSettingsLoaded();
+                        // The first flag is true for the regular system volume dialog.  Limit
+                        // this replacement to the Control Center-owned panel so normal volume
+                        // dialogs retain MIUI's own geometry.
+                        Object showDialog = chain.getArg(1);
+                        if (!controlCenterEnabled || !(showDialog instanceof Boolean)
+                                || (Boolean) showDialog) {
+                            return result;
+                        }
+                        Context context = (Context) chain.getArg(0);
+                        return Math.round(controlCenterRadius(ControlCenterSurface.DETAIL_SLIDER)
+                                * context.getResources().getDisplayMetrics().density);
+                    });
+        } catch (Throwable throwable) {
+            Log.w(TAG, "Secondary volume slider hook unavailable", throwable);
         }
     }
 
@@ -1195,6 +1250,26 @@ public final class MyHyperModifier extends XposedModule {
         } catch (ReflectiveOperationException ignored) {
             return null;
         }
+    }
+
+    /** Reads private fields from MIUI view classes without making them part of the hook contract. */
+    private static boolean booleanDeclaredField(Object target, String fieldName, boolean fallback) {
+        if (target == null) {
+            return fallback;
+        }
+        Class<?> type = target.getClass();
+        while (type != null) {
+            try {
+                Field field = type.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                return field.getBoolean(target);
+            } catch (NoSuchFieldException ignored) {
+                type = type.getSuperclass();
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                return fallback;
+            }
+        }
+        return fallback;
     }
 
     private static int intField(Object target, String fieldName, int fallback) {
