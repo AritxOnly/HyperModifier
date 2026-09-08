@@ -29,6 +29,11 @@ import io.github.libxposed.api.XposedInterface;
 import io.github.libxposed.api.XposedModule;
 import io.github.libxposed.api.XposedModuleInterface;
 
+import static com.aritxonly.myhypermodifier.ModuleSettings.*;
+import static com.aritxonly.myhypermodifier.ResourceOverrides.*;
+import static com.aritxonly.myhypermodifier.ControlCenterAppearance.*;
+import static com.aritxonly.myhypermodifier.ReflectiveAccess.*;
+
 /**
  * Runtime equivalent of the resource/XML/smali changes verified against the APKs in reference/.
  * API 102 intentionally has no resource-hook API, so dimensions are intercepted at their Java
@@ -51,34 +56,7 @@ public final class MyHyperModifier extends XposedModule {
     private static final AtomicBoolean MILINK_FUSION_CARD_HOOKS_INSTALLED = new AtomicBoolean();
     private static final AtomicBoolean SETTINGS_HOOK_INSTALLED = new AtomicBoolean();
     private static final AtomicBoolean APPLICATION_SETTINGS_HOOK_INSTALLED = new AtomicBoolean();
-    private static final AtomicBoolean SETTINGS_LOADED = new AtomicBoolean();
     private static final ThreadLocal<ControlCenterSurface> INFLATING_PLUGIN_DRAWABLE = new ThreadLocal<>();
-
-    private static volatile boolean notificationsEnabled = true;
-    private static volatile float notificationRadius = 28f;
-    private static volatile boolean controlCenterEnabled = true;
-    private static volatile float controlCenterRadius = 28f;
-    private static volatile boolean advancedControlCenterCorners = false;
-    private static volatile float controlCenterTileRadius = 28f;
-    private static volatile float controlCenterCardRadius = 28f;
-    private static volatile float controlCenterSliderRadius = 28f;
-    private static volatile float controlCenterDetailSliderRadius = 28f;
-    private static volatile float controlCenterMediaRadius = 28f;
-    private static volatile float controlCenterExternalEntryRadius = 28f;
-    private static volatile boolean miLinkMainCardsEnabled = true;
-    private static volatile float miLinkMainCardRadius = 20f;
-    private static volatile boolean mediaEnabled = true;
-    private static volatile float expandedHeight = 152f;
-    private static volatile float collapsedHeight = 120f;
-    private static volatile float fullAodHeight = 80f;
-    private static volatile boolean islandEnabled = true;
-    private static volatile int islandHeight = 160;
-    private static volatile boolean islandProgressBar = true;
-    private static volatile boolean hideAodActions = true;
-    private static volatile boolean hideAodSeamless = true;
-    private static volatile boolean inFullAod;
-    private static volatile boolean customMediaConstraintSetEnabled = false;
-    private static volatile String customMediaConstraintSetXml = "";
 
     @Override
     public void onPackageReady(XposedModuleInterface.PackageReadyParam param) {
@@ -113,9 +91,7 @@ public final class MyHyperModifier extends XposedModule {
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .intercept(chain -> {
                     Object result = chain.proceed();
-                    if (loadSettings((Context) chain.getArg(0))) {
-                        SETTINGS_LOADED.set(true);
-                    }
+                    markLoaded((Context) chain.getArg(0));
                     return result;
                 });
 
@@ -127,68 +103,9 @@ public final class MyHyperModifier extends XposedModule {
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
                         Object result = chain.proceed();
-                        if (loadSettings((Context) chain.getThisObject())) {
-                            SETTINGS_LOADED.set(true);
-                        }
+                        markLoaded((Context) chain.getThisObject());
                         return result;
                     });
-        }
-    }
-
-    /**
-     * PackageReady can run after ContextWrapper.attachBaseContext on HyperOS.  Resolve the
-     * application lazily from the first hooked call as well, so fresh slider values are read
-     * after a real SystemUI restart instead of silently staying on the defaults.
-     */
-    private static void ensureSettingsLoaded() {
-        if (SETTINGS_LOADED.get()) {
-            return;
-        }
-        try {
-            Class<?> activityThread = Class.forName("android.app.ActivityThread");
-            Object application = activityThread.getMethod("currentApplication").invoke(null);
-            if (application instanceof Context && loadSettings((Context) application)) {
-                SETTINGS_LOADED.set(true);
-            }
-        } catch (Throwable ignored) {
-            // The application has not been attached yet; a later hooked call retries safely.
-        }
-    }
-
-    private static boolean loadSettings(Context context) {
-        try {
-            Bundle values = context.getContentResolver().call(
-                    Uri.parse("content://com.aritxonly.myhypermodifier.settings"),
-                    "get_settings", null, null);
-            if (values == null) return false;
-            notificationsEnabled = values.getBoolean("notifications_enabled", true);
-            notificationRadius = values.getFloat("notification_radius", 28f);
-            controlCenterEnabled = values.getBoolean("control_center_enabled", true);
-            controlCenterRadius = values.getFloat("control_center_radius", 28f);
-            advancedControlCenterCorners = values.getBoolean("advanced_control_center_corners", false);
-            controlCenterTileRadius = values.getFloat("control_center_tile_radius", 28f);
-            controlCenterCardRadius = values.getFloat("control_center_card_radius", 28f);
-            controlCenterSliderRadius = values.getFloat("control_center_slider_radius", 28f);
-            controlCenterDetailSliderRadius = values.getFloat("control_center_detail_slider_radius", 28f);
-            controlCenterMediaRadius = values.getFloat("control_center_media_radius", 28f);
-            controlCenterExternalEntryRadius = values.getFloat("control_center_external_entry_radius", 28f);
-            miLinkMainCardsEnabled = values.getBoolean("milink_main_cards_enabled", true);
-            miLinkMainCardRadius = values.getFloat("milink_main_card_radius", 20f);
-            mediaEnabled = values.getBoolean("media_enabled", true);
-            expandedHeight = values.getFloat("expanded_height", 152f);
-            collapsedHeight = values.getFloat("collapsed_height", 120f);
-            fullAodHeight = values.getFloat("full_aod_height", 80f);
-            islandEnabled = values.getBoolean("island_enabled", true);
-            islandHeight = Math.round(values.getFloat("island_height", 160f));
-            islandProgressBar = values.getBoolean("island_progress", true);
-            hideAodActions = values.getBoolean("hide_aod_actions", true);
-            hideAodSeamless = values.getBoolean("hide_aod_seamless", true);
-            customMediaConstraintSetEnabled = values.getBoolean("custom_media_constraint_set_enabled", false);
-            customMediaConstraintSetXml = values.getString("custom_media_constraint_set_xml", "");
-            return true;
-        } catch (Throwable throwable) {
-            Log.w(TAG, "Could not load settings; using safe defaults", throwable);
-            return false;
         }
     }
 
@@ -201,7 +118,7 @@ public final class MyHyperModifier extends XposedModule {
                 .setId("dimension-float")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .intercept(chain -> {
-                    ensureSettingsLoaded();
+                    ensureLoaded();
                     Object result = chain.proceed();
                     Float replacement = replacementDimension(
                             (Resources) chain.getThisObject(), (Integer) chain.getArg(0));
@@ -212,7 +129,7 @@ public final class MyHyperModifier extends XposedModule {
                 .setId("dimension-pixel-size")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .intercept(chain -> {
-                    ensureSettingsLoaded();
+                    ensureLoaded();
                     Object result = chain.proceed();
                     Float replacement = replacementDimension(
                             (Resources) chain.getThisObject(), (Integer) chain.getArg(0));
@@ -223,7 +140,7 @@ public final class MyHyperModifier extends XposedModule {
                 .setId("dimension-pixel-offset")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .intercept(chain -> {
-                    ensureSettingsLoaded();
+                    ensureLoaded();
                     Object result = chain.proceed();
                     Float replacement = replacementDimension(
                             (Resources) chain.getThisObject(), (Integer) chain.getArg(0));
@@ -237,7 +154,7 @@ public final class MyHyperModifier extends XposedModule {
                 .setId("typed-array-dimension-float")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .intercept(chain -> {
-                    ensureSettingsLoaded();
+                    ensureLoaded();
                     Object result = chain.proceed();
                     Float replacement = replacementTypedArrayDimension(
                             (TypedArray) chain.getThisObject(), (Integer) chain.getArg(0));
@@ -248,7 +165,7 @@ public final class MyHyperModifier extends XposedModule {
                 .setId("typed-array-dimension-pixel-size")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .intercept(chain -> {
-                    ensureSettingsLoaded();
+                    ensureLoaded();
                     Object result = chain.proceed();
                     Float replacement = replacementTypedArrayDimension(
                             (TypedArray) chain.getThisObject(), (Integer) chain.getArg(0));
@@ -259,7 +176,7 @@ public final class MyHyperModifier extends XposedModule {
                 .setId("typed-array-dimension-pixel-offset")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .intercept(chain -> {
-                    ensureSettingsLoaded();
+                    ensureLoaded();
                     Object result = chain.proceed();
                     Float replacement = replacementTypedArrayDimension(
                             (TypedArray) chain.getThisObject(), (Integer) chain.getArg(0));
@@ -270,7 +187,7 @@ public final class MyHyperModifier extends XposedModule {
                 .setId("expanded-island-height")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .intercept(chain -> {
-                    ensureSettingsLoaded();
+                    ensureLoaded();
                     Object result = chain.proceed();
                     Resources resources = (Resources) chain.getThisObject();
                     String name = resourceEntryName(resources, (Integer) chain.getArg(0));
@@ -307,7 +224,7 @@ public final class MyHyperModifier extends XposedModule {
                 .setId("full-aod-actions")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .intercept(chain -> {
-                    ensureSettingsLoaded();
+                    ensureLoaded();
                     inFullAod = (Boolean) chain.getArg(0);
                     Object result = chain.proceed();
                     setAodActionsVisibility(chain.getThisObject(), inFullAod);
@@ -396,7 +313,7 @@ public final class MyHyperModifier extends XposedModule {
                     .setId("milink-fusion-card-radius")
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
-                        ensureSettingsLoaded();
+                        ensureLoaded();
                         if (!miLinkMainCardsEnabled || !(chain.getThisObject() instanceof View)) {
                             return chain.proceed();
                         }
@@ -477,7 +394,7 @@ public final class MyHyperModifier extends XposedModule {
                     .setId("plugin-" + className + "-" + methodName)
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
-                        ensureSettingsLoaded();
+                        ensureLoaded();
                         if (!controlCenterEnabled || (advancedOnly && !advancedControlCenterCorners)) {
                             return chain.proceed();
                         }
@@ -516,7 +433,7 @@ public final class MyHyperModifier extends XposedModule {
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
                         Object result = chain.proceed();
-                        ensureSettingsLoaded();
+                        ensureLoaded();
                         // The first flag is true for the regular system volume dialog.  Limit
                         // this replacement to the Control Center-owned panel so normal volume
                         // dialogs retain MIUI's own geometry.
@@ -544,7 +461,7 @@ public final class MyHyperModifier extends XposedModule {
                     .setId("plugin-gradient-corner-radius")
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
-                        ensureSettingsLoaded();
+                        ensureLoaded();
                         ControlCenterSurface surface = INFLATING_PLUGIN_DRAWABLE.get();
                         Object argument = chain.getArg(0);
                         float originalPixels = argument instanceof Float ? (Float) argument : 0f;
@@ -559,7 +476,7 @@ public final class MyHyperModifier extends XposedModule {
                     .setId("plugin-gradient-corner-radii")
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
-                        ensureSettingsLoaded();
+                        ensureLoaded();
                         ControlCenterSurface surface = INFLATING_PLUGIN_DRAWABLE.get();
                         Object argument = chain.getArg(0);
                         float[] original = argument instanceof float[] ? (float[]) argument : null;
@@ -575,7 +492,7 @@ public final class MyHyperModifier extends XposedModule {
                     .setId("plugin-drawable-public")
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
-                        ensureSettingsLoaded();
+                        ensureLoaded();
                         Object result = chain.proceed();
                         patchPluginDrawable((Resources) chain.getThisObject(), (Integer) chain.getArg(0), result);
                         return result;
@@ -584,7 +501,7 @@ public final class MyHyperModifier extends XposedModule {
                     .setId("plugin-drawable-public-themed")
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
-                        ensureSettingsLoaded();
+                        ensureLoaded();
                         Object result = chain.proceed();
                         patchPluginDrawable((Resources) chain.getThisObject(), (Integer) chain.getArg(0), result);
                         return result;
@@ -629,7 +546,7 @@ public final class MyHyperModifier extends XposedModule {
                                 INFLATING_PLUGIN_DRAWABLE.set(surface);
                             }
                             try {
-                                ensureSettingsLoaded();
+                                ensureLoaded();
                                 Object result = chain.proceed();
                                 if (resources != null && resourceId != null) {
                                     patchPluginDrawable(resources, resourceId, result);
@@ -645,189 +562,6 @@ public final class MyHyperModifier extends XposedModule {
         } catch (Throwable throwable) {
             // Android/HyperOS revisions may hide or rename this implementation detail.
             Log.w(TAG, "Could not install ResourcesImpl drawable hooks", throwable);
-        }
-    }
-
-    private enum ControlCenterSurface {
-        TILE,
-        CARD,
-        SLIDER,
-        DETAIL_SLIDER,
-        MEDIA,
-        EXTERNAL_ENTRY
-    }
-
-    private static float cornerPixels(Object receiver, ControlCenterSurface surface, float fallback) {
-        if (!controlCenterEnabled) {
-            return fallback;
-        }
-        Resources resources = receiver instanceof View
-                ? ((View) receiver).getContext().getResources() : Resources.getSystem();
-        return controlCenterRadius(surface) * resources.getDisplayMetrics().density;
-    }
-
-    private static float controlCenterRadius(ControlCenterSurface surface) {
-        if (!advancedControlCenterCorners) {
-            return controlCenterRadius;
-        }
-        switch (surface) {
-            case TILE:
-                return controlCenterTileRadius;
-            case CARD:
-                return controlCenterCardRadius;
-            case SLIDER:
-                return controlCenterSliderRadius;
-            case DETAIL_SLIDER:
-                return controlCenterDetailSliderRadius;
-            case MEDIA:
-                return controlCenterMediaRadius;
-            case EXTERNAL_ENTRY:
-                return controlCenterExternalEntryRadius;
-            default:
-                return controlCenterRadius;
-        }
-    }
-
-    private static void patchPluginDrawable(Resources resources, int resourceId, Object result) {
-        if (!(result instanceof Drawable) || !controlCenterEnabled) {
-            return;
-        }
-        ControlCenterSurface surface = drawableSurface(resourceEntryName(resources, resourceId));
-        if (surface == null) {
-            return;
-        }
-        float pixels = controlCenterRadius(surface) * resources.getDisplayMetrics().density;
-        setDrawableCornerRadius((Drawable) result, pixels);
-    }
-
-    /** Every XML shape in the reference plugin that uses control_center_universal_corner_radius. */
-    private static ControlCenterSurface drawableSurface(String resourceName) {
-        if (resourceName == null) {
-            return null;
-        }
-        switch (resourceName) {
-            case "qs_card_background_disabled":
-            case "qs_card_background_enabled":
-            case "qs_card_background_restricted":
-            case "qs_card_background_unavailable":
-                return ControlCenterSurface.CARD;
-            case "toggle_slider_background":
-                return ControlCenterSurface.SLIDER;
-            case "toggle_slider_detail_background":
-                return ControlCenterSurface.DETAIL_SLIDER;
-            case "media_player_background":
-                return ControlCenterSurface.MEDIA;
-            case "external_entry_background":
-                return ControlCenterSurface.EXTERNAL_ENTRY;
-            default:
-                return null;
-        }
-    }
-
-    private static void setDrawableCornerRadius(Drawable drawable, float pixels) {
-        Drawable mutable = drawable.mutate();
-        if (mutable instanceof GradientDrawable) {
-            ((GradientDrawable) mutable).setCornerRadius(pixels);
-        } else if (mutable instanceof InsetDrawable) {
-            setDrawableCornerRadius(((InsetDrawable) mutable).getDrawable(), pixels);
-        } else if (mutable instanceof LayerDrawable) {
-            LayerDrawable layers = (LayerDrawable) mutable;
-            for (int index = 0; index < layers.getNumberOfLayers(); index++) {
-                setDrawableCornerRadius(layers.getDrawable(index), pixels);
-            }
-        }
-    }
-
-    /** Applies every requested dimension regardless of dimen/dimen-xxhdpi/dimen-xxxhdpi selection. */
-    private static Float replacementDimension(Resources resources, int resourceId) {
-        String name = resourceEntryName(resources, resourceId);
-        if (name == null) {
-            return null;
-        }
-        float dp;
-        switch (name) {
-            case "notification_item_bg_radius":
-                if (!notificationsEnabled) return null;
-                dp = notificationRadius;
-                break;
-            case "control_center_universal_corner_radius":
-                // Do not use getResourcePackageName() as a filter.  The plugin is hosted by
-                // SystemUI and some controls (notably brightness, volume and Mi Share) resolve
-                // this plugin resource through a SystemUI Context, which reports the host package
-                // name.  The dimen entry name is unique and is exactly what the decoded APK edit
-                // changes, so matching it reproduces the resource-overlay behaviour.
-                if (!controlCenterEnabled) return null;
-                dp = controlCenterRadius;
-                break;
-            case "detail_panel_background_corner_radius":
-                // Secondary-menu card container. This is separate from universal_corner_radius,
-                // so leave it untouched unless independent corners are enabled.
-                if (!controlCenterEnabled || !advancedControlCenterCorners) return null;
-                dp = controlCenterCardRadius;
-                break;
-            case "miuix_recyclerview_card_group_radius":
-                // Kept for compatibility with older saved configurations.  Fusion Device Center
-                // itself uses circulate_card_corner_radius below.
-                if (!miLinkMainCardsEnabled) return null;
-                dp = miLinkMainCardRadius;
-                break;
-            case "circulate_card_corner_radius":
-                if (!miLinkMainCardsEnabled) return null;
-                dp = miLinkMainCardRadius;
-                break;
-            case "circulate_card_shape":
-                // The actual first-level Fusion Device Center grid. BaseCardView reads this
-                // dimension once and bakes it into its ViewOutlineProvider for clipToOutline.
-                if (!miLinkMainCardsEnabled) return null;
-                dp = miLinkMainCardRadius;
-                break;
-            case "qs_media_session_height_expanded":
-                if (!mediaEnabled) return null;
-                dp = expandedHeight;
-                break;
-            case "qs_media_session_height_collapsed":
-                if (!mediaEnabled) return null;
-                dp = collapsedHeight;
-                break;
-            case "qs_media_session_height_expanded_fullAod":
-                if (!mediaEnabled) return null;
-                dp = fullAodHeight;
-                break;
-            default:
-                return null;
-        }
-        return dp * resources.getDisplayMetrics().density;
-    }
-
-    private static Float replacementTypedArrayDimension(TypedArray array, int index) {
-        try {
-            int resourceId = array.getResourceId(index, 0);
-            if (resourceId == 0) {
-                return null;
-            }
-            Field resourcesField = TypedArray.class.getDeclaredField("mResources");
-            resourcesField.setAccessible(true);
-            Object resources = resourcesField.get(array);
-            return resources instanceof Resources
-                    ? replacementDimension((Resources) resources, resourceId) : null;
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    private static String resourceEntryName(Resources resources, int resourceId) {
-        try {
-            return resources.getResourceEntryName(resourceId);
-        } catch (Resources.NotFoundException ignored) {
-            return null;
-        }
-    }
-
-    private static String resourcePackageName(Resources resources, int resourceId) {
-        try {
-            return resources.getResourcePackageName(resourceId);
-        } catch (Resources.NotFoundException ignored) {
-            return null;
         }
     }
 
@@ -1183,123 +917,6 @@ public final class MyHyperModifier extends XposedModule {
 
     private static void setHeight(Object constraintSet, int viewId, int height) {
         setInt(layout(constraintSet, viewId), "mHeight", height);
-    }
-
-    private static Object layout(Object constraintSet, int viewId) {
-        if (constraintSet == null || viewId == 0) {
-            return null;
-        }
-        try {
-            Method getConstraint = constraintSet.getClass().getMethod("getConstraint", int.class);
-            Object constraint = getConstraint.invoke(constraintSet, viewId);
-            return fieldValue(constraint, "layout");
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
-    }
-
-    private static void connect(Object layout, String field, int target) {
-        setInt(layout, field, target);
-    }
-
-    private static void setInt(Object target, String fieldName, int value) {
-        if (target == null) {
-            return;
-        }
-        try {
-            Field field = target.getClass().getField(fieldName);
-            field.setInt(target, value);
-        } catch (ReflectiveOperationException ignored) {
-            // MIUI ships different ConstraintLayout and widget revisions across releases.
-        }
-    }
-
-    private static void setFloat(Object target, String fieldName, float value) {
-        if (target == null) {
-            return;
-        }
-        try {
-            Field field = target.getClass().getField(fieldName);
-            field.setFloat(target, value);
-        } catch (ReflectiveOperationException ignored) {
-            // MIUI ships different ConstraintLayout revisions across releases.
-        }
-    }
-
-    private static void setString(Object target, String fieldName, String value) {
-        if (target == null) {
-            return;
-        }
-        try {
-            Field field = target.getClass().getField(fieldName);
-            field.set(target, value);
-        } catch (ReflectiveOperationException ignored) {
-            // The optional property is unavailable on this ConstraintLayout revision.
-        }
-    }
-
-    private static Object fieldValue(Object target, String fieldName) {
-        if (target == null) {
-            return null;
-        }
-        try {
-            Field field = target.getClass().getField(fieldName);
-            return field.get(target);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
-    }
-
-    /** Reads private fields from MIUI view classes without making them part of the hook contract. */
-    private static boolean booleanDeclaredField(Object target, String fieldName, boolean fallback) {
-        if (target == null) {
-            return fallback;
-        }
-        Class<?> type = target.getClass();
-        while (type != null) {
-            try {
-                Field field = type.getDeclaredField(fieldName);
-                field.setAccessible(true);
-                return field.getBoolean(target);
-            } catch (NoSuchFieldException ignored) {
-                type = type.getSuperclass();
-            } catch (ReflectiveOperationException | RuntimeException ignored) {
-                return fallback;
-            }
-        }
-        return fallback;
-    }
-
-    private static int intField(Object target, String fieldName, int fallback) {
-        Object value = fieldValue(target, fieldName);
-        return value instanceof Integer ? (Integer) value : fallback;
-    }
-
-    private static void setFieldValue(Object target, String fieldName, Object value) {
-        if (target == null) {
-            return;
-        }
-        try {
-            target.getClass().getField(fieldName).set(target, value);
-        } catch (ReflectiveOperationException ignored) {
-            // MIUI ships different holder revisions across releases.
-        }
-    }
-
-    private static void invokeBoolean(Object target, String name, boolean value) {
-        try {
-            target.getClass().getMethod(name, boolean.class).invoke(target, value);
-        } catch (ReflectiveOperationException ignored) {
-            // Optional property on MIUI widget revisions.
-        }
-    }
-
-    private static void invokeInt(Object target, String name, int value) {
-        try {
-            target.getClass().getMethod(name, int.class).invoke(target, value);
-        } catch (ReflectiveOperationException ignored) {
-            // Optional property on MIUI widget revisions.
-        }
     }
 
 }

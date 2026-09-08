@@ -20,6 +20,21 @@ API 102 no longer supports legacy resource replacement. `Resources#getDimension*
 `Resources#getInteger` are therefore hooked by resource name, which covers the base, xxhdpi, and
 xxxhdpi `dimens.xml` variants selected on-device.
 
+## Hook module layout
+
+`MyHyperModifier` is the single Xposed entry point and owns only package routing and hook
+registration. Runtime responsibilities are separated so changes in one surface do not alter the
+secondary-panel hook path:
+
+- `ModuleSettings`: process-local, lazily loaded snapshot of companion-app options.
+- `ResourceOverrides`: resource-name based dimensions and typed-array fallbacks.
+- `ControlCenterAppearance`: surface-to-radius routing and XML drawable patching.
+- `ReflectiveAccess`: defensive compatibility operations for changing HyperOS internals.
+
+The secondary brightness hook changes only its outer `setOutlineRadius`; its progress-fill radius
+is deliberately left to MIUI. Secondary volume is replaced only through `VolumeColumnRes` when it
+belongs to Control Center, so the regular system volume dialog remains stock.
+
 ## Build and install
 
 ```sh
