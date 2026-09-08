@@ -365,14 +365,12 @@ public final class MyHyperModifier extends XposedModule {
                 "miui.systemui.controlcenter.panel.main.recyclerview.ToggleSliderViewHolder",
                 "setOutlineRadius", ControlCenterSurface.SLIDER);
         // Brightness is not a regular ToggleSliderViewHolder in the secondary panel. It
-        // recreates both radii on every show/configuration change, so hook the outer track and
-        // the internal progress fill independently.
+        // recreates the outer radius on every show/configuration change, so keep that hook here.
+        // Its progress layer intentionally keeps MIUI's small native clip radius: the parent
+        // outline supplies the rounded bottom while the fill level stays visually flat.
         hookPluginCornerSetter(classLoader,
                 "miui.systemui.controlcenter.panel.secondary.brightness.BrightnessPanelSliderDelegate",
                 "setOutlineRadius", ControlCenterSurface.DETAIL_SLIDER);
-        hookPluginCornerSetter(classLoader,
-                "miui.systemui.controlcenter.panel.secondary.brightness.BrightnessPanelSliderDelegate",
-                "setProgressRadius", ControlCenterSurface.DETAIL_SLIDER);
         hookSecondaryVolumeRadiusResolver(classLoader);
         installPluginDrawableHooks();
     }
