@@ -31,9 +31,11 @@ secondary-panel hook path:
 - `ControlCenterAppearance`: surface-to-radius routing and XML drawable patching.
 - `ReflectiveAccess`: defensive compatibility operations for changing HyperOS internals.
 
-The secondary brightness hook changes only its outer `setOutlineRadius`; its progress-fill radius
-is deliberately left to MIUI. Secondary volume is replaced only through `VolumeColumnRes` when it
-belongs to Control Center, so the regular system volume dialog remains stock.
+The secondary brightness hook handles its outer `setOutlineRadius` and internal
+`setProgressRadius` independently because HyperOS reapplies both during panel refreshes. Secondary
+volume is replaced only through `VolumeColumnRes` when it belongs to Control Center, so the regular
+system volume dialog remains stock. Settings-provider IPC runs on a dedicated worker with bounded
+retry backoff, keeping SystemUI's boot and resource-resolution threads non-blocking.
 
 ## Build and install
 

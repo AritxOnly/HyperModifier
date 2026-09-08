@@ -3,14 +3,28 @@ package com.aritxonly.myhypermodifier;
 import android.content.Context;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.util.Log;
 
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /** Shared, process-local snapshot of the companion app's appearance settings. */
 final class ModuleSettings {
     private static final String TAG = "MyHyperModifier";
     private static final AtomicBoolean SETTINGS_LOADED = new AtomicBoolean();
+    private static final AtomicBoolean LOAD_IN_FLIGHT = new AtomicBoolean();
+    private static final AtomicBoolean LOAD_FAILURE_LOGGED = new AtomicBoolean();
+    private static final AtomicInteger LOAD_FAILURES = new AtomicInteger();
+    private static final AtomicLong NEXT_LOAD_UPTIME_MS = new AtomicLong();
+    private static final ExecutorService SETTINGS_EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "MyHyperModifier-settings");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     static volatile boolean notificationsEnabled = true;
     static volatile float notificationRadius = 28f;
@@ -41,13 +55,12 @@ final class ModuleSettings {
     private ModuleSettings() {
     }
 
+    /** Never performs provider IPC on SystemUI's startup or resource-resolution thread. */
     static void markLoaded(Context context) {
-        if (load(context)) {
-            SETTINGS_LOADED.set(true);
-        }
+        scheduleLoad(context);
     }
 
-    /** Lazily resolves Application for HyperOS builds that notify PackageReady late. */
+    /** Lazily schedules a load for HyperOS builds that notify PackageReady late. */
     static void ensureLoaded() {
         if (SETTINGS_LOADED.get()) {
             return;
@@ -55,12 +68,49 @@ final class ModuleSettings {
         try {
             Class<?> activityThread = Class.forName("android.app.ActivityThread");
             Object application = activityThread.getMethod("currentApplication").invoke(null);
-            if (application instanceof Context && load((Context) application)) {
-                SETTINGS_LOADED.set(true);
+            if (application instanceof Context) {
+                scheduleLoad((Context) application);
             }
         } catch (Throwable ignored) {
             // The application has not been attached yet; a later hooked call retries safely.
         }
+    }
+
+    private static void scheduleLoad(Context context) {
+        if (SETTINGS_LOADED.get() || context == null) {
+            return;
+        }
+        long now = SystemClock.uptimeMillis();
+        if (now < NEXT_LOAD_UPTIME_MS.get() || !LOAD_IN_FLIGHT.compareAndSet(false, true)) {
+            return;
+        }
+        Context applicationContext = context.getApplicationContext();
+        Context safeContext = applicationContext != null ? applicationContext : context;
+        try {
+            SETTINGS_EXECUTOR.execute(() -> {
+                try {
+                    if (load(safeContext)) {
+                        SETTINGS_LOADED.set(true);
+                        LOAD_FAILURES.set(0);
+                        NEXT_LOAD_UPTIME_MS.set(0L);
+                        LOAD_FAILURE_LOGGED.set(false);
+                    } else {
+                        scheduleRetry();
+                    }
+                } finally {
+                    LOAD_IN_FLIGHT.set(false);
+                }
+            });
+        } catch (RuntimeException exception) {
+            LOAD_IN_FLIGHT.set(false);
+            scheduleRetry();
+        }
+    }
+
+    private static void scheduleRetry() {
+        int failures = Math.min(LOAD_FAILURES.incrementAndGet(), 5);
+        long delayMs = Math.min(30_000L, 1_000L << failures);
+        NEXT_LOAD_UPTIME_MS.set(SystemClock.uptimeMillis() + delayMs);
     }
 
     private static boolean load(Context context) {
@@ -95,7 +145,9 @@ final class ModuleSettings {
             customMediaConstraintSetXml = values.getString("custom_media_constraint_set_xml", "");
             return true;
         } catch (Throwable throwable) {
-            Log.w(TAG, "Could not load settings; using safe defaults", throwable);
+            if (LOAD_FAILURE_LOGGED.compareAndSet(false, true)) {
+                Log.w(TAG, "Settings unavailable; using defaults and retrying in background", throwable);
+            }
             return false;
         }
     }
