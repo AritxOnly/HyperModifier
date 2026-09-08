@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">MyHyperModifier</string>
+    <string name="module_description">HyperOS SystemUI media and corner-radius modifications.</string>
+    <string name="navigation_system_ui">系统界面</string>
+    <string name="navigation_components">系统界面组件</string>
+    <string name="navigation_about">关于</string>
+</resources>

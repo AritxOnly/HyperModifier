@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:allowBackup="false"
+        android:icon="@drawable/ic_launcher_mhm"
+        android:label="@string/app_name"
+        android:description="@string/module_description"
+        android:theme="@style/AppTheme">
+        <provider
+            android:name=".ModifierSettingsProvider"
+            android:authorities="com.aritxonly.myhypermodifier.settings"
+            android:exported="true"
+            android:grantUriPermissions="false" />
+        <activity
+            android:name=".SettingsActivity"
+            android:icon="@drawable/ic_launcher_mhm"
+            android:label="@string/app_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
