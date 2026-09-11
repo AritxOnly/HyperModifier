@@ -1,14 +1,41 @@
+# Gradle and build outputs
 .gradle/
 .kotlin/
 build/
 app/build/
-*.iml
-.idea/
-.DS_Store
 
 # Local Android SDK configuration
 local.properties
 signing.local.properties
 
+# Local signing material
+*.jks
+*.keystore
+
 # Local reverse-engineering reference packages
 reference/
+
+# Logs and OS files
+*.log
+.DS_Store
+
+# Android Studio generated files and folders
+captures/
+.externalNativeBuild/
+.cxx/
+*.aab
+*.apk
+output-metadata.json
+
+# IntelliJ
+*.iml
+.idea/
+misc.xml
+deploymentTargetDropDown.xml
+render.experimental.xml
+
+# Google Services (e.g. APIs or Firebase)
+google-services.json
+
+# Android Profiling
+*.hprof
