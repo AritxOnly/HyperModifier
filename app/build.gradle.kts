@@ -32,7 +32,7 @@ val signingPassword = providers.gradleProperty("hypermodifierSigningPassword")
 val hasReleaseSigning = !signingStoreFile.isNullOrBlank()
     && !signingKeyAlias.isNullOrBlank()
     && !signingPassword.isNullOrBlank()
-val configuredVersionCode = providers.gradleProperty("versionCode").orNull?.toIntOrNull() ?: 29
+val configuredVersionCode = providers.gradleProperty("versionCode").orNull?.toIntOrNull() ?: 30
 val configuredVersionName = providers.gradleProperty("versionName").orNull ?: "1.3.7"
 
 android {

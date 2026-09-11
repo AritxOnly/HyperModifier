@@ -15,8 +15,8 @@ sealed interface LsposedScopeConfiguration {
 
 /**
  * LSPosed keeps module enablement and target packages in its root-owned configuration database.
- * Copying its read-only SQLite snapshot into this app's cache lets the companion app report the
- * same state shown in LSPosed Manager, without treating a target process restart as activation.
+ * Root reads its SQLite snapshot, while this process writes the stream into its own cache. This
+ * avoids asking a root shell to write across the app's SELinux boundary.
  */
 object LsposedScopeReader {
     private const val MODULE_PACKAGE = "com.aritxonly.myhypermodifier"
@@ -42,21 +42,30 @@ object LsposedScopeReader {
     }
 
     private fun copyDatabaseAsRoot(destination: String): Boolean {
-        val uid = Process.myUid()
-        val command = """
-            source='$LSPOSED_DATABASE'
-            target='$destination'
-            [ -r "${'$'}source" ] || exit 2
-            cp "${'$'}source" "${'$'}target" || exit 3
-            [ -f "${'$'}source-wal" ] && cp "${'$'}source-wal" "${'$'}target-wal"
-            [ -f "${'$'}source-shm" ] && cp "${'$'}source-shm" "${'$'}target-shm"
-            chown $uid:$uid "${'$'}target" "${'$'}target-wal" "${'$'}target-shm" 2>/dev/null || chown $uid:$uid "${'$'}target"
-            chmod 600 "${'$'}target" "${'$'}target-wal" "${'$'}target-shm" 2>/dev/null || chmod 600 "${'$'}target"
-        """.trimIndent()
-        val process = ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
-        val completed = process.waitFor(4, TimeUnit.SECONDS)
-        if (!completed) process.destroyForcibly()
-        return completed && process.exitValue() == 0
+        if (!copyRootFile(LSPOSED_DATABASE, destination)) return false
+        // LSPosed enables WAL.  These sidecars are optional, but including them when present
+        // makes the read reflect a configuration edit that has not yet been checkpointed.
+        copyRootFile("$LSPOSED_DATABASE-wal", "$destination-wal")
+        copyRootFile("$LSPOSED_DATABASE-shm", "$destination-shm")
+        return true
+    }
+
+    private fun copyRootFile(source: String, destination: String): Boolean {
+        val command = "[ -r '$source' ] || exit 44; cat '$source'"
+        return try {
+            val process = ProcessBuilder("su", "-c", command).start()
+            File(destination).outputStream().use { output ->
+                process.inputStream.copyTo(output)
+            }
+            val completed = process.waitFor(4, TimeUnit.SECONDS)
+            if (!completed) process.destroyForcibly()
+            val succeeded = completed && process.exitValue() == 0
+            if (!succeeded) File(destination).delete()
+            succeeded
+        } catch (_: Exception) {
+            File(destination).delete()
+            false
+        }
     }
 
     private fun readEnabledPackages(databaseFile: File, userId: Int): LsposedScopeConfiguration {
