@@ -8,6 +8,7 @@ app/build/
 
 # Local Android SDK configuration
 local.properties
+signing.local.properties
 
 # Local reverse-engineering reference packages
 reference/

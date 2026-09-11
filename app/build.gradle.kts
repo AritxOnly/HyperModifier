@@ -1,7 +1,35 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val signingProperties = Properties().apply {
+    val localSigningFile = rootProject.file("signing.local.properties")
+    if (localSigningFile.isFile) {
+        localSigningFile.inputStream().use(::load)
+    }
+}
+
+val signingStoreFile = signingProperties.getProperty("storeFile")
+val signingKeyAlias = signingProperties.getProperty("keyAlias")
+val signingPasswordFromKeychain = runCatching {
+    val process = ProcessBuilder(
+        "/usr/bin/security", "find-generic-password",
+        "-s", "com.aritxonly.hypermodifier.signing",
+        "-a", "release",
+        "-w",
+    ).start()
+    val password = process.inputStream.bufferedReader().use { it.readText().trim() }
+    password.takeIf { process.waitFor() == 0 && it.isNotBlank() }
+}.getOrNull()
+val signingPassword = providers.gradleProperty("hypermodifierSigningPassword")
+    .orElse(providers.environmentVariable("HYPERMODIFIER_SIGNING_PASSWORD"))
+    .orNull ?: signingPasswordFromKeychain
+val hasReleaseSigning = !signingStoreFile.isNullOrBlank()
+    && !signingKeyAlias.isNullOrBlank()
+    && !signingPassword.isNullOrBlank()
 
 android {
     namespace = "com.aritxonly.myhypermodifier"
@@ -11,14 +39,28 @@ android {
         applicationId = "com.aritxonly.myhypermodifier"
         minSdk = 33
         targetSdk = 35
-        versionCode = 17
-        versionName = "1.2.9"
+        versionCode = 28
+        versionName = "1.3.7"
+    }
+
+    signingConfigs {
+        create("release") {
+            if (hasReleaseSigning) {
+                storeFile = file(signingStoreFile)
+                storePassword = signingPassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingPassword
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

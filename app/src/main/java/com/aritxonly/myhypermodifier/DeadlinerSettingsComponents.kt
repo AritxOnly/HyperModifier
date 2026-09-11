@@ -147,6 +147,7 @@ fun SettingsSliderItemWithLabel(
     modifier: Modifier = Modifier,
     steps: Int = 0,
     enabled: Boolean = true,
+    valueText: (Float) -> String = { "${it.toInt()} dp" },
 ) {
     Column(modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -156,7 +157,7 @@ fun SettingsSliderItemWithLabel(
                 modifier = Modifier.weight(1f).padding(end = 12.dp),
             )
             Text(
-                text = "${value.toInt()} dp",
+                text = valueText(value),
                 color = MiuixTheme.colorScheme.primary,
                 style = MiuixTheme.textStyles.body1,
             )

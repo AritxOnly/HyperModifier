@@ -9,8 +9,9 @@ import android.util.Log;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /** Shared, process-local snapshot of the companion app's appearance settings. */
 final class ModuleSettings {
@@ -18,17 +19,18 @@ final class ModuleSettings {
     private static final AtomicBoolean SETTINGS_LOADED = new AtomicBoolean();
     private static final AtomicBoolean LOAD_IN_FLIGHT = new AtomicBoolean();
     private static final AtomicBoolean LOAD_FAILURE_LOGGED = new AtomicBoolean();
+    private static final AtomicBoolean SCOPE_HEARTBEAT_STARTED = new AtomicBoolean();
     private static final AtomicInteger LOAD_FAILURES = new AtomicInteger();
     private static final AtomicLong NEXT_LOAD_UPTIME_MS = new AtomicLong();
-    private static final ExecutorService SETTINGS_EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
+    private static final ScheduledExecutorService SETTINGS_EXECUTOR = Executors.newSingleThreadScheduledExecutor(runnable -> {
         Thread thread = new Thread(runnable, "MyHyperModifier-settings");
         thread.setDaemon(true);
         return thread;
     });
 
-    static volatile boolean notificationsEnabled = true;
+    static volatile boolean notificationsEnabled = false;
     static volatile float notificationRadius = 28f;
-    static volatile boolean controlCenterEnabled = true;
+    static volatile boolean controlCenterEnabled = false;
     static volatile float controlCenterRadius = 28f;
     static volatile boolean advancedControlCenterCorners = false;
     static volatile float controlCenterTileRadius = 28f;
@@ -37,17 +39,32 @@ final class ModuleSettings {
     static volatile float controlCenterDetailSliderRadius = 28f;
     static volatile float controlCenterMediaRadius = 28f;
     static volatile float controlCenterExternalEntryRadius = 28f;
-    static volatile boolean miLinkMainCardsEnabled = true;
+    static volatile float volumePanelRadius = 0f;
+    static volatile boolean miLinkMainCardsEnabled = false;
     static volatile float miLinkMainCardRadius = 20f;
-    static volatile boolean mediaEnabled = true;
+    static volatile boolean mediaEnabled = false;
     static volatile float expandedHeight = 152f;
     static volatile float collapsedHeight = 120f;
     static volatile float fullAodHeight = 80f;
-    static volatile boolean islandEnabled = true;
+    static volatile boolean islandEnabled = false;
     static volatile int islandHeight = 160;
-    static volatile boolean islandProgressBar = true;
-    static volatile boolean hideAodActions = true;
-    static volatile boolean hideAodSeamless = true;
+    static volatile boolean islandProgressBar = false;
+    static volatile boolean hideAodActions = false;
+    static volatile boolean hideAodSeamless = false;
+    static volatile boolean sinkLockscreenNotificationsForFingerprint = false;
+    static volatile boolean hideLockscreenFingerprintIcon = false;
+    static volatile boolean showLockscreenFingerprintIconOnAod = false;
+    static volatile boolean statusBarNetworkTypeEnabled = false;
+    static volatile float statusBarNetworkTypeSize = 13.5f;
+    static volatile boolean statusBarNetworkTypeBold = true;
+    static volatile float statusBarNetworkTypeOffset = 0f;
+    static volatile boolean xiaomiHealthFloatingNavigationEnabled = true;
+    static volatile boolean xiaomiHealthMiuixIconsEnabled = false;
+    static volatile boolean xiaomiHealthMonochromeIconsEnabled = true;
+    static volatile boolean marketFloatingNavigationEnabled = true;
+    static volatile boolean marketMiuixIconsEnabled = false;
+    static volatile boolean marketMonochromeIconsEnabled = true;
+    static volatile boolean marketNavigationBadgesEnabled = true;
     static volatile boolean inFullAod;
     static volatile boolean customMediaConstraintSetEnabled = false;
     static volatile String customMediaConstraintSetXml = "";
@@ -58,6 +75,7 @@ final class ModuleSettings {
     /** Never performs provider IPC on SystemUI's startup or resource-resolution thread. */
     static void markLoaded(Context context) {
         scheduleLoad(context);
+        startScopeHeartbeat(context);
     }
 
     /** Lazily schedules a load for HyperOS builds that notify PackageReady late. */
@@ -74,6 +92,10 @@ final class ModuleSettings {
         } catch (Throwable ignored) {
             // The application has not been attached yet; a later hooked call retries safely.
         }
+    }
+
+    static boolean isLoaded() {
+        return SETTINGS_LOADED.get();
     }
 
     private static void scheduleLoad(Context context) {
@@ -113,15 +135,51 @@ final class ModuleSettings {
         NEXT_LOAD_UPTIME_MS.set(SystemClock.uptimeMillis() + delayMs);
     }
 
+    /**
+     * Each injected target confirms it is still executing module code. The companion app treats a
+     * missing recent heartbeat as an inactive LSPosed scope, which also catches a process that
+     * has not been restarted after its scope was enabled.
+     */
+    private static void startScopeHeartbeat(Context context) {
+        if (context == null || !SCOPE_HEARTBEAT_STARTED.compareAndSet(false, true)) {
+            return;
+        }
+        Context applicationContext = context.getApplicationContext();
+        Context safeContext = applicationContext != null ? applicationContext : context;
+        try {
+            SETTINGS_EXECUTOR.execute(() -> {
+                reportScopeHeartbeat(safeContext);
+                SETTINGS_EXECUTOR.scheduleAtFixedRate(
+                        () -> reportScopeHeartbeat(safeContext),
+                        15L, 15L, TimeUnit.SECONDS);
+            });
+        } catch (RuntimeException ignored) {
+            SCOPE_HEARTBEAT_STARTED.set(false);
+        }
+    }
+
+    private static void reportScopeHeartbeat(Context context) {
+        try {
+            Bundle extras = new Bundle();
+            extras.putString("scope", context.getPackageName());
+            context.getContentResolver().call(
+                    Uri.parse("content://com.aritxonly.myhypermodifier.settings"),
+                    "report_scope_heartbeat", null, extras);
+        } catch (Throwable ignored) {
+            // The status display is observational; a temporary unavailable companion app must
+            // never affect a scoped process.
+        }
+    }
+
     private static boolean load(Context context) {
         try {
             Bundle values = context.getContentResolver().call(
                     Uri.parse("content://com.aritxonly.myhypermodifier.settings"),
                     "get_settings", null, null);
             if (values == null) return false;
-            notificationsEnabled = values.getBoolean("notifications_enabled", true);
+            notificationsEnabled = values.getBoolean("notifications_enabled", false);
             notificationRadius = values.getFloat("notification_radius", 28f);
-            controlCenterEnabled = values.getBoolean("control_center_enabled", true);
+            controlCenterEnabled = values.getBoolean("control_center_enabled", false);
             controlCenterRadius = values.getFloat("control_center_radius", 28f);
             advancedControlCenterCorners = values.getBoolean("advanced_control_center_corners", false);
             controlCenterTileRadius = values.getFloat("control_center_tile_radius", 28f);
@@ -130,17 +188,42 @@ final class ModuleSettings {
             controlCenterDetailSliderRadius = values.getFloat("control_center_detail_slider_radius", 28f);
             controlCenterMediaRadius = values.getFloat("control_center_media_radius", 28f);
             controlCenterExternalEntryRadius = values.getFloat("control_center_external_entry_radius", 28f);
-            miLinkMainCardsEnabled = values.getBoolean("milink_main_cards_enabled", true);
+            volumePanelRadius = values.getFloat("volume_panel_radius", 0f);
+            miLinkMainCardsEnabled = values.getBoolean("milink_main_cards_enabled", false);
             miLinkMainCardRadius = values.getFloat("milink_main_card_radius", 20f);
-            mediaEnabled = values.getBoolean("media_enabled", true);
+            mediaEnabled = values.getBoolean("media_enabled", false);
             expandedHeight = values.getFloat("expanded_height", 152f);
             collapsedHeight = values.getFloat("collapsed_height", 120f);
             fullAodHeight = values.getFloat("full_aod_height", 80f);
-            islandEnabled = values.getBoolean("island_enabled", true);
+            islandEnabled = values.getBoolean("island_enabled", false);
             islandHeight = Math.round(values.getFloat("island_height", 160f));
-            islandProgressBar = values.getBoolean("island_progress", true);
-            hideAodActions = values.getBoolean("hide_aod_actions", true);
-            hideAodSeamless = values.getBoolean("hide_aod_seamless", true);
+            islandProgressBar = values.getBoolean("island_progress", false);
+            hideAodActions = values.getBoolean("hide_aod_actions", false);
+            hideAodSeamless = values.getBoolean("hide_aod_seamless", false);
+            sinkLockscreenNotificationsForFingerprint = values.getBoolean(
+                    "sink_lockscreen_notifications_for_fingerprint", false);
+            hideLockscreenFingerprintIcon = values.getBoolean(
+                    "hide_lockscreen_fingerprint_icon", false);
+            showLockscreenFingerprintIconOnAod = values.getBoolean(
+                    "show_lockscreen_fingerprint_icon_on_aod", false);
+            statusBarNetworkTypeEnabled = values.getBoolean("status_bar_network_type_enabled", false);
+            statusBarNetworkTypeSize = values.getFloat("status_bar_network_type_size", 13.5f);
+            statusBarNetworkTypeBold = values.getBoolean("status_bar_network_type_bold", true);
+            statusBarNetworkTypeOffset = values.getFloat("status_bar_network_type_offset", 0f);
+            xiaomiHealthFloatingNavigationEnabled = values.getBoolean(
+                    "xiaomi_health_floating_navigation_enabled", true);
+            xiaomiHealthMiuixIconsEnabled = values.getBoolean(
+                    "xiaomi_health_miuix_icons_enabled", false);
+            xiaomiHealthMonochromeIconsEnabled = values.getBoolean(
+                    "xiaomi_health_monochrome_icons_enabled", true);
+            marketFloatingNavigationEnabled = values.getBoolean(
+                    "market_floating_navigation_enabled", true);
+            marketMiuixIconsEnabled = values.getBoolean(
+                    "market_miuix_icons_enabled", false);
+            marketMonochromeIconsEnabled = values.getBoolean(
+                    "market_monochrome_icons_enabled", true);
+            marketNavigationBadgesEnabled = values.getBoolean(
+                    "market_navigation_badges_enabled", true);
             customMediaConstraintSetEnabled = values.getBoolean("custom_media_constraint_set_enabled", false);
             customMediaConstraintSetXml = values.getString("custom_media_constraint_set_xml", "");
             return true;

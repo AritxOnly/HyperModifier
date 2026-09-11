@@ -44,6 +44,8 @@ public final class MyHyperModifier extends XposedModule {
     private static final String SYSTEM_UI = "com.android.systemui";
     private static final String SYSTEM_UI_PLUGIN = "miui.systemui.plugin";
     private static final String MILINK = "com.milink.service";
+    private static final String XIAOMI_HEALTH = "com.mi.health";
+    private static final String MARKET = "com.xiaomi.market";
 
     private static final int XML_MEDIA_ISLAND_NORMAL = 0x7f180018;
     private static final int XML_MEDIA_NORMAL = 0x7f180019;
@@ -56,18 +58,31 @@ public final class MyHyperModifier extends XposedModule {
     private static final AtomicBoolean MILINK_FUSION_CARD_HOOKS_INSTALLED = new AtomicBoolean();
     private static final AtomicBoolean SETTINGS_HOOK_INSTALLED = new AtomicBoolean();
     private static final AtomicBoolean APPLICATION_SETTINGS_HOOK_INSTALLED = new AtomicBoolean();
+    private static final AtomicBoolean LOCKSCREEN_NOTIFICATION_HOOKS_INSTALLED = new AtomicBoolean();
+    private static final AtomicBoolean LOCKSCREEN_FINGERPRINT_HOOKS_INSTALLED = new AtomicBoolean();
     private static final ThreadLocal<ControlCenterSurface> INFLATING_PLUGIN_DRAWABLE = new ThreadLocal<>();
 
     @Override
     public void onPackageReady(XposedModuleInterface.PackageReadyParam param) {
         String packageName = param.getPackageName();
         if (!SYSTEM_UI.equals(packageName) && !SYSTEM_UI_PLUGIN.equals(packageName)
-                && !MILINK.equals(packageName)) {
+                && !MILINK.equals(packageName) && !XIAOMI_HEALTH.equals(packageName)
+                && !MARKET.equals(packageName)) {
             return;
         }
 
         try {
             installSettingsLoader();
+            if (XIAOMI_HEALTH.equals(packageName)) {
+                XiaomiHealthHooks.install(this, param.getClassLoader());
+                log(Log.INFO, TAG, "Installed for " + packageName);
+                return;
+            }
+            if (MARKET.equals(packageName)) {
+                MarketHooks.install(this, param.getClassLoader());
+                log(Log.INFO, TAG, "Installed for " + packageName);
+                return;
+            }
             installResourceValueHooks();
             if (SYSTEM_UI.equals(packageName)) {
                 installSystemUiHooks(param.getClassLoader());
@@ -193,6 +208,7 @@ public final class MyHyperModifier extends XposedModule {
                     String name = resourceEntryName(resources, (Integer) chain.getArg(0));
                     return "expanded_island_height_dp".equals(name) && islandEnabled ? islandHeight : result;
                 });
+
     }
 
     private void installSystemUiHooks(ClassLoader classLoader) throws Throwable {
@@ -262,6 +278,146 @@ public final class MyHyperModifier extends XposedModule {
                     setAodSeamlessVisibility(chain.getThisObject(), inFullAod);
                     return result;
                 });
+
+        installLockscreenNotificationHooks(classLoader);
+        installLockscreenFingerprintHooks(classLoader);
+        StatusBarNetworkType.install(this, classLoader);
+    }
+
+    /**
+     * HyperOS normally lowers lock-screen notifications whenever an enrolled UDFPS is present.
+     * Keeping the original Flow output retains that behavior; disabling the setting replaces just
+     * its UDFPS inputs, so the standard notification position is emitted without breaking the
+     * Kotlin coroutine that owns the position calculation.
+     */
+    private void installLockscreenNotificationHooks(ClassLoader classLoader) {
+        if (!LOCKSCREEN_NOTIFICATION_HOOKS_INSTALLED.compareAndSet(false, true)) return;
+        try {
+            Class<?> shelfSpaceFlow = Class.forName(
+                    "com.android.systemui.statusbar.notification.stack.domain.interactor."
+                            + "SharedNotificationContainerInteractor$useExtraShelfSpace$1",
+                    false, classLoader);
+            hook(shelfSpaceFlow.getDeclaredMethod("invokeSuspend", Object.class))
+                    .setId("lockscreen-notification-fod-shelf-space")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        ensureLoaded();
+                        // HyperOS 4 sinks notifications when extra shelf space is disabled.
+                        return sinkLockscreenNotificationsForFingerprint ? false : chain.proceed();
+                    });
+
+            Class<?> notificationPositionFlow = loadFirstAvailableClass(classLoader,
+                    "com.android.keyguard.panel.KeyguardPanelViewController"
+                            + "$nsslLockYPosition_delegate$lambda$104$$inlined$combine$1$3",
+                    "com.android.keyguard.panel.KeyguardPanelViewController"
+                            + "$nsslLockYPosition_delegate$lambda$106$$inlined$combine$1$3");
+            Field enrolledValues = notificationPositionFlow.getDeclaredField("L$1");
+            enrolledValues.setAccessible(true);
+            hook(notificationPositionFlow.getDeclaredMethod("invokeSuspend", Object.class))
+                    .setId("lockscreen-notification-fod-position")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        ensureLoaded();
+                        try {
+                            Object value = enrolledValues.get(chain.getThisObject());
+                            if (value instanceof Object[]) {
+                                Object[] values = (Object[]) value;
+                                // This is the flow's has-enrolled-UDFPS input on HyperOS 4. Set it
+                                // explicitly in both modes: some builds publish false when the
+                                // visual icon is transparent even though a UDFPS is enrolled.
+                                if (values.length > 6) {
+                                    values[6] = !sinkLockscreenNotificationsForFingerprint;
+                                }
+                            }
+                        } catch (ReflectiveOperationException | RuntimeException ignored) {
+                            // A changed SystemUI build keeps its stock positioning instead.
+                        }
+                        return chain.proceed();
+                    });
+            log(Log.INFO, TAG, "Installed lockscreen notification-position hooks");
+        } catch (Throwable throwable) {
+            log(Log.WARN, TAG, "Could not install lockscreen notification UDFPS hooks", throwable);
+        }
+    }
+
+    /**
+     * Hides only the visual UDFPS surface after SystemUI creates it. The FOD window remains
+     * attached, so fingerprint touch handling is unaffected. During AOD, the widget's own
+     * mDozing state identifies the active doze session and keeps the freshly shown icon intact.
+     */
+    private void installLockscreenFingerprintHooks(ClassLoader classLoader) {
+        if (!LOCKSCREEN_FINGERPRINT_HOOKS_INSTALLED.compareAndSet(false, true)) return;
+        try {
+            Class<?> iconClass = Class.forName(
+                    "com.miui.keyguard.biometrics.fod.MiuiGxzwIconView", false, classLoader);
+            Method dismissIcon = iconClass.getMethod("dismissFingerpirntIcon");
+            hook(dismissIcon)
+                    .setId("lockscreen-fingerprint-aod-dismiss")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        ensureLoaded();
+                        // On this SystemUI build, AOD invokes this method after show() whenever
+                        // Xiaomi's own FOD-on-AOD toggle is off. Blocking it preserves the icon;
+                        // show() has already attached the FOD window and touch target.
+                        return shouldKeepFingerprintIconOnAod(chain.getThisObject())
+                                ? null : chain.proceed();
+                    });
+            int hookedMethods = 0;
+            for (Method method : iconClass.getDeclaredMethods()) {
+                Class<?>[] parameterTypes = method.getParameterTypes();
+                boolean isDisplayMethod = ("show".equals(method.getName())
+                        && parameterTypes.length == 1 && parameterTypes[0] == boolean.class)
+                        || ("showFingerprintIcon".equals(method.getName())
+                        && parameterTypes.length == 0)
+                        || ("setGxzwIconOpaque".equals(method.getName())
+                        && parameterTypes.length == 0);
+                if (!isDisplayMethod) continue;
+                final int hookIndex = hookedMethods++;
+                hook(method)
+                        .setId("lockscreen-fingerprint-visual-" + hookIndex)
+                        .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                        .intercept(chain -> {
+                            ensureLoaded();
+                            Object result = chain.proceed();
+                            boolean keepForAod = shouldKeepFingerprintIconOnAod(
+                                    chain.getThisObject());
+                            if (hideLockscreenFingerprintIcon && !keepForAod) {
+                                try {
+                                    dismissIcon.invoke(chain.getThisObject());
+                                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                                    // The visual-only method is optional on adjacent HyperOS builds.
+                                }
+                            }
+                            return result;
+                        });
+            }
+            if (hookedMethods == 0) {
+                throw new NoSuchMethodException("No MiuiGxzwIconView display methods found");
+            }
+            log(Log.INFO, TAG, "Installed " + hookedMethods + " lockscreen fingerprint hook(s)");
+        } catch (Throwable throwable) {
+            log(Log.WARN, TAG, "Could not install lockscreen fingerprint hooks", throwable);
+        }
+    }
+
+    private static boolean shouldKeepFingerprintIconOnAod(Object iconView) {
+        return hideLockscreenFingerprintIcon
+                && showLockscreenFingerprintIconOnAod
+                && booleanDeclaredField(iconView, "mDozing", false);
+    }
+
+    private static Class<?> loadFirstAvailableClass(ClassLoader classLoader, String... classNames)
+            throws ClassNotFoundException {
+        ClassNotFoundException failure = null;
+        for (String className : classNames) {
+            try {
+                return Class.forName(className, false, classLoader);
+            } catch (ClassNotFoundException exception) {
+                failure = exception;
+            }
+        }
+        if (failure != null) throw failure;
+        throw new ClassNotFoundException("No candidate classes provided");
     }
 
     /**
@@ -380,6 +536,40 @@ public final class MyHyperModifier extends XposedModule {
         hookPluginCornerSetter(classLoader, className, methodName, surface, false);
     }
 
+    /**
+     * The 1.3.1 implementation for the volume-key popup.  On the user's HyperOS build this
+     * resolver is the single outer-panel radius source; keeping it here avoids altering any
+     * volume icon, mute-button, or inner progress drawable resource.
+     */
+    private void hookSecondaryVolumeRadiusResolver(ClassLoader classLoader) {
+        try {
+            Class<?> resolver = Class.forName(
+                    "com.android.systemui.miui.volume.VolumeColumnRes", false, classLoader);
+            Method getRadius = resolver.getDeclaredMethod(
+                    "getRadius", Context.class, boolean.class, boolean.class);
+            hook(getRadius)
+                    .setId("secondary-volume-slider-radius")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        Object result = chain.proceed();
+                        ensureLoaded();
+                        Object showDialog = chain.getArg(1);
+                        if (!(showDialog instanceof Boolean)) return result;
+                        Context context = (Context) chain.getArg(0);
+                        if ((Boolean) showDialog) {
+                            if (volumePanelRadius <= 0f) return result;
+                            return Math.round(volumePanelRadius
+                                    * context.getResources().getDisplayMetrics().density);
+                        }
+                        if (!controlCenterEnabled) return result;
+                        return Math.round(controlCenterRadius(ControlCenterSurface.DETAIL_SLIDER)
+                                * context.getResources().getDisplayMetrics().density);
+                    });
+        } catch (Throwable throwable) {
+            Log.w(TAG, "Secondary volume slider hook unavailable", throwable);
+        }
+    }
+
     /** Advanced-only setters are for private detail-panel dimensions, not universal_corner_radius. */
     private void hookPluginAdvancedCornerSetter(ClassLoader classLoader, String className,
                                                 String methodName, ControlCenterSurface surface) {
@@ -415,40 +605,6 @@ public final class MyHyperModifier extends XposedModule {
                     });
         } catch (Throwable throwable) {
             Log.w(TAG, "Control-centre hook unavailable: " + className + '#' + methodName, throwable);
-        }
-    }
-
-    /**
-     * The secondary volume panel owns a SystemUI VolumeColumn rather than the plugin's
-     * ToggleSliderView.  VolumeColumn asks this resolver again for every panel show and during
-     * its transition animation, so changing only its initial drawable is immediately overwritten.
-     */
-    private void hookSecondaryVolumeRadiusResolver(ClassLoader classLoader) {
-        try {
-            Class<?> resolver = Class.forName(
-                    "com.android.systemui.miui.volume.VolumeColumnRes", false, classLoader);
-            Method getRadius = resolver.getDeclaredMethod(
-                    "getRadius", Context.class, boolean.class, boolean.class);
-            hook(getRadius)
-                    .setId("secondary-volume-slider-radius")
-                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                    .intercept(chain -> {
-                        Object result = chain.proceed();
-                        ensureLoaded();
-                        // The first flag is true for the regular system volume dialog.  Limit
-                        // this replacement to the Control Center-owned panel so normal volume
-                        // dialogs retain MIUI's own geometry.
-                        Object showDialog = chain.getArg(1);
-                        if (!controlCenterEnabled || !(showDialog instanceof Boolean)
-                                || (Boolean) showDialog) {
-                            return result;
-                        }
-                        Context context = (Context) chain.getArg(0);
-                        return Math.round(controlCenterRadius(ControlCenterSurface.DETAIL_SLIDER)
-                                * context.getResources().getDisplayMetrics().density);
-                    });
-        } catch (Throwable throwable) {
-            Log.w(TAG, "Secondary volume slider hook unavailable", throwable);
         }
     }
 

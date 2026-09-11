@@ -1,0 +1,5 @@
+# Copy to signing.local.properties for local release signing. This file contains no secret.
+# The password belongs in macOS Keychain service com.aritxonly.hypermodifier.signing,
+# account release; HYPERMODIFIER_SIGNING_PASSWORD is supported for CI.
+storeFile=/absolute/path/to/your-release.keystore
+keyAlias=your-key-alias
