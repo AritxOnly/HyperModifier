@@ -78,9 +78,6 @@ import com.aritxonly.deadliner.ui.theme.LocalAdvancedMaterialBackdrop
 import com.aritxonly.deadliner.ui.theme.LocalAdvancedMaterialSpec
 import com.kyant.shapes.Capsule
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.util.Locale
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -558,8 +555,7 @@ private data class ScopeStatus(
     val appName: String,
     val packageName: String,
     val hasModification: Boolean,
-    /** Null only while LSPosed's saved configuration cannot be read. */
-    val isActive: Boolean?,
+    val isActive: Boolean,
 )
 
 private object ModuleScopePackage {
@@ -570,13 +566,7 @@ private object ModuleScopePackage {
     const val MARKET = "com.xiaomi.market"
 }
 
-private fun scopeStatuses(
-    settings: ModifierSettings,
-    configuration: LsposedScopeConfiguration,
-): List<ScopeStatus> {
-    val enabledPackages = (configuration as? LsposedScopeConfiguration.Available)?.enabledPackages
-    fun enabled(packageName: String): Boolean? = enabledPackages?.contains(packageName)
-    return listOf(
+private fun scopeStatuses(settings: ModifierSettings): List<ScopeStatus> = listOf(
     ScopeStatus(
         appName = "系统界面",
         packageName = ModuleScopePackage.SYSTEM_UI,
@@ -592,34 +582,33 @@ private fun scopeStatuses(
             settings.volumePanelRadius > 0f,
             settings.islandEnabled,
         ).any { it },
-        isActive = enabled(ModuleScopePackage.SYSTEM_UI),
+        isActive = true,
     ),
     ScopeStatus(
         appName = "系统界面插件",
         packageName = ModuleScopePackage.PLUGIN,
         hasModification = settings.controlCenterEnabled,
-        isActive = enabled(ModuleScopePackage.PLUGIN),
+        isActive = true,
     ),
     ScopeStatus(
         appName = "小米互联服务",
         packageName = ModuleScopePackage.MILINK,
         hasModification = settings.miLinkMainCardsEnabled,
-        isActive = enabled(ModuleScopePackage.MILINK),
+        isActive = true,
     ),
     ScopeStatus(
         appName = "小米运动健康",
         packageName = ModuleScopePackage.XIAOMI_HEALTH,
         hasModification = settings.xiaomiHealthFloatingNavigationEnabled,
-        isActive = enabled(ModuleScopePackage.XIAOMI_HEALTH),
+        isActive = true,
     ),
     ScopeStatus(
         appName = "应用商店",
         packageName = ModuleScopePackage.MARKET,
         hasModification = settings.marketFloatingNavigationEnabled,
-        isActive = enabled(ModuleScopePackage.MARKET),
+        isActive = true,
     ),
-    )
-}
+)
 
 @Composable
 private fun HomeDashboardPage(
@@ -628,17 +617,9 @@ private fun HomeDashboardPage(
     onNavigate: (SettingsDestination) -> Unit,
     onScroll: (Float) -> Unit,
 ) = SettingsScrollPage(padding, onScroll) {
-    val context = LocalContext.current
-    var scopeConfiguration by remember { mutableStateOf<LsposedScopeConfiguration>(LsposedScopeConfiguration.Loading) }
     var showScopeStatus by remember { mutableStateOf(false) }
-    LaunchedEffect(context) {
-        while (true) {
-            scopeConfiguration = withContext(Dispatchers.IO) { LsposedScopeReader.read(context) }
-            delay(5_000L)
-        }
-    }
-    val scopes = scopeStatuses(settings, scopeConfiguration)
-    ModuleStatusHero(scopes, scopeConfiguration, showScopeStatus) { showScopeStatus = !showScopeStatus }
+    val scopes = scopeStatuses(settings)
+    ModuleStatusHero(scopes, showScopeStatus) { showScopeStatus = !showScopeStatus }
     if (showScopeStatus) {
         SettingsSection(topLabel = "作用域状态") {
             scopes.forEach { scope ->
@@ -669,17 +650,14 @@ private fun HomeDashboardPage(
 @Composable
 private fun ModuleStatusHero(
     scopes: List<ScopeStatus>,
-    configuration: LsposedScopeConfiguration,
     showScopeStatus: Boolean,
     onClick: () -> Unit,
 ) {
     val modifiedScopes = scopes.filter { it.hasModification }
-    val activeModifiedScopes = modifiedScopes.count { it.isActive == true }
+    val activeModifiedScopes = modifiedScopes.count { it.isActive }
     val fullyActive = modifiedScopes.isNotEmpty() && activeModifiedScopes == modifiedScopes.size
     val status = when {
         modifiedScopes.isEmpty() -> "未配置作用域"
-        configuration is LsposedScopeConfiguration.Loading -> "正在读取作用域"
-        configuration is LsposedScopeConfiguration.Unavailable -> "无法读取 LSPosed 作用域"
         activeModifiedScopes == 0 -> "有修改的作用域未激活"
         fullyActive -> "作用域已激活"
         else -> "作用域激活不完全"
@@ -728,7 +706,6 @@ private fun ModuleStatusHero(
             text = when {
                 showScopeStatus -> "点击收起作用域状态"
                 modifiedScopes.isEmpty() -> "从下方选择修改位置"
-                configuration !is LsposedScopeConfiguration.Available -> "请确认已授予 root 权限 · 点击查看"
                 else -> "${activeModifiedScopes}/${modifiedScopes.size} 个已修改作用域激活 · 点击查看"
             },
             style = MiuixTheme.textStyles.body1,
@@ -742,7 +719,7 @@ private fun ScopeStatusItem(
     appName: String,
     packageName: String,
     hasModification: Boolean,
-    isActive: Boolean?,
+    isActive: Boolean,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 13.dp),
@@ -753,9 +730,8 @@ private fun ScopeStatusItem(
             Text(
                 "$packageName · ${when {
                     !hasModification -> "未配置"
-                    isActive == true -> "LSPosed 已启用"
-                    isActive == false -> "LSPosed 未启用"
-                    else -> "无法读取 LSPosed 配置"
+                    isActive -> "已激活"
+                    else -> "未激活"
                 }}",
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 style = MiuixTheme.textStyles.footnote1,
@@ -763,9 +739,9 @@ private fun ScopeStatusItem(
             )
         }
         Icon(
-            painter = painterResource(if (isActive == true) R.drawable.ic_scope_enabled else R.drawable.ic_scope_disabled),
-            contentDescription = if (isActive == true) "$appName 作用域已激活" else "$appName 作用域未激活",
-            tint = if (isActive == true) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantActions,
+            painter = painterResource(if (isActive) R.drawable.ic_scope_enabled else R.drawable.ic_scope_disabled),
+            contentDescription = if (isActive) "$appName 作用域已激活" else "$appName 作用域未激活",
+            tint = if (isActive) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantActions,
             modifier = Modifier.size(22.dp),
         )
     }
