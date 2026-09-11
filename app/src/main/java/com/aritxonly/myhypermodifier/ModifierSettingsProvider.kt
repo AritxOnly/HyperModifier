@@ -14,16 +14,6 @@ class ModifierSettingsProvider : ContentProvider() {
         ModifierSettingsStore.METHOD_GET -> ModifierSettingsStore.toBundle(
             ModifierSettingsStore.load(requireNotNull(context)),
         )
-        ModifierSettingsStore.METHOD_GET_SCOPE_STATUS -> ModifierSettingsStore
-            .scopeRuntimeStatus(requireNotNull(context))
-            .toBundle()
-        ModifierSettingsStore.METHOD_REPORT_SCOPE_HEARTBEAT -> {
-            ModifierSettingsStore.reportScopeHeartbeat(
-                requireNotNull(context),
-                extras?.getString(ModifierSettingsStore.EXTRA_SCOPE),
-            )
-            Bundle()
-        }
         else -> super.call(method, arg, extras)
     }
 

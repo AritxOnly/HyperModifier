@@ -3,49 +3,6 @@ package com.aritxonly.myhypermodifier
 import android.content.Context
 import android.os.Bundle
 
-data class ScopeRuntimeStatus(
-    val systemUiActive: Boolean,
-    val pluginActive: Boolean,
-    val miLinkActive: Boolean,
-    val xiaomiHealthActive: Boolean,
-    val marketActive: Boolean,
-) {
-    fun isActive(scope: String): Boolean = when (scope) {
-        SCOPE_SYSTEM_UI -> systemUiActive
-        SCOPE_PLUGIN -> pluginActive
-        SCOPE_MILINK -> miLinkActive
-        SCOPE_XIAOMI_HEALTH -> xiaomiHealthActive
-        SCOPE_MARKET -> marketActive
-        else -> false
-    }
-
-    fun toBundle(): Bundle = Bundle().apply {
-        putBoolean(SCOPE_SYSTEM_UI, systemUiActive)
-        putBoolean(SCOPE_PLUGIN, pluginActive)
-        putBoolean(SCOPE_MILINK, miLinkActive)
-        putBoolean(SCOPE_XIAOMI_HEALTH, xiaomiHealthActive)
-        putBoolean(SCOPE_MARKET, marketActive)
-    }
-
-    companion object {
-        const val SCOPE_SYSTEM_UI = "com.android.systemui"
-        const val SCOPE_PLUGIN = "miui.systemui.plugin"
-        const val SCOPE_MILINK = "com.milink.service"
-        const val SCOPE_XIAOMI_HEALTH = "com.mi.health"
-        const val SCOPE_MARKET = "com.xiaomi.market"
-
-        fun fromBundle(bundle: Bundle) = ScopeRuntimeStatus(
-            systemUiActive = bundle.getBoolean(SCOPE_SYSTEM_UI),
-            pluginActive = bundle.getBoolean(SCOPE_PLUGIN),
-            miLinkActive = bundle.getBoolean(SCOPE_MILINK),
-            xiaomiHealthActive = bundle.getBoolean(SCOPE_XIAOMI_HEALTH),
-            marketActive = bundle.getBoolean(SCOPE_MARKET),
-        )
-
-        fun inactive() = ScopeRuntimeStatus(false, false, false, false, false)
-    }
-}
-
 data class ModifierSettings(
     val notificationsEnabled: Boolean = false,
     val notificationRadius: Float = 28f,
@@ -126,11 +83,6 @@ object ModifierSettingsPresets {
 object ModifierSettingsStore {
     const val PREFS = "modifier_settings"
     const val METHOD_GET = "get_settings"
-    const val METHOD_GET_SCOPE_STATUS = "get_scope_status"
-    const val METHOD_REPORT_SCOPE_HEARTBEAT = "report_scope_heartbeat"
-    const val EXTRA_SCOPE = "scope"
-    private const val SCOPE_HEARTBEAT_PREFIX = "scope_heartbeat_"
-    private const val SCOPE_ACTIVE_WINDOW_MILLIS = 45_000L
     private const val KEY_NOTIFICATIONS = "notifications_enabled"
     private const val KEY_NOTIFICATION_RADIUS = "notification_radius"
     private const val KEY_CONTROL_CENTER = "control_center_enabled"
@@ -348,32 +300,4 @@ object ModifierSettingsStore {
         putString(KEY_CUSTOM_MEDIA_CONSTRAINT_SET_XML, value.customMediaConstraintSetXml)
     }
 
-    /** A scope is active only while its injected process continues reporting a recent heartbeat. */
-    fun scopeRuntimeStatus(context: Context): ScopeRuntimeStatus {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val activeAfter = System.currentTimeMillis() - SCOPE_ACTIVE_WINDOW_MILLIS
-        fun active(scope: String) = prefs.getLong(SCOPE_HEARTBEAT_PREFIX + scope, 0L) >= activeAfter
-        return ScopeRuntimeStatus(
-            systemUiActive = active(ScopeRuntimeStatus.SCOPE_SYSTEM_UI),
-            pluginActive = active(ScopeRuntimeStatus.SCOPE_PLUGIN),
-            miLinkActive = active(ScopeRuntimeStatus.SCOPE_MILINK),
-            xiaomiHealthActive = active(ScopeRuntimeStatus.SCOPE_XIAOMI_HEALTH),
-            marketActive = active(ScopeRuntimeStatus.SCOPE_MARKET),
-        )
-    }
-
-    fun reportScopeHeartbeat(context: Context, scope: String?) {
-        if (scope == null || scope !in trackedScopes) return
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putLong(SCOPE_HEARTBEAT_PREFIX + scope, System.currentTimeMillis())
-            .apply()
-    }
-
-    private val trackedScopes = setOf(
-        ScopeRuntimeStatus.SCOPE_SYSTEM_UI,
-        ScopeRuntimeStatus.SCOPE_PLUGIN,
-        ScopeRuntimeStatus.SCOPE_MILINK,
-        ScopeRuntimeStatus.SCOPE_XIAOMI_HEALTH,
-        ScopeRuntimeStatus.SCOPE_MARKET,
-    )
 }

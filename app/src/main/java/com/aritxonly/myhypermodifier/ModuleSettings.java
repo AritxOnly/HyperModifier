@@ -10,8 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ExecutorService;
 
 /** Shared, process-local snapshot of the companion app's appearance settings. */
 final class ModuleSettings {
@@ -19,10 +18,9 @@ final class ModuleSettings {
     private static final AtomicBoolean SETTINGS_LOADED = new AtomicBoolean();
     private static final AtomicBoolean LOAD_IN_FLIGHT = new AtomicBoolean();
     private static final AtomicBoolean LOAD_FAILURE_LOGGED = new AtomicBoolean();
-    private static final AtomicBoolean SCOPE_HEARTBEAT_STARTED = new AtomicBoolean();
     private static final AtomicInteger LOAD_FAILURES = new AtomicInteger();
     private static final AtomicLong NEXT_LOAD_UPTIME_MS = new AtomicLong();
-    private static final ScheduledExecutorService SETTINGS_EXECUTOR = Executors.newSingleThreadScheduledExecutor(runnable -> {
+    private static final ExecutorService SETTINGS_EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "MyHyperModifier-settings");
         thread.setDaemon(true);
         return thread;
@@ -75,7 +73,6 @@ final class ModuleSettings {
     /** Never performs provider IPC on SystemUI's startup or resource-resolution thread. */
     static void markLoaded(Context context) {
         scheduleLoad(context);
-        startScopeHeartbeat(context);
     }
 
     /** Lazily schedules a load for HyperOS builds that notify PackageReady late. */
@@ -133,42 +130,6 @@ final class ModuleSettings {
         int failures = Math.min(LOAD_FAILURES.incrementAndGet(), 5);
         long delayMs = Math.min(30_000L, 1_000L << failures);
         NEXT_LOAD_UPTIME_MS.set(SystemClock.uptimeMillis() + delayMs);
-    }
-
-    /**
-     * Each injected target confirms it is still executing module code. The companion app treats a
-     * missing recent heartbeat as an inactive LSPosed scope, which also catches a process that
-     * has not been restarted after its scope was enabled.
-     */
-    private static void startScopeHeartbeat(Context context) {
-        if (context == null || !SCOPE_HEARTBEAT_STARTED.compareAndSet(false, true)) {
-            return;
-        }
-        Context applicationContext = context.getApplicationContext();
-        Context safeContext = applicationContext != null ? applicationContext : context;
-        try {
-            SETTINGS_EXECUTOR.execute(() -> {
-                reportScopeHeartbeat(safeContext);
-                SETTINGS_EXECUTOR.scheduleAtFixedRate(
-                        () -> reportScopeHeartbeat(safeContext),
-                        15L, 15L, TimeUnit.SECONDS);
-            });
-        } catch (RuntimeException ignored) {
-            SCOPE_HEARTBEAT_STARTED.set(false);
-        }
-    }
-
-    private static void reportScopeHeartbeat(Context context) {
-        try {
-            Bundle extras = new Bundle();
-            extras.putString("scope", context.getPackageName());
-            context.getContentResolver().call(
-                    Uri.parse("content://com.aritxonly.myhypermodifier.settings"),
-                    "report_scope_heartbeat", null, extras);
-        } catch (Throwable ignored) {
-            // The status display is observational; a temporary unavailable companion app must
-            // never affect a scoped process.
-        }
     }
 
     private static boolean load(Context context) {

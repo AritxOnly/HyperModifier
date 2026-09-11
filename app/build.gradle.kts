@@ -12,8 +12,10 @@ val signingProperties = Properties().apply {
     }
 }
 
-val signingStoreFile = signingProperties.getProperty("storeFile")
-val signingKeyAlias = signingProperties.getProperty("keyAlias")
+val signingStoreFile = providers.gradleProperty("hypermodifierStoreFile").orNull
+    ?: signingProperties.getProperty("storeFile")
+val signingKeyAlias = providers.gradleProperty("hypermodifierKeyAlias").orNull
+    ?: signingProperties.getProperty("keyAlias")
 val signingPasswordFromKeychain = runCatching {
     val process = ProcessBuilder(
         "/usr/bin/security", "find-generic-password",
@@ -30,6 +32,8 @@ val signingPassword = providers.gradleProperty("hypermodifierSigningPassword")
 val hasReleaseSigning = !signingStoreFile.isNullOrBlank()
     && !signingKeyAlias.isNullOrBlank()
     && !signingPassword.isNullOrBlank()
+val configuredVersionCode = providers.gradleProperty("versionCode").orNull?.toIntOrNull() ?: 29
+val configuredVersionName = providers.gradleProperty("versionName").orNull ?: "1.3.7"
 
 android {
     namespace = "com.aritxonly.myhypermodifier"
@@ -39,8 +43,8 @@ android {
         applicationId = "com.aritxonly.myhypermodifier"
         minSdk = 33
         targetSdk = 35
-        versionCode = 28
-        versionName = "1.3.7"
+        versionCode = configuredVersionCode
+        versionName = configuredVersionName
     }
 
     signingConfigs {

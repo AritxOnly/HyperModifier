@@ -79,6 +79,8 @@ import com.aritxonly.deadliner.ui.theme.LocalAdvancedMaterialSpec
 import com.kyant.shapes.Capsule
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -556,13 +558,28 @@ private data class ScopeStatus(
     val appName: String,
     val packageName: String,
     val hasModification: Boolean,
-    val isActive: Boolean,
+    /** Null only while LSPosed's saved configuration cannot be read. */
+    val isActive: Boolean?,
 )
 
-private fun scopeStatuses(settings: ModifierSettings, runtime: ScopeRuntimeStatus): List<ScopeStatus> = listOf(
+private object ModuleScopePackage {
+    const val SYSTEM_UI = "com.android.systemui"
+    const val PLUGIN = "miui.systemui.plugin"
+    const val MILINK = "com.milink.service"
+    const val XIAOMI_HEALTH = "com.mi.health"
+    const val MARKET = "com.xiaomi.market"
+}
+
+private fun scopeStatuses(
+    settings: ModifierSettings,
+    configuration: LsposedScopeConfiguration,
+): List<ScopeStatus> {
+    val enabledPackages = (configuration as? LsposedScopeConfiguration.Available)?.enabledPackages
+    fun enabled(packageName: String): Boolean? = enabledPackages?.contains(packageName)
+    return listOf(
     ScopeStatus(
         appName = "系统界面",
-        packageName = ScopeRuntimeStatus.SCOPE_SYSTEM_UI,
+        packageName = ModuleScopePackage.SYSTEM_UI,
         hasModification = listOf(
             settings.notificationsEnabled,
             settings.mediaEnabled,
@@ -575,33 +592,34 @@ private fun scopeStatuses(settings: ModifierSettings, runtime: ScopeRuntimeStatu
             settings.volumePanelRadius > 0f,
             settings.islandEnabled,
         ).any { it },
-        isActive = runtime.systemUiActive,
+        isActive = enabled(ModuleScopePackage.SYSTEM_UI),
     ),
     ScopeStatus(
         appName = "系统界面插件",
-        packageName = ScopeRuntimeStatus.SCOPE_PLUGIN,
+        packageName = ModuleScopePackage.PLUGIN,
         hasModification = settings.controlCenterEnabled,
-        isActive = runtime.pluginActive,
+        isActive = enabled(ModuleScopePackage.PLUGIN),
     ),
     ScopeStatus(
         appName = "小米互联服务",
-        packageName = ScopeRuntimeStatus.SCOPE_MILINK,
+        packageName = ModuleScopePackage.MILINK,
         hasModification = settings.miLinkMainCardsEnabled,
-        isActive = runtime.miLinkActive,
+        isActive = enabled(ModuleScopePackage.MILINK),
     ),
     ScopeStatus(
         appName = "小米运动健康",
-        packageName = ScopeRuntimeStatus.SCOPE_XIAOMI_HEALTH,
+        packageName = ModuleScopePackage.XIAOMI_HEALTH,
         hasModification = settings.xiaomiHealthFloatingNavigationEnabled,
-        isActive = runtime.xiaomiHealthActive,
+        isActive = enabled(ModuleScopePackage.XIAOMI_HEALTH),
     ),
     ScopeStatus(
         appName = "应用商店",
-        packageName = ScopeRuntimeStatus.SCOPE_MARKET,
+        packageName = ModuleScopePackage.MARKET,
         hasModification = settings.marketFloatingNavigationEnabled,
-        isActive = runtime.marketActive,
+        isActive = enabled(ModuleScopePackage.MARKET),
     ),
-)
+    )
+}
 
 @Composable
 private fun HomeDashboardPage(
@@ -611,16 +629,16 @@ private fun HomeDashboardPage(
     onScroll: (Float) -> Unit,
 ) = SettingsScrollPage(padding, onScroll) {
     val context = LocalContext.current
-    var runtimeScopes by remember { mutableStateOf(ModifierSettingsStore.scopeRuntimeStatus(context)) }
+    var scopeConfiguration by remember { mutableStateOf<LsposedScopeConfiguration>(LsposedScopeConfiguration.Loading) }
     var showScopeStatus by remember { mutableStateOf(false) }
     LaunchedEffect(context) {
         while (true) {
-            runtimeScopes = ModifierSettingsStore.scopeRuntimeStatus(context)
+            scopeConfiguration = withContext(Dispatchers.IO) { LsposedScopeReader.read(context) }
             delay(5_000L)
         }
     }
-    val scopes = scopeStatuses(settings, runtimeScopes)
-    ModuleStatusHero(scopes, showScopeStatus) { showScopeStatus = !showScopeStatus }
+    val scopes = scopeStatuses(settings, scopeConfiguration)
+    ModuleStatusHero(scopes, scopeConfiguration, showScopeStatus) { showScopeStatus = !showScopeStatus }
     if (showScopeStatus) {
         SettingsSection(topLabel = "作用域状态") {
             scopes.forEach { scope ->
@@ -651,14 +669,17 @@ private fun HomeDashboardPage(
 @Composable
 private fun ModuleStatusHero(
     scopes: List<ScopeStatus>,
+    configuration: LsposedScopeConfiguration,
     showScopeStatus: Boolean,
     onClick: () -> Unit,
 ) {
     val modifiedScopes = scopes.filter { it.hasModification }
-    val activeModifiedScopes = modifiedScopes.count { it.isActive }
+    val activeModifiedScopes = modifiedScopes.count { it.isActive == true }
     val fullyActive = modifiedScopes.isNotEmpty() && activeModifiedScopes == modifiedScopes.size
     val status = when {
         modifiedScopes.isEmpty() -> "未配置作用域"
+        configuration is LsposedScopeConfiguration.Loading -> "正在读取作用域"
+        configuration is LsposedScopeConfiguration.Unavailable -> "无法读取 LSPosed 作用域"
         activeModifiedScopes == 0 -> "有修改的作用域未激活"
         fullyActive -> "作用域已激活"
         else -> "作用域激活不完全"
@@ -695,7 +716,7 @@ private fun ModuleStatusHero(
         ) {
             Text(
                 text = status,
-                style = MiuixTheme.textStyles.title1,
+                style = MiuixTheme.textStyles.title2,
             )
             Text(
                 text = "版本：${BuildConfig.VERSION_NAME}",
@@ -707,6 +728,7 @@ private fun ModuleStatusHero(
             text = when {
                 showScopeStatus -> "点击收起作用域状态"
                 modifiedScopes.isEmpty() -> "从下方选择修改位置"
+                configuration !is LsposedScopeConfiguration.Available -> "请确认已授予 root 权限 · 点击查看"
                 else -> "${activeModifiedScopes}/${modifiedScopes.size} 个已修改作用域激活 · 点击查看"
             },
             style = MiuixTheme.textStyles.body1,
@@ -720,7 +742,7 @@ private fun ScopeStatusItem(
     appName: String,
     packageName: String,
     hasModification: Boolean,
-    isActive: Boolean,
+    isActive: Boolean?,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 13.dp),
@@ -731,8 +753,9 @@ private fun ScopeStatusItem(
             Text(
                 "$packageName · ${when {
                     !hasModification -> "未配置"
-                    isActive -> "已激活"
-                    else -> "未激活"
+                    isActive == true -> "LSPosed 已启用"
+                    isActive == false -> "LSPosed 未启用"
+                    else -> "无法读取 LSPosed 配置"
                 }}",
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 style = MiuixTheme.textStyles.footnote1,
@@ -740,9 +763,9 @@ private fun ScopeStatusItem(
             )
         }
         Icon(
-            painter = painterResource(if (isActive) R.drawable.ic_scope_enabled else R.drawable.ic_scope_disabled),
-            contentDescription = if (isActive) "$appName 作用域已激活" else "$appName 作用域未激活",
-            tint = if (isActive) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantActions,
+            painter = painterResource(if (isActive == true) R.drawable.ic_scope_enabled else R.drawable.ic_scope_disabled),
+            contentDescription = if (isActive == true) "$appName 作用域已激活" else "$appName 作用域未激活",
+            tint = if (isActive == true) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantActions,
             modifier = Modifier.size(22.dp),
         )
     }
@@ -1052,8 +1075,21 @@ private fun AboutSettingsPage(padding: PaddingValues, onScroll: (Float) -> Unit)
     val context = LocalContext.current
     val layoutDirection = LocalLayoutDirection.current
     val scroll = rememberScrollState()
+    var checkingForUpdate by remember { mutableStateOf(false) }
+    var updateResult by remember { mutableStateOf<UpdateCheckResult?>(null) }
     val progress by remember(scroll) { derivedStateOf { (scroll.value / 320f).coerceIn(0f, 1f) } }
     LaunchedEffect(progress) { onScroll(progress) }
+    fun checkForUpdate() {
+        if (checkingForUpdate) return
+        checkingForUpdate = true
+        Thread {
+            val result = UpdateChecker.check()
+            Handler(Looper.getMainLooper()).post {
+                checkingForUpdate = false
+                updateResult = result
+            }
+        }.start()
+    }
     Box(Modifier.fillMaxSize()) {
         AboutFloatingBackground(Modifier.fillMaxSize(), alpha = 1f - progress)
         Column(
@@ -1074,6 +1110,12 @@ private fun AboutSettingsPage(padding: PaddingValues, onScroll: (Float) -> Unit)
             SettingsSection(topLabel = "版本信息", containerAlpha = 0.5f + progress * 0.5f) {
                 SettingItem("版本号", "v${BuildConfig.VERSION_NAME}")
                 SettingItem("LSPosed API", "API 102")
+                SettingItem(
+                    "检查更新",
+                    if (checkingForUpdate) "正在检查 GitHub Release…" else "检查 GitHub 上的最新稳定版本",
+                    enabled = !checkingForUpdate,
+                    onClick = ::checkForUpdate,
+                )
             }
             SettingsSection(topLabel = "致谢", containerAlpha = 0.5f + progress * 0.5f) {
                 SettingItem("HyperBlackScreen", "功能参考与适配贡献 · 酷安@不愧是小睦")
@@ -1087,6 +1129,49 @@ private fun AboutSettingsPage(padding: PaddingValues, onScroll: (Float) -> Unit)
                 SettingItem("MIUIX Compose", "HyperOS 风格组件、图标与模糊效果")
                 SettingItem("Jetpack Compose", "Android 声明式界面")
                 SettingItem("Material Kolor", "预设色与 HyperOS 背景配色")
+            }
+        }
+        updateResult?.let { result ->
+            UpdateCheckDialog(
+                result = result,
+                onDismiss = { updateResult = null },
+                onOpenRelease = { url ->
+                    updateResult = null
+                    context.openWebPage(url)
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun UpdateCheckDialog(
+    result: UpdateCheckResult,
+    onDismiss: () -> Unit,
+    onOpenRelease: (String) -> Unit,
+) {
+    val title = when (result) {
+        is UpdateCheckResult.Available -> "发现新版本"
+        UpdateCheckResult.Latest -> "已是最新版本"
+        UpdateCheckResult.Unavailable -> "暂时无法检查更新"
+    }
+    val summary = when (result) {
+        is UpdateCheckResult.Available -> "HyperModifier v${result.versionName} 已发布。"
+        UpdateCheckResult.Latest -> "当前使用的是 v${BuildConfig.VERSION_NAME}。"
+        UpdateCheckResult.Unavailable -> "请检查网络连接，或稍后在 GitHub Release 页面重试。"
+    }
+    DeadlinerMiuixDialog(true, title, summary, onDismiss) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            TextButton("关闭", onDismiss, modifier = Modifier.weight(1f))
+            if (result is UpdateCheckResult.Available) {
+                Button(
+                    onClick = { onOpenRelease(result.releaseUrl) },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColorsPrimary(),
+                ) { Text("查看发布") }
             }
         }
     }
