@@ -106,6 +106,7 @@ fun SoftGlassIconButton(
     tintStyle: GlassTintStyle = GlassTintStyle.Neutral,
     backdrop: LayerBackdrop? = LocalAdvancedMaterialBackdrop.current,
     materialAlpha: Float = 1f,
+    shadowRadiusScale: Float = 1f,
     content: @Composable () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -130,6 +131,7 @@ fun SoftGlassIconButton(
                 shape = SoftGlassDefaults.Shape,
                 isDark = isDark,
                 alpha = materialAlpha,
+                radiusScale = shadowRadiusScale,
             )
             .graphicsLayer {
                 val scale = softGlassPressScale(pressProgress)

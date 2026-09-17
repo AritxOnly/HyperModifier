@@ -32,9 +32,6 @@ val signingPassword = providers.gradleProperty("hypermodifierSigningPassword")
 val hasReleaseSigning = !signingStoreFile.isNullOrBlank()
     && !signingKeyAlias.isNullOrBlank()
     && !signingPassword.isNullOrBlank()
-val configuredVersionCode = providers.gradleProperty("versionCode").orNull?.toIntOrNull() ?: 31
-val configuredVersionName = providers.gradleProperty("versionName").orNull ?: "1.3.7"
-
 android {
     namespace = "com.aritxonly.myhypermodifier"
     compileSdk = 37
@@ -43,8 +40,8 @@ android {
         applicationId = "com.aritxonly.myhypermodifier"
         minSdk = 33
         targetSdk = 35
-        versionCode = configuredVersionCode
-        versionName = configuredVersionName
+        versionCode = 33
+        versionName = "1.3.8"
     }
 
     signingConfigs {
@@ -81,6 +78,7 @@ android {
 
 dependencies {
     compileOnly("io.github.libxposed:api:102.0.0")
+    implementation("io.github.libxposed:service:102.0.0")
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.navigationevent:navigationevent-compose:1.1.2")

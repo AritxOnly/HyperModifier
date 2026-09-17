@@ -46,6 +46,9 @@ public final class MyHyperModifier extends XposedModule {
     private static final String MILINK = "com.milink.service";
     private static final String XIAOMI_HEALTH = "com.mi.health";
     private static final String MARKET = "com.xiaomi.market";
+    private static final String MI_HOME = "com.xiaomi.smarthome";
+    private static final String AMAP = "com.autonavi.minimap";
+    private static final String XIAOMI_COMMUNITY = "com.xiaomi.vipaccount";
 
     private static final int XML_MEDIA_ISLAND_NORMAL = 0x7f180018;
     private static final int XML_MEDIA_NORMAL = 0x7f180019;
@@ -67,12 +70,16 @@ public final class MyHyperModifier extends XposedModule {
         String packageName = param.getPackageName();
         if (!SYSTEM_UI.equals(packageName) && !SYSTEM_UI_PLUGIN.equals(packageName)
                 && !MILINK.equals(packageName) && !XIAOMI_HEALTH.equals(packageName)
-                && !MARKET.equals(packageName)) {
+                && !MARKET.equals(packageName) && !MI_HOME.equals(packageName)
+                && !AMAP.equals(packageName) && !XIAOMI_COMMUNITY.equals(packageName)) {
             return;
         }
 
         try {
             installSettingsLoader();
+            // PackageReady can arrive after Application.attach() but still before the first
+            // Activity. Start the non-blocking settings read here to shorten navigation handoff.
+            ModuleSettings.ensureLoaded();
             if (XIAOMI_HEALTH.equals(packageName)) {
                 XiaomiHealthHooks.install(this, param.getClassLoader());
                 log(Log.INFO, TAG, "Installed for " + packageName);
@@ -80,6 +87,21 @@ public final class MyHyperModifier extends XposedModule {
             }
             if (MARKET.equals(packageName)) {
                 MarketHooks.install(this, param.getClassLoader());
+                log(Log.INFO, TAG, "Installed for " + packageName);
+                return;
+            }
+            if (MI_HOME.equals(packageName)) {
+                MiHomeHooks.install(this, param.getClassLoader());
+                log(Log.INFO, TAG, "Installed for " + packageName);
+                return;
+            }
+            if (AMAP.equals(packageName)) {
+                AmapHooks.install(this, param.getClassLoader());
+                log(Log.INFO, TAG, "Installed for " + packageName);
+                return;
+            }
+            if (XIAOMI_COMMUNITY.equals(packageName)) {
+                XiaomiCommunityHooks.install(this, param.getClassLoader());
                 log(Log.INFO, TAG, "Installed for " + packageName);
                 return;
             }
@@ -105,9 +127,8 @@ public final class MyHyperModifier extends XposedModule {
                 .setId("settings-loader")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .intercept(chain -> {
-                    Object result = chain.proceed();
                     markLoaded((Context) chain.getArg(0));
-                    return result;
+                    return chain.proceed();
                 });
 
         // PackageReady is delivered after Application.attach() on some HyperOS builds.  onCreate
@@ -117,9 +138,8 @@ public final class MyHyperModifier extends XposedModule {
                     .setId("application-settings-loader")
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
-                        Object result = chain.proceed();
                         markLoaded((Context) chain.getThisObject());
-                        return result;
+                        return chain.proceed();
                     });
         }
     }

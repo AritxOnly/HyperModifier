@@ -61,6 +61,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 internal object MarketFloatingNavigation {
     private val hosts = WeakHashMap<Activity, MarketNavigationHost>()
     private val pendingAttachments = WeakHashMap<Activity, Runnable>()
+    private val startupSuppressors = WeakHashMap<Activity, EarlyBottomBarSuppressor>()
 
     @JvmStatic
     fun attach(activity: Activity) {
@@ -69,11 +70,25 @@ internal object MarketFloatingNavigation {
         ) return
 
         ModuleSettings.ensureLoaded()
+        if (ModuleSettings.isLoaded() && !ModuleSettings.marketFloatingNavigationEnabled) return
+        val suppressor = EarlyBottomBarSuppressor(
+            activity = activity,
+            findBottomBar = {
+                val id = activity.resources.getIdentifier(
+                    "tab_container_layout",
+                    "id",
+                    activity.packageName,
+                )
+                id.takeIf { it != 0 }?.let(activity::findViewById)
+            },
+        ).also(EarlyBottomBarSuppressor::start)
+        startupSuppressors[activity] = suppressor
         val startedAt = SystemClock.uptimeMillis()
         lateinit var retry: Runnable
         retry = Runnable {
             if (activity.isFinishing || activity.isDestroyed) {
                 pendingAttachments.remove(activity)
+                startupSuppressors.remove(activity)?.restore()
                 return@Runnable
             }
             ModuleSettings.ensureLoaded()
@@ -84,14 +99,18 @@ internal object MarketFloatingNavigation {
             }
             if (!ModuleSettings.marketFloatingNavigationEnabled) {
                 pendingAttachments.remove(activity)
+                startupSuppressors.remove(activity)?.restore()
                 return@Runnable
             }
+            suppressor.restore()
             val host = MarketNavigationHost.create(activity)
             if (host == null && SystemClock.uptimeMillis() - startedAt < VIEW_WAIT_TIMEOUT_MS) {
+                suppressor.start()
                 activity.window.decorView.postDelayed(retry, VIEW_RETRY_MS)
                 return@Runnable
             }
             pendingAttachments.remove(activity)
+            startupSuppressors.remove(activity)
             if (host == null) {
                 Log.w(TAG, "Market 4.125.11 navigation views were not found")
             } else {
@@ -105,6 +124,7 @@ internal object MarketFloatingNavigation {
     @JvmStatic
     fun dispose(activity: Activity) {
         pendingAttachments.remove(activity)?.let(activity.window.decorView::removeCallbacks)
+        startupSuppressors.remove(activity)?.restore()
         hosts.remove(activity)?.dispose()
     }
 
@@ -113,9 +133,9 @@ internal object MarketFloatingNavigation {
         hosts[activity]?.onTouchEvent(event)
     }
 
-    private const val SETTINGS_RETRY_MS = 100L
+    private const val SETTINGS_RETRY_MS = 32L
     private const val SETTINGS_WAIT_TIMEOUT_MS = 1_500L
-    private const val VIEW_RETRY_MS = 80L
+    private const val VIEW_RETRY_MS = 32L
     private const val VIEW_WAIT_TIMEOUT_MS = 4_000L
     private const val TAG = "MyHyperModifier"
 }
@@ -141,6 +161,7 @@ private class MarketNavigationHost private constructor(
     private val nativeTabLayout: View,
     private val contentView: View,
     private val navigationBarPlaceholder: View?,
+    samplingView: View,
 ) {
     private var state by mutableStateOf(MarketNavigationState())
     private var backdropSnapshot by mutableStateOf<ViewBackdropSnapshot?>(null)
@@ -149,7 +170,7 @@ private class MarketNavigationHost private constructor(
     private val previousViewModelStoreOwner = overlayParent.findViewTreeViewModelStoreOwner()
     private val previousSavedStateRegistryOwner = overlayParent.findViewTreeSavedStateRegistryOwner()
     private val windowImmersion = InjectedBottomNavigationImmersion(activity)
-    private val sampler = ViewBackdropSampler(contentView) { backdropSnapshot = it }
+    private val sampler = ViewBackdropSampler(samplingView) { backdropSnapshot = it }
     private val iconSnapshotter = NativeTabIconSnapshotter(activity.resources, activity.theme)
     private val originalBottomAlpha = originalBottomContainer.alpha
     private val originalBottomAccessibility = originalBottomContainer.importantForAccessibility
@@ -274,9 +295,12 @@ private class MarketNavigationHost private constructor(
                 nativeTabLayout.visibility == View.VISIBLE &&
                 basicModeContainer?.visibility != View.VISIBLE && tabs.size > 1,
         )
+        val selectionChanged = next.selectedIndex != state.selectedIndex
+        val becameVisible = next.visible && !state.visible
         if (next != state) state = next
         updateNativeChromeReplacement(next.visible)
         composeView.visibility = if (next.visible) View.VISIBLE else View.GONE
+        if (selectionChanged || becameVisible) sampler.requestCaptureBurst()
     }
 
     private fun View.readState(index: Int, selected: Boolean): MarketTabState {
@@ -308,7 +332,7 @@ private class MarketNavigationHost private constructor(
         state = state.copy(selectedIndex = index)
         tab.performClick()
         tab.post(::syncNativeState)
-        sampler.requestCapture()
+        sampler.requestCaptureBurst()
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -327,6 +351,7 @@ private class MarketNavigationHost private constructor(
             val bottom = activity.findViewById<View>(id("tab_container_layout")) ?: return null
             val tabLayout = activity.findViewById<View>(id("tab_container")) ?: return null
             val content = activity.findViewById<View>(id("fragment_container")) ?: return null
+            val samplingView = activity.findViewById<View>(android.R.id.content) ?: content
             val overlayParent = activity.window.decorView as? ViewGroup ?: return null
             MarketNavigationHost(
                 activity = activity,
@@ -336,6 +361,7 @@ private class MarketNavigationHost private constructor(
                 nativeTabLayout = tabLayout,
                 contentView = content,
                 navigationBarPlaceholder = activity.findViewById(id("navigation_bar_placeholder")),
+                samplingView = samplingView,
             )
         }.onFailure {
             Log.e("MyHyperModifier", "Could not attach Market navigation overlay", it)
@@ -356,6 +382,7 @@ private fun MarketNavigationContent(
     val materialColors = remember(dark) { MhmPresetColors.material(dark) }
     val miuixColors = remember(dark, materialColors) { MhmPresetColors.miuix(materialColors, dark) }
     val backdrop = rememberLayerBackdrop()
+    val hiddenNavigationLift = hyperGlassifyHiddenNavigationLift()
     val items = state.tabs.mapIndexed { index, tab ->
         val nativeIcons = tab.icons?.takeUnless { ModuleSettings.marketMiuixIconsEnabled }
         val monochrome = nativeIcons != null && ModuleSettings.marketMonochromeIconsEnabled
@@ -386,7 +413,12 @@ private fun MarketNavigationContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
-                        .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp)
+                        .padding(
+                            start = 16.dp,
+                            top = INJECTED_NAVIGATION_SHADOW_TOP_PADDING,
+                            end = 16.dp,
+                            bottom = 4.dp + hiddenNavigationLift,
+                        )
                         .height(MiuixFloatingTabBarDefaults.Height),
                     contentAlignment = Alignment.Center,
                 ) {

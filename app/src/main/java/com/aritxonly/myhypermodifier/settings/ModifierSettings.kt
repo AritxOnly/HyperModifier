@@ -34,6 +34,7 @@ data class ModifierSettings(
     val statusBarNetworkTypeSize: Float = 13.5f,
     val statusBarNetworkTypeBold: Boolean = true,
     val statusBarNetworkTypeOffset: Float = 0f,
+    val hyperGlassifyHiddenNavigationLift: Float = 24f,
     val xiaomiHealthFloatingNavigationEnabled: Boolean = true,
     val xiaomiHealthMiuixIconsEnabled: Boolean = false,
     val xiaomiHealthMonochromeIconsEnabled: Boolean = true,
@@ -41,6 +42,21 @@ data class ModifierSettings(
     val marketMiuixIconsEnabled: Boolean = false,
     val marketMonochromeIconsEnabled: Boolean = true,
     val marketNavigationBadgesEnabled: Boolean = true,
+    val miHomeFloatingNavigationEnabled: Boolean = true,
+    val miHomeMiuixIconsEnabled: Boolean = false,
+    val miHomeMonochromeIconsEnabled: Boolean = true,
+    val miHomeNavigationBadgesEnabled: Boolean = true,
+    val amapFloatingNavigationEnabled: Boolean = true,
+    val amapMiuixIconsEnabled: Boolean = false,
+    val amapMonochromeIconsEnabled: Boolean = true,
+    val amapHideLongPressVoiceTabEnabled: Boolean = true,
+    val xiaomiCommunityFloatingNavigationEnabled: Boolean = true,
+    val xiaomiCommunityMiuixIconsEnabled: Boolean = false,
+    val xiaomiCommunityMonochromeIconsEnabled: Boolean = true,
+    val xiaomiCommunityNavigationBadgesEnabled: Boolean = true,
+    val spotifyFloatingNavigationEnabled: Boolean = false,
+    val spotifyFavoriteButtonEnabled: Boolean = false,
+    val spotifyShuffleButtonEnabled: Boolean = false,
     val customMediaConstraintSetEnabled: Boolean = false,
     val customMediaConstraintSetXml: String = "",
 )
@@ -75,6 +91,21 @@ object ModifierSettingsPresets {
         marketMiuixIconsEnabled = false,
         marketMonochromeIconsEnabled = false,
         marketNavigationBadgesEnabled = false,
+        miHomeFloatingNavigationEnabled = false,
+        miHomeMiuixIconsEnabled = false,
+        miHomeMonochromeIconsEnabled = false,
+        miHomeNavigationBadgesEnabled = false,
+        amapFloatingNavigationEnabled = false,
+        amapMiuixIconsEnabled = false,
+        amapMonochromeIconsEnabled = false,
+        amapHideLongPressVoiceTabEnabled = false,
+        xiaomiCommunityFloatingNavigationEnabled = false,
+        xiaomiCommunityMiuixIconsEnabled = false,
+        xiaomiCommunityMonochromeIconsEnabled = false,
+        xiaomiCommunityNavigationBadgesEnabled = false,
+        spotifyFloatingNavigationEnabled = false,
+        spotifyFavoriteButtonEnabled = false,
+        spotifyShuffleButtonEnabled = false,
         customMediaConstraintSetEnabled = false,
         customMediaConstraintSetXml = "",
     )
@@ -115,6 +146,8 @@ object ModifierSettingsStore {
     private const val KEY_STATUS_BAR_NETWORK_TYPE_SIZE = "status_bar_network_type_size"
     private const val KEY_STATUS_BAR_NETWORK_TYPE_BOLD = "status_bar_network_type_bold"
     private const val KEY_STATUS_BAR_NETWORK_TYPE_OFFSET = "status_bar_network_type_offset"
+    private const val KEY_HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT =
+        "hyper_glassify_hidden_navigation_lift"
     private const val KEY_XIAOMI_HEALTH_FLOATING_NAVIGATION =
         "xiaomi_health_floating_navigation_enabled"
     private const val KEY_XIAOMI_HEALTH_MIUIX_ICONS = "xiaomi_health_miuix_icons_enabled"
@@ -124,6 +157,26 @@ object ModifierSettingsStore {
     private const val KEY_MARKET_MIUIX_ICONS = "market_miuix_icons_enabled"
     private const val KEY_MARKET_MONOCHROME_ICONS = "market_monochrome_icons_enabled"
     private const val KEY_MARKET_NAVIGATION_BADGES = "market_navigation_badges_enabled"
+    private const val KEY_MI_HOME_FLOATING_NAVIGATION = "mi_home_floating_navigation_enabled"
+    private const val KEY_MI_HOME_MIUIX_ICONS = "mi_home_miuix_icons_enabled"
+    private const val KEY_MI_HOME_MONOCHROME_ICONS = "mi_home_monochrome_icons_enabled"
+    private const val KEY_MI_HOME_NAVIGATION_BADGES = "mi_home_navigation_badges_enabled"
+    private const val KEY_AMAP_FLOATING_NAVIGATION = "amap_floating_navigation_enabled"
+    private const val KEY_AMAP_MIUIX_ICONS = "amap_miuix_icons_enabled"
+    private const val KEY_AMAP_MONOCHROME_ICONS = "amap_monochrome_icons_enabled"
+    private const val KEY_AMAP_HIDE_LONG_PRESS_VOICE_TAB =
+        "amap_hide_long_press_voice_tab_enabled"
+    private const val KEY_XIAOMI_COMMUNITY_FLOATING_NAVIGATION =
+        "xiaomi_community_floating_navigation_enabled"
+    private const val KEY_XIAOMI_COMMUNITY_MIUIX_ICONS =
+        "xiaomi_community_miuix_icons_enabled"
+    private const val KEY_XIAOMI_COMMUNITY_MONOCHROME_ICONS =
+        "xiaomi_community_monochrome_icons_enabled"
+    private const val KEY_XIAOMI_COMMUNITY_NAVIGATION_BADGES =
+        "xiaomi_community_navigation_badges_enabled"
+    private const val KEY_SPOTIFY_FLOATING_NAVIGATION = "spotify_floating_navigation_enabled"
+    private const val KEY_SPOTIFY_FAVORITE_BUTTON = "spotify_favorite_button_enabled"
+    private const val KEY_SPOTIFY_SHUFFLE_BUTTON = "spotify_shuffle_button_enabled"
     private const val KEY_CUSTOM_MEDIA_CONSTRAINT_SET = "custom_media_constraint_set_enabled"
     private const val KEY_CUSTOM_MEDIA_CONSTRAINT_SET_XML = "custom_media_constraint_set_xml"
 
@@ -166,6 +219,10 @@ object ModifierSettingsStore {
             statusBarNetworkTypeSize = prefs.getFloat(KEY_STATUS_BAR_NETWORK_TYPE_SIZE, 13.5f),
             statusBarNetworkTypeBold = prefs.getBoolean(KEY_STATUS_BAR_NETWORK_TYPE_BOLD, true),
             statusBarNetworkTypeOffset = prefs.getFloat(KEY_STATUS_BAR_NETWORK_TYPE_OFFSET, 0f),
+            hyperGlassifyHiddenNavigationLift = prefs.getFloat(
+                KEY_HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT,
+                24f,
+            ).coerceIn(0f, 48f),
             xiaomiHealthFloatingNavigationEnabled = prefs.getBoolean(
                 KEY_XIAOMI_HEALTH_FLOATING_NAVIGATION,
                 true,
@@ -179,6 +236,36 @@ object ModifierSettingsStore {
             marketMiuixIconsEnabled = prefs.getBoolean(KEY_MARKET_MIUIX_ICONS, false),
             marketMonochromeIconsEnabled = prefs.getBoolean(KEY_MARKET_MONOCHROME_ICONS, true),
             marketNavigationBadgesEnabled = prefs.getBoolean(KEY_MARKET_NAVIGATION_BADGES, true),
+            miHomeFloatingNavigationEnabled = prefs.getBoolean(KEY_MI_HOME_FLOATING_NAVIGATION, true),
+            miHomeMiuixIconsEnabled = prefs.getBoolean(KEY_MI_HOME_MIUIX_ICONS, false),
+            miHomeMonochromeIconsEnabled = prefs.getBoolean(KEY_MI_HOME_MONOCHROME_ICONS, true),
+            miHomeNavigationBadgesEnabled = prefs.getBoolean(KEY_MI_HOME_NAVIGATION_BADGES, true),
+            amapFloatingNavigationEnabled = prefs.getBoolean(KEY_AMAP_FLOATING_NAVIGATION, true),
+            amapMiuixIconsEnabled = prefs.getBoolean(KEY_AMAP_MIUIX_ICONS, false),
+            amapMonochromeIconsEnabled = prefs.getBoolean(KEY_AMAP_MONOCHROME_ICONS, true),
+            amapHideLongPressVoiceTabEnabled = prefs.getBoolean(
+                KEY_AMAP_HIDE_LONG_PRESS_VOICE_TAB,
+                true,
+            ),
+            xiaomiCommunityFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_XIAOMI_COMMUNITY_FLOATING_NAVIGATION,
+                true,
+            ),
+            xiaomiCommunityMiuixIconsEnabled = prefs.getBoolean(
+                KEY_XIAOMI_COMMUNITY_MIUIX_ICONS,
+                false,
+            ),
+            xiaomiCommunityMonochromeIconsEnabled = prefs.getBoolean(
+                KEY_XIAOMI_COMMUNITY_MONOCHROME_ICONS,
+                true,
+            ),
+            xiaomiCommunityNavigationBadgesEnabled = prefs.getBoolean(
+                KEY_XIAOMI_COMMUNITY_NAVIGATION_BADGES,
+                true,
+            ),
+            spotifyFloatingNavigationEnabled = prefs.getBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, false),
+            spotifyFavoriteButtonEnabled = prefs.getBoolean(KEY_SPOTIFY_FAVORITE_BUTTON, false),
+            spotifyShuffleButtonEnabled = prefs.getBoolean(KEY_SPOTIFY_SHUFFLE_BUTTON, false),
             customMediaConstraintSetEnabled = prefs.getBoolean(KEY_CUSTOM_MEDIA_CONSTRAINT_SET, false),
             customMediaConstraintSetXml = prefs.getString(KEY_CUSTOM_MEDIA_CONSTRAINT_SET_XML, "").orEmpty(),
         )
@@ -228,6 +315,10 @@ object ModifierSettingsStore {
             .putFloat(KEY_STATUS_BAR_NETWORK_TYPE_SIZE, value.statusBarNetworkTypeSize)
             .putBoolean(KEY_STATUS_BAR_NETWORK_TYPE_BOLD, value.statusBarNetworkTypeBold)
             .putFloat(KEY_STATUS_BAR_NETWORK_TYPE_OFFSET, value.statusBarNetworkTypeOffset)
+            .putFloat(
+                KEY_HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT,
+                value.hyperGlassifyHiddenNavigationLift.coerceIn(0f, 48f),
+            )
             .putBoolean(
                 KEY_XIAOMI_HEALTH_FLOATING_NAVIGATION,
                 value.xiaomiHealthFloatingNavigationEnabled,
@@ -241,6 +332,33 @@ object ModifierSettingsStore {
             .putBoolean(KEY_MARKET_MIUIX_ICONS, value.marketMiuixIconsEnabled)
             .putBoolean(KEY_MARKET_MONOCHROME_ICONS, value.marketMonochromeIconsEnabled)
             .putBoolean(KEY_MARKET_NAVIGATION_BADGES, value.marketNavigationBadgesEnabled)
+            .putBoolean(KEY_MI_HOME_FLOATING_NAVIGATION, value.miHomeFloatingNavigationEnabled)
+            .putBoolean(KEY_MI_HOME_MIUIX_ICONS, value.miHomeMiuixIconsEnabled)
+            .putBoolean(KEY_MI_HOME_MONOCHROME_ICONS, value.miHomeMonochromeIconsEnabled)
+            .putBoolean(KEY_MI_HOME_NAVIGATION_BADGES, value.miHomeNavigationBadgesEnabled)
+            .putBoolean(KEY_AMAP_FLOATING_NAVIGATION, value.amapFloatingNavigationEnabled)
+            .putBoolean(KEY_AMAP_MIUIX_ICONS, value.amapMiuixIconsEnabled)
+            .putBoolean(KEY_AMAP_MONOCHROME_ICONS, value.amapMonochromeIconsEnabled)
+            .putBoolean(
+                KEY_AMAP_HIDE_LONG_PRESS_VOICE_TAB,
+                value.amapHideLongPressVoiceTabEnabled,
+            )
+            .putBoolean(
+                KEY_XIAOMI_COMMUNITY_FLOATING_NAVIGATION,
+                value.xiaomiCommunityFloatingNavigationEnabled,
+            )
+            .putBoolean(KEY_XIAOMI_COMMUNITY_MIUIX_ICONS, value.xiaomiCommunityMiuixIconsEnabled)
+            .putBoolean(
+                KEY_XIAOMI_COMMUNITY_MONOCHROME_ICONS,
+                value.xiaomiCommunityMonochromeIconsEnabled,
+            )
+            .putBoolean(
+                KEY_XIAOMI_COMMUNITY_NAVIGATION_BADGES,
+                value.xiaomiCommunityNavigationBadgesEnabled,
+            )
+            .putBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, value.spotifyFloatingNavigationEnabled)
+            .putBoolean(KEY_SPOTIFY_FAVORITE_BUTTON, value.spotifyFavoriteButtonEnabled)
+            .putBoolean(KEY_SPOTIFY_SHUFFLE_BUTTON, value.spotifyShuffleButtonEnabled)
             .putBoolean(KEY_CUSTOM_MEDIA_CONSTRAINT_SET, value.customMediaConstraintSetEnabled)
             .putString(KEY_CUSTOM_MEDIA_CONSTRAINT_SET_XML, value.customMediaConstraintSetXml)
             .apply()
@@ -283,6 +401,10 @@ object ModifierSettingsStore {
         putFloat(KEY_STATUS_BAR_NETWORK_TYPE_SIZE, value.statusBarNetworkTypeSize)
         putBoolean(KEY_STATUS_BAR_NETWORK_TYPE_BOLD, value.statusBarNetworkTypeBold)
         putFloat(KEY_STATUS_BAR_NETWORK_TYPE_OFFSET, value.statusBarNetworkTypeOffset)
+        putFloat(
+            KEY_HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT,
+            value.hyperGlassifyHiddenNavigationLift.coerceIn(0f, 48f),
+        )
         putBoolean(
             KEY_XIAOMI_HEALTH_FLOATING_NAVIGATION,
             value.xiaomiHealthFloatingNavigationEnabled,
@@ -296,6 +418,33 @@ object ModifierSettingsStore {
         putBoolean(KEY_MARKET_MIUIX_ICONS, value.marketMiuixIconsEnabled)
         putBoolean(KEY_MARKET_MONOCHROME_ICONS, value.marketMonochromeIconsEnabled)
         putBoolean(KEY_MARKET_NAVIGATION_BADGES, value.marketNavigationBadgesEnabled)
+        putBoolean(KEY_MI_HOME_FLOATING_NAVIGATION, value.miHomeFloatingNavigationEnabled)
+        putBoolean(KEY_MI_HOME_MIUIX_ICONS, value.miHomeMiuixIconsEnabled)
+        putBoolean(KEY_MI_HOME_MONOCHROME_ICONS, value.miHomeMonochromeIconsEnabled)
+        putBoolean(KEY_MI_HOME_NAVIGATION_BADGES, value.miHomeNavigationBadgesEnabled)
+        putBoolean(KEY_AMAP_FLOATING_NAVIGATION, value.amapFloatingNavigationEnabled)
+        putBoolean(KEY_AMAP_MIUIX_ICONS, value.amapMiuixIconsEnabled)
+        putBoolean(KEY_AMAP_MONOCHROME_ICONS, value.amapMonochromeIconsEnabled)
+        putBoolean(
+            KEY_AMAP_HIDE_LONG_PRESS_VOICE_TAB,
+            value.amapHideLongPressVoiceTabEnabled,
+        )
+        putBoolean(
+            KEY_XIAOMI_COMMUNITY_FLOATING_NAVIGATION,
+            value.xiaomiCommunityFloatingNavigationEnabled,
+        )
+        putBoolean(KEY_XIAOMI_COMMUNITY_MIUIX_ICONS, value.xiaomiCommunityMiuixIconsEnabled)
+        putBoolean(
+            KEY_XIAOMI_COMMUNITY_MONOCHROME_ICONS,
+            value.xiaomiCommunityMonochromeIconsEnabled,
+        )
+        putBoolean(
+            KEY_XIAOMI_COMMUNITY_NAVIGATION_BADGES,
+            value.xiaomiCommunityNavigationBadgesEnabled,
+        )
+        putBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, value.spotifyFloatingNavigationEnabled)
+        putBoolean(KEY_SPOTIFY_FAVORITE_BUTTON, value.spotifyFavoriteButtonEnabled)
+        putBoolean(KEY_SPOTIFY_SHUFFLE_BUTTON, value.spotifyShuffleButtonEnabled)
         putBoolean(KEY_CUSTOM_MEDIA_CONSTRAINT_SET, value.customMediaConstraintSetEnabled)
         putString(KEY_CUSTOM_MEDIA_CONSTRAINT_SET_XML, value.customMediaConstraintSetXml)
     }

@@ -49,18 +49,26 @@ internal class NativeTabIconSnapshotter(
 
         if (drawable.isStateful) {
             if (entry.statefulKey != key) {
-                entry.statefulKey = key
-                entry.selected = render(view, drawable, SELECTED_STATE)
-                entry.unselected = render(view, drawable, UNSELECTED_STATE)
+                val selectedImage = render(view, drawable, SELECTED_STATE)
+                val unselectedImage = render(view, drawable, UNSELECTED_STATE)
+                if (selectedImage != null || unselectedImage != null) {
+                    entry.statefulKey = key
+                    entry.selected = selectedImage
+                    entry.unselected = unselectedImage
+                }
             }
         } else if (selected) {
             if (entry.selectedKey != key) {
-                entry.selectedKey = key
-                entry.selected = render(view, drawable, SELECTED_STATE)
+                render(view, drawable, SELECTED_STATE)?.let { rendered ->
+                    entry.selectedKey = key
+                    entry.selected = rendered
+                }
             }
         } else if (entry.unselectedKey != key) {
-            entry.unselectedKey = key
-            entry.unselected = render(view, drawable, UNSELECTED_STATE)
+            render(view, drawable, UNSELECTED_STATE)?.let { rendered ->
+                entry.unselectedKey = key
+                entry.unselected = rendered
+            }
         }
 
         val selectedImage = entry.selected ?: entry.unselected ?: return null
@@ -103,6 +111,10 @@ internal class NativeTabIconSnapshotter(
                 val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                 drawable.setBounds(0, 0, width, height)
                 drawable.draw(Canvas(bitmap))
+                if (!bitmapHasVisiblePixels(bitmap)) {
+                    bitmap.recycle()
+                    return@runCatching null
+                }
                 RenderedIcon(
                     color = bitmap.asImageBitmap(),
                     monochrome = createMonochromeMask(bitmap).asImageBitmap(),
@@ -114,6 +126,12 @@ internal class NativeTabIconSnapshotter(
                 }
             }
         }.getOrNull()
+
+    private fun bitmapHasVisiblePixels(bitmap: Bitmap): Boolean {
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        return pixels.any { it ushr 24 != 0 }
+    }
 
     /**
      * Builds a full-strength alpha mask for Compose tinting. Xiaomi Health encodes some inactive

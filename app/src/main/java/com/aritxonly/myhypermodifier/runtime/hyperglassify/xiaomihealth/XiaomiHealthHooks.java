@@ -34,9 +34,7 @@ final class XiaomiHealthHooks {
                         Object result = chain.proceed();
                         Object target = chain.getThisObject();
                         if (target instanceof Activity) {
-                            Activity activity = (Activity) target;
-                            activity.getWindow().getDecorView().post(
-                                    () -> XiaomiHealthFloatingNavigation.attach(activity));
+                            XiaomiHealthFloatingNavigation.attach((Activity) target);
                         }
                         return result;
                     });

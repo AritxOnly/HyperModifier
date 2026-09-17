@@ -5,16 +5,20 @@ import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Color as AndroidColor
+import android.graphics.Paint
 import android.graphics.Rect
+import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.view.Window
 import android.widget.FrameLayout
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
@@ -22,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.material3.MaterialTheme
@@ -44,6 +49,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -83,6 +89,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 internal object XiaomiHealthFloatingNavigation {
     private val hosts = WeakHashMap<Activity, XiaomiHealthNavigationHost>()
     private val pendingAttachments = WeakHashMap<Activity, Runnable>()
+    private val startupSuppressors = WeakHashMap<Activity, EarlyBottomBarSuppressor>()
 
     @JvmStatic
     fun attach(activity: Activity) {
@@ -91,11 +98,25 @@ internal object XiaomiHealthFloatingNavigation {
         ) return
 
         ModuleSettings.ensureLoaded()
+        if (ModuleSettings.isLoaded() && !ModuleSettings.xiaomiHealthFloatingNavigationEnabled) return
+        val suppressor = EarlyBottomBarSuppressor(
+            activity = activity,
+            findBottomBar = {
+                val id = activity.resources.getIdentifier(
+                    "main_fl_bottom_container",
+                    "id",
+                    activity.packageName,
+                )
+                id.takeIf { it != 0 }?.let(activity::findViewById)
+            },
+        ).also(EarlyBottomBarSuppressor::start)
+        startupSuppressors[activity] = suppressor
         val startedAt = SystemClock.uptimeMillis()
         lateinit var retry: Runnable
         retry = Runnable {
             if (activity.isFinishing || activity.isDestroyed) {
                 pendingAttachments.remove(activity)
+                startupSuppressors.remove(activity)?.restore()
                 return@Runnable
             }
             ModuleSettings.ensureLoaded()
@@ -104,9 +125,20 @@ internal object XiaomiHealthFloatingNavigation {
                 activity.window.decorView.postDelayed(retry, SETTINGS_RETRY_MS)
                 return@Runnable
             }
-            pendingAttachments.remove(activity)
-            if (!ModuleSettings.xiaomiHealthFloatingNavigationEnabled) return@Runnable
+            if (!ModuleSettings.xiaomiHealthFloatingNavigationEnabled) {
+                pendingAttachments.remove(activity)
+                startupSuppressors.remove(activity)?.restore()
+                return@Runnable
+            }
+            suppressor.restore()
             val host = XiaomiHealthNavigationHost.create(activity)
+            if (host == null && SystemClock.uptimeMillis() - startedAt < VIEW_WAIT_TIMEOUT_MS) {
+                suppressor.start()
+                activity.window.decorView.postDelayed(retry, VIEW_RETRY_MS)
+                return@Runnable
+            }
+            pendingAttachments.remove(activity)
+            startupSuppressors.remove(activity)
             if (host == null) {
                 Log.w(TAG, "Xiaomi Health 3.59.1 navigation views were not found")
             } else {
@@ -120,6 +152,7 @@ internal object XiaomiHealthFloatingNavigation {
     @JvmStatic
     fun dispose(activity: Activity) {
         pendingAttachments.remove(activity)?.let(activity.window.decorView::removeCallbacks)
+        startupSuppressors.remove(activity)?.restore()
         hosts.remove(activity)?.dispose()
     }
 
@@ -128,8 +161,10 @@ internal object XiaomiHealthFloatingNavigation {
         hosts[activity]?.onTouchEvent(event)
     }
 
-    private const val SETTINGS_RETRY_MS = 100L
+    private const val SETTINGS_RETRY_MS = 32L
     private const val SETTINGS_WAIT_TIMEOUT_MS = 1_500L
+    private const val VIEW_RETRY_MS = 32L
+    private const val VIEW_WAIT_TIMEOUT_MS = 4_000L
     private const val TAG = "MyHyperModifier"
 }
 
@@ -146,6 +181,7 @@ private class XiaomiHealthNavigationHost private constructor(
     private val originalDivider: View?,
     private val nativeTabLayout: ViewGroup,
     contentView: View,
+    samplingView: View,
 ) {
     private var state by mutableStateOf(XiaomiHealthNavigationState())
     private var backdropSnapshot by mutableStateOf<ViewBackdropSnapshot?>(null)
@@ -154,13 +190,21 @@ private class XiaomiHealthNavigationHost private constructor(
     private val previousViewModelStoreOwner = overlayParent.findViewTreeViewModelStoreOwner()
     private val previousSavedStateRegistryOwner = overlayParent.findViewTreeSavedStateRegistryOwner()
     private val windowImmersion = InjectedBottomNavigationImmersion(activity)
-    private val sampler = ViewBackdropSampler(contentView) { backdropSnapshot = it }
+    private val sampler = ViewBackdropSampler(samplingView) { backdropSnapshot = it }
+    private val contentBottomPadding = InjectedScrollableContentBottomPadding(contentView)
     private val iconSnapshotter = NativeTabIconSnapshotter(activity.resources, activity.theme)
     private val originalBottomVisibility = originalBottomContainer.visibility
     private val originalDividerVisibility = originalDivider?.visibility
     private val composeView = ComposeView(activity)
+    private val composeLayoutListener = View.OnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+        val contentInset = view.injectedNavigationContentInsetPx()
+        if (contentInset > 0 && contentBottomPadding.apply(contentInset)) {
+            sampler.requestCaptureBurst()
+        }
+    }
     private val preDrawListener = ViewTreeObserver.OnPreDrawListener {
         windowImmersion.ensureApplied()
+        if (contentBottomPadding.ensureApplied()) sampler.requestCaptureBurst()
         syncNativeState()
         sampler.onFrame()
         true
@@ -198,6 +242,7 @@ private class XiaomiHealthNavigationHost private constructor(
                 Gravity.BOTTOM,
             ),
         )
+        composeView.addOnLayoutChangeListener(composeLayoutListener)
         overlayParent.viewTreeObserver.addOnPreDrawListener(preDrawListener)
     }
 
@@ -205,6 +250,8 @@ private class XiaomiHealthNavigationHost private constructor(
 
     fun dispose() {
         sampler.dispose()
+        composeView.removeOnLayoutChangeListener(composeLayoutListener)
+        contentBottomPadding.dispose()
         if (overlayParent.viewTreeObserver.isAlive) {
             overlayParent.viewTreeObserver.removeOnPreDrawListener(preDrawListener)
         }
@@ -220,7 +267,9 @@ private class XiaomiHealthNavigationHost private constructor(
 
     private fun syncNativeState() {
         val next = readNativeState()
+        val selectionChanged = next.selectedIndex != state.selectedIndex
         if (next != state) state = next
+        if (selectionChanged) sampler.requestCaptureBurst()
     }
 
     private fun readNativeState(): XiaomiHealthNavigationState {
@@ -255,7 +304,7 @@ private class XiaomiHealthNavigationHost private constructor(
         state = state.copy(selectedIndex = index)
         tab.performClick()
         tab.post(::syncNativeState)
-        sampler.requestCapture()
+        sampler.requestCaptureBurst()
     }
 
     private fun nativeTabViews(): List<View> {
@@ -281,6 +330,7 @@ private class XiaomiHealthNavigationHost private constructor(
             val bottom = activity.findViewById<View>(id("main_fl_bottom_container")) ?: return null
             val tabLayout = activity.findViewById<ViewGroup>(id("main_tl_bottom")) ?: return null
             val content = activity.findViewById<View>(id("main_fl_content")) ?: return null
+            val samplingView = activity.findViewById<View>(android.R.id.content) ?: content
             val overlayParent = activity.window.decorView as? ViewGroup ?: return null
             val root = bottom.parent as? ViewGroup ?: return null
             val bottomIndex = root.indexOfChild(bottom)
@@ -292,71 +342,11 @@ private class XiaomiHealthNavigationHost private constructor(
                 originalDivider = divider,
                 nativeTabLayout = tabLayout,
                 contentView = content,
+                samplingView = samplingView,
             )
         }.onFailure {
             Log.e("MyHyperModifier", "Could not attach Xiaomi Health navigation overlay", it)
         }.getOrNull()
-    }
-}
-
-/**
- * Requests the legacy bottom-only layout flag used by Xiaomi's own View stack. Using the all-bars
- * WindowCompat edge-to-edge switch here would make Miuix apply its status-bar inset twice.
- */
-@Suppress("DEPRECATION")
-internal class InjectedBottomNavigationImmersion(
-    private val activity: Activity,
-) {
-    private val window = activity.window
-    private val decorView = window.decorView
-    private val originalNavigationBarColor = window.navigationBarColor
-    private val originalNavigationBarDividerColor = window.navigationBarDividerColor
-    private val originalNavigationBarContrastEnforced = window.isNavigationBarContrastEnforced
-    private val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-    private val originalLightNavigationBars = insetsController.isAppearanceLightNavigationBars
-    private val originalManagedLayoutFlags = decorView.systemUiVisibility and MANAGED_LAYOUT_FLAGS
-    private var applied = false
-
-    fun apply() {
-        if (applied) return
-        applied = true
-        ensureApplied()
-    }
-
-    fun ensureApplied() {
-        if (!applied) return
-        val layoutFlags = decorView.systemUiVisibility
-        if (layoutFlags and MANAGED_LAYOUT_FLAGS != MANAGED_LAYOUT_FLAGS) {
-            decorView.systemUiVisibility = layoutFlags or MANAGED_LAYOUT_FLAGS
-        }
-        if (window.navigationBarColor != AndroidColor.TRANSPARENT) {
-            window.navigationBarColor = AndroidColor.TRANSPARENT
-        }
-        if (window.navigationBarDividerColor != AndroidColor.TRANSPARENT) {
-            window.navigationBarDividerColor = AndroidColor.TRANSPARENT
-        }
-        if (window.isNavigationBarContrastEnforced) {
-            window.isNavigationBarContrastEnforced = false
-        }
-        val dark = (activity.resources.configuration.uiMode and
-            Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        insetsController.isAppearanceLightNavigationBars = !dark
-    }
-
-    fun dispose() {
-        if (!applied) return
-        applied = false
-        decorView.systemUiVisibility =
-            (decorView.systemUiVisibility and MANAGED_LAYOUT_FLAGS.inv()) or originalManagedLayoutFlags
-        window.navigationBarColor = originalNavigationBarColor
-        window.navigationBarDividerColor = originalNavigationBarDividerColor
-        window.isNavigationBarContrastEnforced = originalNavigationBarContrastEnforced
-        insetsController.isAppearanceLightNavigationBars = originalLightNavigationBars
-    }
-
-    private companion object {
-        const val MANAGED_LAYOUT_FLAGS =
-            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
     }
 }
 
@@ -372,6 +362,7 @@ private fun XiaomiHealthNavigationContent(
     val materialColors = remember(dark) { MhmPresetColors.material(dark) }
     val miuixColors = remember(dark, materialColors) { MhmPresetColors.miuix(materialColors, dark) }
     val backdrop = rememberLayerBackdrop()
+    val hiddenNavigationLift = hyperGlassifyHiddenNavigationLift()
     val icons = listOf(
         MiuixIcons.Home,
         MiuixIcons.Stopwatch,
@@ -412,7 +403,12 @@ private fun XiaomiHealthNavigationContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
-                        .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp)
+                        .padding(
+                            start = 16.dp,
+                            top = INJECTED_NAVIGATION_SHADOW_TOP_PADDING,
+                            end = 16.dp,
+                            bottom = 4.dp + hiddenNavigationLift,
+                        )
                         .height(MiuixFloatingTabBarDefaults.Height),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -441,189 +437,5 @@ private fun XiaomiHealthNavigationContent(
     }
 }
 
-@Composable
-internal fun ViewBackdropLayer(snapshot: ViewBackdropSnapshot?, backdrop: LayerBackdrop) {
-    if (snapshot == null) return
-    val density = LocalDensity.current
-    Box(
-        modifier = Modifier
-            .graphicsLayer(alpha = BACKDROP_SOURCE_ALPHA)
-            .requiredSize(
-                width = (snapshot.sourceWidthPx / density.density).dp,
-                height = (snapshot.sourceHeightPx / density.density).dp,
-            )
-            .layerBackdrop(backdrop),
-    ) {
-        Image(
-            bitmap = snapshot.bitmap.asImageBitmap(),
-            contentDescription = null,
-            contentScale = ContentScale.FillBounds,
-            modifier = Modifier.fillMaxSize(),
-        )
-    }
-}
-
-internal data class ViewBackdropBounds(val left: Int, val top: Int, val width: Int, val height: Int)
-
-internal data class ViewBackdropSnapshot(
-    val bitmap: Bitmap,
-    val sourceWidthPx: Int,
-    val sourceHeightPx: Int,
-    val generation: Long,
-)
-
-/** Downsamples only the fragment host, avoiding a recursive capture of the Compose overlay. */
-internal class ViewBackdropSampler(
-    private val source: View,
-    private val onSnapshotChanged: (ViewBackdropSnapshot?) -> Unit,
-) {
-    private val handler = Handler(Looper.getMainLooper())
-    private var bounds: ViewBackdropBounds? = null
-    private var captureScheduled = false
-    private var lastCaptureAt = Long.MIN_VALUE
-    private var keepCapturingUntil = Long.MIN_VALUE
-    private var generation = 0L
-    private val buffers = arrayOfNulls<Bitmap>(2)
-    private var displayedBitmap: Bitmap? = null
-    private val captureRunnable = Runnable {
-        captureScheduled = false
-        capture()
-    }
-
-    fun setNavigationBounds(value: ViewBackdropBounds) {
-        if (bounds == value) return
-        bounds = value
-        requestCapture()
-    }
-
-    fun onTouchEvent(event: MotionEvent) {
-        val now = SystemClock.uptimeMillis()
-        keepCapturingUntil = when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> now + ACTIVE_CAPTURE_GRACE_MS
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> now + FLING_CAPTURE_MS
-            else -> keepCapturingUntil
-        }
-        requestCapture()
-    }
-
-    fun onFrame() {
-        if (SystemClock.uptimeMillis() < keepCapturingUntil) requestCapture()
-    }
-
-    fun requestCapture() {
-        if (captureScheduled || bounds == null || !source.isAttachedToWindow) return
-        val elapsed = if (lastCaptureAt == Long.MIN_VALUE) Long.MAX_VALUE
-        else SystemClock.uptimeMillis() - lastCaptureAt
-        captureScheduled = true
-        handler.postDelayed(captureRunnable, (CAPTURE_INTERVAL_MS - elapsed).coerceAtLeast(0L))
-    }
-
-    fun dispose() {
-        handler.removeCallbacks(captureRunnable)
-        captureScheduled = false
-        displayedBitmap = null
-        buffers.forEach { it?.recycle() }
-        onSnapshotChanged(null)
-    }
-
-    private fun capture() {
-        val target = bounds ?: return
-        if (!source.isAttachedToWindow || source.width <= 0 || source.height <= 0) {
-            retryInitialCapture()
-            return
-        }
-        val sourceLocation = IntArray(2)
-        source.getLocationInWindow(sourceLocation)
-        val bleed = ceil(source.resources.displayMetrics.density * SAMPLE_BLEED_DP).toInt()
-        val sourceRect = Rect(
-            target.left - sourceLocation[0] - bleed,
-            target.top - sourceLocation[1] - bleed,
-            target.left - sourceLocation[0] + target.width + bleed,
-            target.top - sourceLocation[1] + target.height + bleed,
-        )
-        if (!sourceRect.intersect(0, 0, source.width, source.height) || sourceRect.isEmpty) {
-            retryInitialCapture()
-            return
-        }
-
-        val bitmap = obtainBuffer(
-            max(1, (sourceRect.width() * SAMPLE_SCALE).roundToInt()),
-            max(1, (sourceRect.height() * SAMPLE_SCALE).roundToInt()),
-        )
-        val canvas = AndroidCanvas(bitmap)
-        canvas.drawColor(android.graphics.Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
-        canvas.scale(SAMPLE_SCALE, SAMPLE_SCALE)
-        canvas.translate(-sourceRect.left.toFloat(), -sourceRect.top.toFloat())
-        try {
-            source.draw(canvas)
-        } catch (_: Throwable) {
-            retryInitialCapture()
-            return
-        }
-
-        val now = SystemClock.uptimeMillis()
-        if (generation == 0L) {
-            // LayerBackdrop registers its producer and consumer on adjacent Compose frames.
-            // A short startup burst guarantees a second sample without waiting for user input.
-            keepCapturingUntil = maxOf(keepCapturingUntil, now + INITIAL_CAPTURE_BURST_MS)
-        }
-        lastCaptureAt = now
-        displayedBitmap = bitmap
-        generation += 1
-        onSnapshotChanged(
-            ViewBackdropSnapshot(bitmap, sourceRect.width(), sourceRect.height(), generation),
-        )
-        if (now < keepCapturingUntil) requestCapture()
-    }
-
-    private fun retryInitialCapture() {
-        if (generation != 0L || captureScheduled) return
-        captureScheduled = true
-        handler.postDelayed(captureRunnable, CAPTURE_INTERVAL_MS)
-    }
-
-    private fun obtainBuffer(width: Int, height: Int): Bitmap {
-        buffers.forEach { bitmap ->
-            if (bitmap !== displayedBitmap && bitmap != null && !bitmap.isRecycled &&
-                bitmap.width == width && bitmap.height == height
-            ) return bitmap
-        }
-        val index = buffers.indexOfFirst { it !== displayedBitmap }.coerceAtLeast(0)
-        buffers[index]?.recycle()
-        return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { buffers[index] = it }
-    }
-
-    private companion object {
-        const val SAMPLE_BLEED_DP = 32f
-        const val SAMPLE_SCALE = 0.25f
-        const val CAPTURE_INTERVAL_MS = 32L
-        const val INITIAL_CAPTURE_BURST_MS = 240L
-        const val ACTIVE_CAPTURE_GRACE_MS = 120L
-        const val FLING_CAPTURE_MS = 1_500L
-    }
-}
-
-/** Compose cannot safely assume that the injected Activity exposes compatible AndroidX owners. */
-internal class InjectedViewTreeOwner : LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
-    private val lifecycleRegistry = LifecycleRegistry(this)
-    private val savedStateController = SavedStateRegistryController.create(this)
-
-    override val lifecycle: Lifecycle get() = lifecycleRegistry
-    override val viewModelStore = ViewModelStore()
-    override val savedStateRegistry: SavedStateRegistry get() = savedStateController.savedStateRegistry
-
-    init {
-        savedStateController.performAttach()
-        savedStateController.performRestore(null)
-        lifecycleRegistry.currentState = Lifecycle.State.RESUMED
-    }
-
-    fun dispose() {
-        lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
-        viewModelStore.clear()
-    }
-}
-
 private const val TAB_COUNT = 4
-private const val BACKDROP_SOURCE_ALPHA = 0.001f
 private const val XIAOMI_HEALTH_NATIVE_ICON_SCALE = 0.90f

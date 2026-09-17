@@ -56,6 +56,7 @@ final class ModuleSettings {
     static volatile float statusBarNetworkTypeSize = 13.5f;
     static volatile boolean statusBarNetworkTypeBold = true;
     static volatile float statusBarNetworkTypeOffset = 0f;
+    static volatile float hyperGlassifyHiddenNavigationLift = 24f;
     static volatile boolean xiaomiHealthFloatingNavigationEnabled = true;
     static volatile boolean xiaomiHealthMiuixIconsEnabled = false;
     static volatile boolean xiaomiHealthMonochromeIconsEnabled = true;
@@ -63,6 +64,21 @@ final class ModuleSettings {
     static volatile boolean marketMiuixIconsEnabled = false;
     static volatile boolean marketMonochromeIconsEnabled = true;
     static volatile boolean marketNavigationBadgesEnabled = true;
+    static volatile boolean miHomeFloatingNavigationEnabled = true;
+    static volatile boolean miHomeMiuixIconsEnabled = false;
+    static volatile boolean miHomeMonochromeIconsEnabled = true;
+    static volatile boolean miHomeNavigationBadgesEnabled = true;
+    static volatile boolean amapFloatingNavigationEnabled = true;
+    static volatile boolean amapMiuixIconsEnabled = false;
+    static volatile boolean amapMonochromeIconsEnabled = true;
+    static volatile boolean amapHideLongPressVoiceTabEnabled = true;
+    static volatile boolean xiaomiCommunityFloatingNavigationEnabled = true;
+    static volatile boolean xiaomiCommunityMiuixIconsEnabled = false;
+    static volatile boolean xiaomiCommunityMonochromeIconsEnabled = true;
+    static volatile boolean xiaomiCommunityNavigationBadgesEnabled = true;
+    static volatile boolean spotifyFloatingNavigationEnabled = false;
+    static volatile boolean spotifyFavoriteButtonEnabled = false;
+    static volatile boolean spotifyShuffleButtonEnabled = false;
     static volatile boolean inFullAod;
     static volatile boolean customMediaConstraintSetEnabled = false;
     static volatile String customMediaConstraintSetXml = "";
@@ -171,6 +187,8 @@ final class ModuleSettings {
             statusBarNetworkTypeSize = values.getFloat("status_bar_network_type_size", 13.5f);
             statusBarNetworkTypeBold = values.getBoolean("status_bar_network_type_bold", true);
             statusBarNetworkTypeOffset = values.getFloat("status_bar_network_type_offset", 0f);
+            hyperGlassifyHiddenNavigationLift = Math.max(0f, Math.min(48f, values.getFloat(
+                    "hyper_glassify_hidden_navigation_lift", 24f)));
             xiaomiHealthFloatingNavigationEnabled = values.getBoolean(
                     "xiaomi_health_floating_navigation_enabled", true);
             xiaomiHealthMiuixIconsEnabled = values.getBoolean(
@@ -185,6 +203,36 @@ final class ModuleSettings {
                     "market_monochrome_icons_enabled", true);
             marketNavigationBadgesEnabled = values.getBoolean(
                     "market_navigation_badges_enabled", true);
+            miHomeFloatingNavigationEnabled = values.getBoolean(
+                    "mi_home_floating_navigation_enabled", true);
+            miHomeMiuixIconsEnabled = values.getBoolean(
+                    "mi_home_miuix_icons_enabled", false);
+            miHomeMonochromeIconsEnabled = values.getBoolean(
+                    "mi_home_monochrome_icons_enabled", true);
+            miHomeNavigationBadgesEnabled = values.getBoolean(
+                    "mi_home_navigation_badges_enabled", true);
+            amapFloatingNavigationEnabled = values.getBoolean(
+                    "amap_floating_navigation_enabled", true);
+            amapMiuixIconsEnabled = values.getBoolean(
+                    "amap_miuix_icons_enabled", false);
+            amapMonochromeIconsEnabled = values.getBoolean(
+                    "amap_monochrome_icons_enabled", true);
+            amapHideLongPressVoiceTabEnabled = values.getBoolean(
+                    "amap_hide_long_press_voice_tab_enabled", true);
+            xiaomiCommunityFloatingNavigationEnabled = values.getBoolean(
+                    "xiaomi_community_floating_navigation_enabled", true);
+            xiaomiCommunityMiuixIconsEnabled = values.getBoolean(
+                    "xiaomi_community_miuix_icons_enabled", false);
+            xiaomiCommunityMonochromeIconsEnabled = values.getBoolean(
+                    "xiaomi_community_monochrome_icons_enabled", true);
+            xiaomiCommunityNavigationBadgesEnabled = values.getBoolean(
+                    "xiaomi_community_navigation_badges_enabled", true);
+            spotifyFloatingNavigationEnabled = values.getBoolean(
+                    "spotify_floating_navigation_enabled", false);
+            spotifyFavoriteButtonEnabled = values.getBoolean(
+                    "spotify_favorite_button_enabled", false);
+            spotifyShuffleButtonEnabled = values.getBoolean(
+                    "spotify_shuffle_button_enabled", false);
             customMediaConstraintSetEnabled = values.getBoolean("custom_media_constraint_set_enabled", false);
             customMediaConstraintSetXml = values.getString("custom_media_constraint_set_xml", "");
             return true;

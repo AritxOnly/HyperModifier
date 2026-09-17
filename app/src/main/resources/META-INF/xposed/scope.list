@@ -3,3 +3,6 @@ miui.systemui.plugin
 com.milink.service
 com.mi.health
 com.xiaomi.market
+com.xiaomi.smarthome
+com.autonavi.minimap
+com.xiaomi.vipaccount

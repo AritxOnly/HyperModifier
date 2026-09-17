@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import com.aritxonly.deadliner.ui.material.glass.DeadlinerGlassRecipes
 import com.aritxonly.deadliner.ui.material.glass.GlassMaterialInteraction
+import com.aritxonly.deadliner.ui.material.glass.GlassMaterialRecipe
 import com.aritxonly.deadliner.ui.material.glass.SoftGlassSurface
 import com.aritxonly.deadliner.ui.theme.LocalAdvancedMaterialBackdrop
 import com.aritxonly.deadliner.ui.theme.LocalAdvancedMaterialSpec
@@ -90,6 +91,8 @@ data class MiuixFloatingTabItem(
     val preserveOriginalIconColors: Boolean = false,
     /** Null hides the badge; an empty label draws the red-dot variant. */
     val badge: String? = null,
+    /** Optional live renderer for sources such as an app-owned LottieAnimationView. */
+    val iconContent: (@Composable (selected: Boolean, tint: Color) -> Unit)? = null,
 )
 
 enum class MiuixFloatingTabLayout {
@@ -99,7 +102,8 @@ enum class MiuixFloatingTabLayout {
 
 object MiuixFloatingTabBarDefaults {
     val Height = 54.dp
-    val HorizontalContentPadding = 7.dp
+    // 6dp content padding - 3dp indicator overflow = the same 3dp visible edge as top/bottom.
+    val HorizontalContentPadding = 6.dp
     val VerticalContentPadding = 3.dp
     val IndicatorHorizontalOverflow = 3.dp
     val MaximumWidth = 380.dp
@@ -126,6 +130,8 @@ fun MiuixFloatingTabBar(
     layout: MiuixFloatingTabLayout = MiuixFloatingTabLayout.Horizontal,
     selectionVisible: Boolean = true,
     backdrop: LayerBackdrop? = LocalAdvancedMaterialBackdrop.current,
+    recipe: GlassMaterialRecipe? = null,
+    tint: Color? = null,
 ) {
     if (items.isEmpty()) return
 
@@ -207,7 +213,9 @@ fun MiuixFloatingTabBar(
             SoftGlassSurface(
                 modifier = Modifier.fillMaxSize(),
                 shape = MiuixFloatingTabBarDefaults.ContainerShape,
-                recipe = DeadlinerGlassRecipes.floatingNavigation(advancedMaterial.fineTuning),
+                recipe = recipe
+                    ?: DeadlinerGlassRecipes.floatingNavigation(advancedMaterial.fineTuning),
+                tint = tint,
                 interaction = GlassMaterialInteraction(
                     refractionScale = if (motion.isPressed) 1.06f else 1f,
                     highlightScale = if (motion.isPressed) 1.04f else 1f,
@@ -401,30 +409,42 @@ private fun FloatingTabItemContent(
         )
     val icon: @Composable () -> Unit = {
         Box {
-            AnimatedContent(
-                modifier = Modifier.graphicsLayer {
+            val iconModifier = Modifier
+                .size(MiuixFloatingTabBarDefaults.TabIconSize)
+                .graphicsLayer {
                     scaleX = animatedIconScale
                     scaleY = animatedIconScale
-                },
-                targetState = selected,
-                transitionSpec = {
-                    (fadeIn() + scaleIn(initialScale = 0.88f))
-                        .togetherWith(fadeOut() + scaleOut(targetScale = 1.06f))
-                },
-                label = "floating_tab_icon",
-            ) { isSelected ->
-                Icon(
-                    painter = if (isSelected) item.selectedIcon else item.unselectedIcon,
-                    contentDescription = null,
-                    tint = if (item.preserveOriginalIconColors) Color.Unspecified else animatedContentColor,
-                    modifier = Modifier
-                        .size(MiuixFloatingTabBarDefaults.TabIconSize)
-                        .graphicsLayer {
-                            val scale = item.iconScale.coerceIn(0.75f, 1.25f)
-                            scaleX = scale
-                            scaleY = scale
-                        },
-                )
+                    val itemScale = item.iconScale.coerceIn(0.75f, 1.25f)
+                    scaleX *= itemScale
+                    scaleY *= itemScale
+                }
+            val iconTint = if (item.preserveOriginalIconColors) {
+                Color.Unspecified
+            } else {
+                animatedContentColor
+            }
+            val liveIcon = item.iconContent
+            if (liveIcon != null) {
+                Box(modifier = iconModifier, contentAlignment = Alignment.Center) {
+                    liveIcon(selected, iconTint)
+                }
+            } else {
+                AnimatedContent(
+                    modifier = iconModifier,
+                    targetState = selected,
+                    transitionSpec = {
+                        (fadeIn() + scaleIn(initialScale = 0.88f))
+                            .togetherWith(fadeOut() + scaleOut(targetScale = 1.06f))
+                    },
+                    label = "floating_tab_icon",
+                ) { isSelected ->
+                    Icon(
+                        painter = if (isSelected) item.selectedIcon else item.unselectedIcon,
+                        contentDescription = null,
+                        tint = iconTint,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
             item.badge?.let { label ->
                 FloatingTabBadge(

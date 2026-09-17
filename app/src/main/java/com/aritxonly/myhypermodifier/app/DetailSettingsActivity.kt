@@ -1,5 +1,6 @@
 package com.aritxonly.myhypermodifier
 
+import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Bundle
@@ -42,6 +43,7 @@ class DetailSettingsActivity : ComponentActivity() {
     }
 
     @Deprecated("Use the system back gesture or the toolbar action instead.")
+    @SuppressLint("MissingSuperCall")
     override fun onBackPressed() {
         finishAfterTransition()
     }
