@@ -33,3 +33,10 @@ risky to review.
 This is an internal, behavior-preserving refactor. Class hooks still install through the same
 `XposedModule` instance so LSPosed callback ownership and de-duplication semantics remain intact.
 The disabled password-background experiment remains disabled.
+
+## Implemented result
+
+The entry point now delegates to `SystemUiRuntimeHooks`, `LockscreenHooks`, and `PluginHooks`.
+`RuntimeRefreshRegistry` retains weak-reference refresh state, while
+`MediaConstraintCustomizer` owns media layout transformation. The original hook IDs, hook timing,
+and target-package routing remain at their pre-refactor call sites.
