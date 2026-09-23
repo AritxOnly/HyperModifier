@@ -36,11 +36,8 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
 import androidx.core.content.res.ResourcesCompat
-import androidx.lifecycle.findViewTreeLifecycleOwner
-import androidx.lifecycle.findViewTreeViewModelStoreOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
-import androidx.savedstate.findViewTreeSavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBar
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarDefaults
@@ -158,9 +155,6 @@ private class SpotifyNavigationHost private constructor(
     private var state by mutableStateOf(SpotifyNavigationState())
     private var backdropSnapshot by mutableStateOf<ViewBackdropSnapshot?>(null)
     private val owner = InjectedViewTreeOwner()
-    private val previousLifecycleOwner = overlayParent.findViewTreeLifecycleOwner()
-    private val previousViewModelStoreOwner = overlayParent.findViewTreeViewModelStoreOwner()
-    private val previousSavedStateRegistryOwner = overlayParent.findViewTreeSavedStateRegistryOwner()
     private val windowImmersion = InjectedBottomNavigationImmersion(activity)
     private val originalNavigationAlpha = nativeNavigationBar.alpha
     private val originalNavigationAccessibility = nativeNavigationBar.importantForAccessibility
@@ -187,9 +181,6 @@ private class SpotifyNavigationHost private constructor(
 
     init {
         windowImmersion.apply()
-        overlayParent.setViewTreeLifecycleOwner(owner)
-        overlayParent.setViewTreeViewModelStoreOwner(owner)
-        overlayParent.setViewTreeSavedStateRegistryOwner(owner)
         composeView.apply {
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             setViewTreeLifecycleOwner(owner)
@@ -238,9 +229,6 @@ private class SpotifyNavigationHost private constructor(
         originalInsetVisibility?.let { navigationInsetSpace?.visibility = it }
         windowImmersion.dispose()
         cachedAccessibilityTabs = emptyList()
-        overlayParent.setViewTreeLifecycleOwner(previousLifecycleOwner)
-        overlayParent.setViewTreeViewModelStoreOwner(previousViewModelStoreOwner)
-        overlayParent.setViewTreeSavedStateRegistryOwner(previousSavedStateRegistryOwner)
         owner.dispose()
     }
 

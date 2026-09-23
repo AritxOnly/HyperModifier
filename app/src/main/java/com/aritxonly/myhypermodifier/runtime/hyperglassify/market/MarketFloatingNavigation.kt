@@ -141,6 +141,7 @@ internal object MarketFloatingNavigation {
 }
 
 private data class MarketTabState(
+    val nativeIndex: Int,
     val label: String,
     val tag: String,
     val badge: Boolean,
@@ -284,12 +285,15 @@ private class MarketNavigationHost private constructor(
     }
 
     private fun syncNativeState() {
-        val tabs = nativeTabViews()
+        val nativeTabs = nativeTabViews()
         val selected = runCatching {
             nativeTabLayout.javaClass.getMethod("getSelectedIndex").invoke(nativeTabLayout) as Int
-        }.getOrDefault(state.selectedIndex).coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
+        }.getOrDefault(state.selectedIndex).coerceIn(0, (nativeTabs.size - 1).coerceAtLeast(0))
+        val tabs = nativeTabs.mapIndexed { index, tab ->
+            tab.readState(index, index == selected)
+        }.filterNot { it.isHiddenBySettings() }
         val next = MarketNavigationState(
-            tabs = tabs.mapIndexed { index, tab -> tab.readState(index, index == selected) },
+            tabs = tabs,
             selectedIndex = selected,
             visible = originalBottomContainer.visibility == View.VISIBLE &&
                 nativeTabLayout.visibility == View.VISIBLE &&
@@ -320,11 +324,23 @@ private class MarketNavigationHost private constructor(
             javaClass.getMethod("getIconView").invoke(this) as? ImageView
         }.getOrNull()
         return MarketTabState(
+            nativeIndex = index,
             label = label,
             tag = tag,
             badge = ModuleSettings.marketNavigationBadgesEnabled && (hasRedPoint || number > 0),
             icons = iconSnapshotter.snapshot(this, iconView, selected),
         )
+    }
+
+    /** The native strip remains intact for routing; these entries are omitted only from our UI. */
+    private fun MarketTabState.isHiddenBySettings(): Boolean {
+        val identity = "$tag $label".lowercase()
+        return (ModuleSettings.marketHideGamesTab &&
+            (identity.contains("game") || identity.contains("游戏"))) ||
+            (ModuleSettings.marketHideRankingsTab &&
+                (identity.contains("rank") || identity.contains("榜") || identity.contains("排行"))) ||
+            (ModuleSettings.marketHideProfileTab &&
+                (identity.contains("mine") || identity.contains("我的") || identity.contains("账户")))
     }
 
     private fun selectDestination(index: Int) {
@@ -395,7 +411,7 @@ private fun MarketNavigationContent(
             remember(bitmap) { BitmapPainter(bitmap) }
         } ?: rememberVectorPainter(marketIcon(tab, index))
         MiuixFloatingTabItem(
-            key = index.toString(),
+            key = tab.nativeIndex.toString(),
             label = tab.label,
             selectedIcon = selectedPainter,
             unselectedIcon = unselectedPainter,
@@ -425,7 +441,9 @@ private fun MarketNavigationContent(
                     ViewBackdropLayer(backdropSnapshot, backdrop)
                     MiuixFloatingTabBar(
                         items = items,
-                        selectedKey = state.selectedIndex.toString(),
+                        selectedKey = state.tabs.firstOrNull {
+                            it.nativeIndex == state.selectedIndex
+                        }?.nativeIndex?.toString() ?: state.tabs.first().nativeIndex.toString(),
                         onItemSelected = { onDestinationSelected(it.key.toInt()) },
                         modifier = Modifier.onGloballyPositioned { coordinates ->
                             val position = coordinates.positionInWindow()

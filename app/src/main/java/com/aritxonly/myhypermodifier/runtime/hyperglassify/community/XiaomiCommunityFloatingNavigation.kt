@@ -8,6 +8,7 @@ import top.yukonga.miuix.kmp.icon.extended.All
 import top.yukonga.miuix.kmp.icon.extended.AppRecording
 import top.yukonga.miuix.kmp.icon.extended.ContactsCircle
 import top.yukonga.miuix.kmp.icon.extended.Home
+import top.yukonga.miuix.kmp.icon.extended.Messages
 
 /** Xiaomi Community 6.6.9 adapter backed by its BottomNavView/NavItemView click chain. */
 internal object XiaomiCommunityFloatingNavigation {
@@ -27,6 +28,7 @@ internal object XiaomiCommunityFloatingNavigation {
             useMonochromeIcons = { ModuleSettings.xiaomiCommunityMonochromeIconsEnabled },
             showBadges = { ModuleSettings.xiaomiCommunityNavigationBadgesEnabled },
             fallbackIcon = ::communityMiuixIcon,
+            iconScale = { 0.95f },
             contentHostMethodName = "M0",
             reservationViewMethodNames = setOf("M0", "l1"),
             trimNativeIconTransparentPadding = true,
@@ -48,6 +50,8 @@ private fun communityMiuixIcon(label: String, index: Int): ImageVector {
         normalized.contains("社区") || normalized.contains("圈") ||
             normalized.contains("forum") -> MiuixIcons.All
         normalized.contains("发布") || normalized.contains("创作") -> MiuixIcons.AppRecording
+        normalized.contains("消息") || normalized.contains("message") ||
+            normalized.contains("chat") -> MiuixIcons.Messages
         normalized.contains("我的") || normalized.contains("mine") ||
             normalized.contains("profile") -> MiuixIcons.ContactsCircle
         else -> listOf(

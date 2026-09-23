@@ -40,11 +40,8 @@ import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.findViewTreeLifecycleOwner
-import androidx.lifecycle.findViewTreeViewModelStoreOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
-import androidx.savedstate.findViewTreeSavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBar
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarDefaults
@@ -72,6 +69,7 @@ internal data class NativeViewBottomBarTarget(
     val useMonochromeIcons: () -> Boolean,
     val showBadges: () -> Boolean,
     val fallbackIcon: (label: String, index: Int) -> ImageVector,
+    val iconScale: () -> Float = { 1f },
     val contentHostMethodName: String? = null,
     val reservationViewMethodNames: Set<String> = emptySet(),
     val trimNativeIconTransparentPadding: Boolean = false,
@@ -197,9 +195,6 @@ private class NativeViewBottomBarHost private constructor(
     private var state by mutableStateOf(NativeViewNavigationState())
     private var backdropSnapshot by mutableStateOf<ViewBackdropSnapshot?>(null)
     private val owner = InjectedViewTreeOwner()
-    private val previousLifecycleOwner = overlayParent.findViewTreeLifecycleOwner()
-    private val previousViewModelStoreOwner = overlayParent.findViewTreeViewModelStoreOwner()
-    private val previousSavedStateRegistryOwner = overlayParent.findViewTreeSavedStateRegistryOwner()
     private val windowImmersion = InjectedBottomNavigationImmersion(activity)
     private val windowManager = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val composeView = ComposeView(activity)
@@ -239,9 +234,6 @@ private class NativeViewBottomBarHost private constructor(
     }
 
     init {
-        overlayParent.setViewTreeLifecycleOwner(owner)
-        overlayParent.setViewTreeViewModelStoreOwner(owner)
-        overlayParent.setViewTreeSavedStateRegistryOwner(owner)
         composeView.apply {
             setViewTreeLifecycleOwner(owner)
             setViewTreeViewModelStoreOwner(owner)
@@ -297,9 +289,6 @@ private class NativeViewBottomBarHost private constructor(
         nativeBottomBar.importantForAccessibility = originalBottomAccessibility
         restoreContentReservation()
         windowImmersion.dispose()
-        overlayParent.setViewTreeLifecycleOwner(previousLifecycleOwner)
-        overlayParent.setViewTreeViewModelStoreOwner(previousViewModelStoreOwner)
-        overlayParent.setViewTreeSavedStateRegistryOwner(previousSavedStateRegistryOwner)
         owner.dispose()
     }
 
@@ -499,6 +488,7 @@ private fun NativeViewBottomBarContent(
             selectedIcon = selectedPainter,
             unselectedIcon = unselectedPainter,
             preserveOriginalIconColors = nativeIcons != null && !monochrome,
+            iconScale = target.iconScale().coerceIn(0.75f, 1.25f),
             badge = if (tab.badge) "" else null,
         )
     }

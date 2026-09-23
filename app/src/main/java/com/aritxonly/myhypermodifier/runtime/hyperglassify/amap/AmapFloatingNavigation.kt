@@ -40,11 +40,8 @@ import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.findViewTreeLifecycleOwner
-import androidx.lifecycle.findViewTreeViewModelStoreOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
-import androidx.savedstate.findViewTreeSavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBar
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarDefaults
@@ -78,7 +75,7 @@ internal object AmapFloatingNavigation {
             pendingAttachments.containsKey(activity) || startupSuppressors.containsKey(activity)
         ) return
 
-        ModuleSettings.ensureLoaded()
+        ModuleSettings.loadImmediately(activity.applicationContext)
         if (ModuleSettings.isLoaded() && !ModuleSettings.amapFloatingNavigationEnabled) return
         startupSuppressors[activity] = EarlyBottomBarSuppressor(
             activity = activity,
@@ -94,7 +91,7 @@ internal object AmapFloatingNavigation {
             pendingAttachments.containsKey(activity)
         ) return
 
-        ModuleSettings.ensureLoaded()
+        ModuleSettings.markLoaded(activity.applicationContext)
         if (ModuleSettings.isLoaded() && !ModuleSettings.amapFloatingNavigationEnabled) {
             startupSuppressors.remove(activity)?.restore()
             return
@@ -109,7 +106,7 @@ internal object AmapFloatingNavigation {
                 startupSuppressors.remove(activity)?.restore()
                 return@Runnable
             }
-            ModuleSettings.ensureLoaded()
+            ModuleSettings.markLoaded(activity.applicationContext)
             val settingsTimedOut = SystemClock.uptimeMillis() - startedAt >= SETTINGS_WAIT_TIMEOUT_MS
             if (!ModuleSettings.isLoaded() && !settingsTimedOut) {
                 activity.window.decorView.postDelayed(retry, SETTINGS_RETRY_MS)
@@ -171,6 +168,7 @@ private data class AmapNavigationState(
     val tabs: List<AmapTabState> = emptyList(),
     val selectedIndex: Int = 0,
     val visible: Boolean = false,
+    val navigationLiftDp: Float = 24f,
 )
 
 private class AmapNavigationHost private constructor(
@@ -182,13 +180,20 @@ private class AmapNavigationHost private constructor(
     private var state by mutableStateOf(AmapNavigationState())
     private var backdropSnapshot by mutableStateOf<ViewBackdropSnapshot?>(null)
     private val owner = InjectedViewTreeOwner()
-    private val previousLifecycleOwner = overlayParent.findViewTreeLifecycleOwner()
-    private val previousViewModelStoreOwner = overlayParent.findViewTreeViewModelStoreOwner()
-    private val previousSavedStateRegistryOwner = overlayParent.findViewTreeSavedStateRegistryOwner()
     private val windowImmersion = InjectedBottomNavigationImmersion(activity)
     private val windowManager = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val composeView = ComposeView(activity)
     private var composeWindowAttached = false
+    private var lastNavigationDiagnostic: String? = null
+    private val settingsRefreshRunnable = object : Runnable {
+        override fun run() {
+            if (!composeWindowAttached || activity.isFinishing || activity.isDestroyed) return
+            if (!ModuleSettings.isLoaded()) {
+                ModuleSettings.markLoaded(activity.applicationContext)
+                composeView.postDelayed(this, 250L)
+            }
+        }
+    }
     private val sampler = ViewBackdropSampler(
         source = samplingView,
         excludedView = composeView,
@@ -207,14 +212,12 @@ private class AmapNavigationHost private constructor(
     private var replacingNativeChrome = false
     private val preDrawListener = ViewTreeObserver.OnPreDrawListener {
         syncNativeState()
+        logNavigationGeometry()
         sampler.onFrame()
         true
     }
 
     init {
-        overlayParent.setViewTreeLifecycleOwner(owner)
-        overlayParent.setViewTreeViewModelStoreOwner(owner)
-        overlayParent.setViewTreeSavedStateRegistryOwner(owner)
         composeView.apply {
             setViewTreeLifecycleOwner(owner)
             setViewTreeViewModelStoreOwner(owner)
@@ -247,6 +250,12 @@ private class AmapNavigationHost private constructor(
         }
         windowManager.addView(composeView, overlayLayoutParams)
         composeWindowAttached = true
+        ModuleSettings.onLoaded {
+            composeView.post {
+                if (composeWindowAttached) syncNativeState()
+            }
+        }
+        composeView.post(settingsRefreshRunnable)
         overlayParent.viewTreeObserver.addOnPreDrawListener(preDrawListener)
         composeView.post { sampler.requestCaptureBurst(900L) }
     }
@@ -255,6 +264,7 @@ private class AmapNavigationHost private constructor(
 
     fun dispose() {
         sampler.dispose()
+        composeView.removeCallbacks(settingsRefreshRunnable)
         if (overlayParent.viewTreeObserver.isAlive) {
             overlayParent.viewTreeObserver.removeOnPreDrawListener(preDrawListener)
         }
@@ -265,9 +275,6 @@ private class AmapNavigationHost private constructor(
         nativeTabBar.alpha = originalBottomAlpha
         nativeTabBar.importantForAccessibility = originalBottomAccessibility
         windowImmersion.dispose()
-        overlayParent.setViewTreeLifecycleOwner(previousLifecycleOwner)
-        overlayParent.setViewTreeViewModelStoreOwner(previousViewModelStoreOwner)
-        overlayParent.setViewTreeSavedStateRegistryOwner(previousSavedStateRegistryOwner)
         owner.dispose()
     }
 
@@ -312,6 +319,7 @@ private class AmapNavigationHost private constructor(
             tabs = tabs,
             selectedIndex = selected.coerceIn(0, (tabs.size - 1).coerceAtLeast(0)),
             visible = tabs.size > 1 && nativeTabBar.isAmapVisibleIgnoringAlpha(),
+            navigationLiftDp = ModuleSettings.hyperGlassifyHiddenNavigationLift.coerceIn(0f, 48f),
         )
         val selectionChanged = next.selectedIndex != state.selectedIndex
         val becameVisible = next.visible && !state.visible
@@ -320,6 +328,20 @@ private class AmapNavigationHost private constructor(
         updateNativeChromeReplacement(next.visible)
         composeView.visibility = if (next.visible) View.VISIBLE else View.GONE
         if (selectionChanged || becameVisible) sampler.requestCaptureBurst()
+    }
+
+    private fun logNavigationGeometry() {
+        if (!composeWindowAttached || !state.visible) return
+        val location = IntArray(2)
+        composeView.getLocationOnScreen(location)
+        val message = "AmapNav geometry lift=${state.navigationLiftDp} loaded=${ModuleSettings.isLoaded()} " +
+            "settings=${ModuleSettings.loadStatus()} " +
+            "panelY=${location[1]} panelHeight=${composeView.height} " +
+            "panelNavInset=${composeView.rootWindowInsets?.systemWindowInsetBottom ?: -1}"
+        if (message != lastNavigationDiagnostic) {
+            lastNavigationDiagnostic = message
+            Log.i("MyHyperModifier", message)
+        }
     }
 
     private fun View.readState(index: Int, selected: Boolean, model: Any?): AmapTabState {
@@ -419,7 +441,7 @@ private fun AmapNavigationContent(
     val materialColors = remember(dark) { MhmPresetColors.material(dark) }
     val miuixColors = remember(dark, materialColors) { MhmPresetColors.miuix(materialColors, dark) }
     val backdrop = rememberLayerBackdrop()
-    val hiddenNavigationLift = hyperGlassifyHiddenNavigationLift()
+    val hiddenNavigationLift = state.navigationLiftDp.coerceIn(0f, 48f).dp
     val items = state.tabs.mapIndexed { index, tab ->
         val nativeIcons = tab.icons?.takeUnless { ModuleSettings.amapMiuixIconsEnabled }
         val monochrome = nativeIcons != null && ModuleSettings.amapMonochromeIconsEnabled

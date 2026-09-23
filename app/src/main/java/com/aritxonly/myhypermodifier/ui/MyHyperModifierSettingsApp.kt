@@ -1,6 +1,8 @@
 package com.aritxonly.myhypermodifier
 
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Handler
@@ -85,6 +87,7 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Text
@@ -101,6 +104,9 @@ import androidx.core.graphics.ColorUtils
 internal enum class SettingsDestination(val key: String, val label: String) {
     Home("home", "主页"),
     Notifications("notifications", "通知中心"),
+    HeadsUpGlass("heads-up-glass", "悬浮通知玻璃"),
+    HeadsUpGlassAdvanced("heads-up-glass-advanced", "高级参数调整"),
+    GlobalBackgroundBlur("global-background-blur", "全局背景模糊"),
     ControlCenter("control-center", "控制中心"),
     MiLink("milink", "小米互联服务"),
     XiaomiHealth("xiaomi-health", "小米运动健康"),
@@ -142,6 +148,7 @@ private data class RestartScopeDefaults(
 
 private fun SettingsDestination.requiredRestartScopes(): RestartScopeDefaults = when (this) {
     SettingsDestination.ControlCenter -> RestartScopeDefaults(systemUi = true, plugin = true)
+    SettingsDestination.GlobalBackgroundBlur -> RestartScopeDefaults(systemUi = true, plugin = true)
     SettingsDestination.MiLink -> RestartScopeDefaults(miLink = true)
     SettingsDestination.XiaomiHealth -> RestartScopeDefaults(xiaomiHealth = true)
     SettingsDestination.Market -> RestartScopeDefaults(market = true)
@@ -150,6 +157,8 @@ private fun SettingsDestination.requiredRestartScopes(): RestartScopeDefaults = 
     SettingsDestination.XiaomiCommunity -> RestartScopeDefaults(xiaomiCommunity = true)
     SettingsDestination.Spotify -> RestartScopeDefaults(spotify = true)
     SettingsDestination.Notifications,
+    SettingsDestination.HeadsUpGlass,
+    SettingsDestination.HeadsUpGlassAdvanced,
     SettingsDestination.Media,
     SettingsDestination.MediaConstraintSet,
     SettingsDestination.Lockscreen,
@@ -356,6 +365,8 @@ internal fun MyHyperModifierDetailSettingsApp(
     var restartXiaomiCommunity by remember { mutableStateOf(defaultScopes.xiaomiCommunity) }
     var restartSpotify by remember { mutableStateOf(defaultScopes.spotify) }
     var restartSystem by remember { mutableStateOf(false) }
+    var editingHeadsUpGlassParameter by remember { mutableStateOf<HeadsUpGlassParameterTarget?>(null) }
+    var headsUpGlassPresetDialog by remember { mutableStateOf<HeadsUpGlassPresetDialogMode?>(null) }
     val topBarButtonMaterialTarget = resolveTopBarButtonMaterialProgress(
         collapsedFraction = null,
         scrollProgress = scrollProgress,
@@ -449,10 +460,55 @@ internal fun MyHyperModifierDetailSettingsApp(
                             },
                         )
                     }
+                    HeadsUpGlassParameterDialog(
+                        target = editingHeadsUpGlassParameter,
+                        settings = settings,
+                        onDismissRequest = { editingHeadsUpGlassParameter = null },
+                        onSave = {
+                            update(it)
+                            editingHeadsUpGlassParameter = null
+                        },
+                    )
+                    HeadsUpGlassPresetDialog(
+                        mode = headsUpGlassPresetDialog,
+                        settings = settings,
+                        onDismissRequest = { headsUpGlassPresetDialog = null },
+                        onImport = {
+                            update(it)
+                            headsUpGlassPresetDialog = null
+                        },
+                    )
                 },
             ) { padding ->
                 when (destination) {
-                    SettingsDestination.Notifications -> NotificationSettingsPage(padding, settings, ::update) { scrollProgress = it }
+                    SettingsDestination.Notifications -> NotificationSettingsPage(
+                        padding = padding,
+                        settings = settings,
+                        update = ::update,
+                        onOpenHeadsUpGlassSettings = { context.openDetailSettings(SettingsDestination.HeadsUpGlass) },
+                    ) { scrollProgress = it }
+                    SettingsDestination.HeadsUpGlass -> HeadsUpGlassSettingsPage(
+                        padding = padding,
+                        settings = settings,
+                        update = ::update,
+                        onOpenAdvanced = {
+                            context.openDetailSettings(SettingsDestination.HeadsUpGlassAdvanced)
+                        },
+                        onOpenPresetDialog = { headsUpGlassPresetDialog = it },
+                    ) { scrollProgress = it }
+                    SettingsDestination.HeadsUpGlassAdvanced -> HeadsUpGlassAdvancedSettingsPage(
+                        padding = padding,
+                        settings = settings,
+                        update = ::update,
+                        onEditParameter = { dark, index ->
+                            editingHeadsUpGlassParameter = HeadsUpGlassParameterTarget(dark, index)
+                        },
+                    ) { scrollProgress = it }
+                    SettingsDestination.GlobalBackgroundBlur -> GlobalBackgroundBlurSettingsPage(
+                        padding,
+                        settings,
+                        ::update,
+                    ) { scrollProgress = it }
                     SettingsDestination.ControlCenter -> ControlCenterSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.MiLink -> MiLinkSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.XiaomiHealth -> XiaomiHealthSettingsPage(padding, settings, ::update) { scrollProgress = it }
@@ -637,12 +693,16 @@ private fun scopeStatuses(
         packageName = ModuleScopePackage.SYSTEM_UI,
         hasModification = listOf(
             settings.notificationsEnabled,
+            settings.headsUpGlassParametersEnabled,
+            settings.headsUpBackgroundBlurRadiusEnabled,
+            settings.globalBackgroundBlurPercent != 100f,
             settings.mediaEnabled,
             settings.hideAodActions,
             settings.hideAodSeamless,
             settings.sinkLockscreenNotificationsForFingerprint,
             settings.hideLockscreenFingerprintIcon,
             settings.showLockscreenFingerprintIconOnAod,
+            settings.lockscreenPinKeySoftGlassEnabled,
             settings.statusBarNetworkTypeEnabled,
             settings.volumePanelRadius > 0f,
             settings.islandEnabled,
@@ -652,13 +712,13 @@ private fun scopeStatuses(
     ScopeStatus(
         appName = "系统界面插件",
         packageName = ModuleScopePackage.PLUGIN,
-        hasModification = settings.controlCenterEnabled,
+        hasModification = settings.controlCenterEnabled || settings.globalBackgroundBlurPercent != 100f,
         isActive = framework.isActive(ModuleScopePackage.PLUGIN),
     ),
     ScopeStatus(
         appName = "小米互联服务",
         packageName = ModuleScopePackage.MILINK,
-        hasModification = settings.miLinkMainCardsEnabled,
+        hasModification = settings.miLinkMainCardsEnabled || settings.globalBackgroundBlurPercent != 100f,
         isActive = framework.isActive(ModuleScopePackage.MILINK),
     ),
     ScopeStatus(
@@ -719,7 +779,7 @@ private fun HomeDashboardPage(
     }
     SettingsSection(topLabel = "HyperGlassify") {
         SettingsSliderItemWithLabel(
-            label = "隐藏导航栏时底部抬高",
+            label = "底栏额外抬高",
             value = settings.hyperGlassifyHiddenNavigationLift,
             valueRange = 0f..48f,
             onValueChange = {
@@ -734,6 +794,11 @@ private fun HomeDashboardPage(
         NavigationSettingItem("小米社区", "柔光玻璃悬浮底栏", onClick = { onNavigate(SettingsDestination.XiaomiCommunity) })
     }
     SettingsSection(topLabel = "系统界面美化") {
+        NavigationSettingItem(
+            "全局背景模糊",
+            "通知中心、控制中心与融合设备中心背景",
+            onClick = { onNavigate(SettingsDestination.GlobalBackgroundBlur) },
+        )
         NavigationSettingItem("通知中心", "通知圆角", onClick = { onNavigate(SettingsDestination.Notifications) })
         NavigationSettingItem("控制中心", "圆角与各个表面", onClick = { onNavigate(SettingsDestination.ControlCenter) })
         NavigationSettingItem("小米互联服务", "融合设备中心卡片", onClick = { onNavigate(SettingsDestination.MiLink) })
@@ -850,10 +915,438 @@ private fun ScopeStatusItem(
     }
 }
 
-@Composable private fun NotificationSettingsPage(padding: PaddingValues, settings: ModifierSettings, update: (ModifierSettings) -> Unit, onScroll: (Float) -> Unit) = SettingsScrollPage(padding, onScroll) {
+@Composable
+private fun NotificationSettingsPage(
+    padding: PaddingValues,
+    settings: ModifierSettings,
+    update: (ModifierSettings) -> Unit,
+    onOpenHeadsUpGlassSettings: () -> Unit,
+    onScroll: (Float) -> Unit,
+) = SettingsScrollPage(padding, onScroll) {
     SettingsSection(topLabel = "通知中心") {
         SettingsSwitchItem("通知圆角", "notification_item_bg_radius · ${settings.notificationRadius.toInt()} dp", settings.notificationsEnabled, { update(settings.copy(notificationsEnabled = it)) })
         SettingsSliderItemWithLabel("圆角大小", settings.notificationRadius, 12f..48f, { update(settings.copy(notificationRadius = it)) }, steps = 17, enabled = settings.notificationsEnabled)
+    }
+    SettingsSection(topLabel = "悬浮通知柔光玻璃") {
+        NavigationSettingItem(
+            title = "自定义悬浮通知玻璃",
+            summary = if (settings.headsUpGlassParametersEnabled) {
+                "已启用自定义参数 · 普通与深色各 42 项"
+            } else {
+                "使用系统原始参数 · 可在二级页面逐项编辑"
+            },
+            onClick = onOpenHeadsUpGlassSettings,
+        )
+    }
+}
+
+private data class HeadsUpGlassParameterTarget(val dark: Boolean, val index: Int)
+private enum class HeadsUpGlassPresetDialogMode { Import, Export }
+
+@Composable
+private fun HeadsUpGlassSettingsPage(
+    padding: PaddingValues,
+    settings: ModifierSettings,
+    update: (ModifierSettings) -> Unit,
+    onOpenAdvanced: () -> Unit,
+    onOpenPresetDialog: (HeadsUpGlassPresetDialogMode) -> Unit,
+    onScroll: (Float) -> Unit,
+) = SettingsScrollPage(padding, onScroll) {
+    SettingsSection(topLabel = "使用方式") {
+        SettingsSwitchItem(
+            label = "启用自定义参数",
+            supportingText = "关闭后完整保留 SystemUI 的原始玻璃效果；修改后请重启 SystemUI。",
+            checked = settings.headsUpGlassParametersEnabled,
+            onCheckedChange = { update(settings.copy(headsUpGlassParametersEnabled = it)) },
+        )
+    }
+    SettingsSection(topLabel = "背景模糊") {
+        SettingsSwitchItem(
+            label = "自定义背景模糊半径",
+            supportingText = "独立于玻璃材质参数；关闭后保留 SystemUI 原始半径。修改后请重启 SystemUI。",
+            checked = settings.headsUpBackgroundBlurRadiusEnabled,
+            onCheckedChange = {
+                update(settings.copy(headsUpBackgroundBlurRadiusEnabled = it))
+            },
+        )
+        SettingsSliderItemWithLabel(
+            label = "背景模糊半径",
+            value = settings.headsUpBackgroundBlurRadius,
+            valueRange = 0f..200f,
+            onValueChange = {
+                update(settings.copy(headsUpBackgroundBlurRadius = it))
+            },
+            steps = 199,
+            enabled = settings.headsUpBackgroundBlurRadiusEnabled,
+            valueText = { "${it.toInt()} px" },
+        )
+    }
+    SettingsSection(topLabel = "预设") {
+        Text(
+            "白天、黑夜预设会把同一组参数应用到普通与深色效果；系统默认会关闭自定义并恢复原始参数。",
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            style = MiuixTheme.textStyles.footnote1,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Button(
+                onClick = {
+                    val values = HeadsUpGlassParameters.regularSerialized
+                    update(settings.copy(
+                        headsUpGlassParametersEnabled = true,
+                        headsUpGlassParameters = values,
+                        headsUpGlassDarkParameters = values,
+                    ))
+                },
+                modifier = Modifier.weight(1f),
+            ) { Text("统一白天") }
+            Button(
+                onClick = {
+                    val values = HeadsUpGlassParameters.darkSerialized
+                    update(settings.copy(
+                        headsUpGlassParametersEnabled = true,
+                        headsUpGlassParameters = values,
+                        headsUpGlassDarkParameters = values,
+                    ))
+                },
+                modifier = Modifier.weight(1f),
+            ) { Text("统一黑夜") }
+            Button(
+                onClick = {
+                    update(settings.copy(
+                        headsUpGlassParametersEnabled = false,
+                        headsUpGlassParameters = HeadsUpGlassParameters.regularSerialized,
+                        headsUpGlassDarkParameters = HeadsUpGlassParameters.darkSerialized,
+                    ))
+                },
+                modifier = Modifier.weight(1f),
+            ) { Text("系统默认") }
+        }
+    }
+    SettingsSection(topLabel = "高级设置") {
+        NavigationSettingItem(
+            title = "高级参数调整",
+            summary = "按字段分组调整普通与深色效果；拖动滑块微调，点击字段精确输入。",
+            enabled = settings.headsUpGlassParametersEnabled,
+            onClick = onOpenAdvanced,
+        )
+    }
+    SettingsSection(topLabel = "JSON 预设") {
+        SettingItem(
+            headlineText = "导入预设",
+            supportingText = "粘贴包含普通与深色 42 项参数的 JSON，并立即启用自定义参数。",
+            onClick = { onOpenPresetDialog(HeadsUpGlassPresetDialogMode.Import) },
+        )
+        SettingItem(
+            headlineText = "导出当前预设",
+            supportingText = "生成可复制的 JSON，便于保存或分享。",
+            onClick = { onOpenPresetDialog(HeadsUpGlassPresetDialogMode.Export) },
+        )
+    }
+}
+
+@Composable
+private fun GlobalBackgroundBlurSettingsPage(
+    padding: PaddingValues,
+    settings: ModifierSettings,
+    update: (ModifierSettings) -> Unit,
+    onScroll: (Float) -> Unit,
+) = SettingsScrollPage(padding, onScroll) {
+    SettingsSection(topLabel = "全局背景模糊") {
+        SettingsSliderItemWithLabel(
+            label = "全局背景模糊",
+            value = settings.globalBackgroundBlurPercent,
+            valueRange = 0f..200f,
+            onValueChange = {
+                update(settings.copy(globalBackgroundBlurPercent = it))
+            },
+            steps = 199,
+            valueText = { "${it.toInt()}%" },
+        )
+    }
+    SettingsSection(topLabel = "当前覆盖区域") {
+        Text(
+            "当前作用于通知中心、控制中心，以及从控制中心进入的融合设备中心整体背景，不改变通知卡片或悬浮通知。锁屏密码页背景目前暂不支持。0% 为完全透明、50% 为半透明、100% 为原始强度；高于 100% 会增强并受系统上限限制。重新加载相关界面后生效。",
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            style = MiuixTheme.textStyles.footnote1,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+        )
+    }
+}
+
+@Composable
+private fun HeadsUpGlassAdvancedSettingsPage(
+    padding: PaddingValues,
+    settings: ModifierSettings,
+    update: (ModifierSettings) -> Unit,
+    onEditParameter: (dark: Boolean, index: Int) -> Unit,
+    onScroll: (Float) -> Unit,
+) = SettingsScrollPage(padding, onScroll) {
+    Text(
+        "拖动滑块直接微调；点击字段名称或说明可输入精确数值。由于字段来自 Xiaomi 的内部材质协议，保留位建议维持 0，固定材质控制位建议维持 1。",
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        style = MiuixTheme.textStyles.footnote1,
+        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+    )
+    HeadsUpGlassSliderList(
+        title = "普通效果 · GlassEffect",
+        values = HeadsUpGlassParameters.parseSerializedOrDefault(
+            settings.headsUpGlassParameters,
+            HeadsUpGlassParameters.regularDefault,
+        ),
+        enabled = settings.headsUpGlassParametersEnabled,
+        onValueChange = { index, value ->
+            val values = HeadsUpGlassParameters.parseSerializedOrDefault(
+                settings.headsUpGlassParameters,
+                HeadsUpGlassParameters.regularDefault,
+            )
+            values[index] = value
+            update(settings.copy(headsUpGlassParameters = HeadsUpGlassParameters.serialize(values)))
+        },
+        onEdit = { onEditParameter(false, it) },
+    )
+    HeadsUpGlassSliderList(
+        title = "深色效果 · GlassDarkEffect",
+        values = HeadsUpGlassParameters.parseSerializedOrDefault(
+            settings.headsUpGlassDarkParameters,
+            HeadsUpGlassParameters.darkDefault,
+        ),
+        enabled = settings.headsUpGlassParametersEnabled,
+        onValueChange = { index, value ->
+            val values = HeadsUpGlassParameters.parseSerializedOrDefault(
+                settings.headsUpGlassDarkParameters,
+                HeadsUpGlassParameters.darkDefault,
+            )
+            values[index] = value
+            update(settings.copy(headsUpGlassDarkParameters = HeadsUpGlassParameters.serialize(values)))
+        },
+        onEdit = { onEditParameter(true, it) },
+    )
+}
+
+@Composable
+private fun HeadsUpGlassSliderList(
+    title: String,
+    values: FloatArray,
+    enabled: Boolean,
+    onValueChange: (Int, Float) -> Unit,
+    onEdit: (Int) -> Unit,
+) {
+    HeadsUpGlassParameters.groups.forEach { group ->
+        SettingsSection(topLabel = "$title · ${group.title}") {
+            group.indices.forEach { index ->
+                HeadsUpGlassSliderItem(
+                    index = index,
+                    value = values[index],
+                    enabled = enabled,
+                    onValueChange = { onValueChange(index, it) },
+                    onEdit = { onEdit(index) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeadsUpGlassSliderItem(
+    index: Int,
+    value: Float,
+    enabled: Boolean,
+    onValueChange: (Float) -> Unit,
+    onEdit: () -> Unit,
+) {
+    val parameter = HeadsUpGlassParameters.definitions[index]
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onEdit),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                Text("${index.toString().padStart(2, '0')} · ${parameter.label}", style = MiuixTheme.textStyles.body1)
+                Text(parameter.summary, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, style = MiuixTheme.textStyles.footnote1)
+            }
+            Text(
+                formatGlassParameter(value),
+                color = MiuixTheme.colorScheme.primary,
+                style = MiuixTheme.textStyles.body1,
+            )
+        }
+        DeadlinerSlider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = parameter.valueRange,
+            steps = 0,
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun HeadsUpGlassParameterDialog(
+    target: HeadsUpGlassParameterTarget?,
+    settings: ModifierSettings,
+    onDismissRequest: () -> Unit,
+    onSave: (ModifierSettings) -> Unit,
+) {
+    val currentTarget = target ?: return
+    val definition = HeadsUpGlassParameters.definitions[currentTarget.index]
+    val source = if (currentTarget.dark) {
+        HeadsUpGlassParameters.parseSerializedOrDefault(
+            settings.headsUpGlassDarkParameters,
+            HeadsUpGlassParameters.darkDefault,
+        )
+    } else {
+        HeadsUpGlassParameters.parseSerializedOrDefault(
+            settings.headsUpGlassParameters,
+            HeadsUpGlassParameters.regularDefault,
+        )
+    }
+    var draft by remember(currentTarget, settings.headsUpGlassParameters, settings.headsUpGlassDarkParameters) {
+        mutableStateOf(source[currentTarget.index].toString())
+    }
+    val parsedValue = draft.trim().toFloatOrNull()?.takeIf { !it.isNaN() && !it.isInfinite() }
+
+    DeadlinerMiuixDialog(
+        show = true,
+        title = "${currentTarget.index.toString().padStart(2, '0')} · ${definition.label}",
+        summary = "${if (currentTarget.dark) "深色" else "普通"}效果 · ${definition.summary}。仅修改当前项，直接传给 View.setMiGlass(float[])。",
+        onDismissRequest = onDismissRequest,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            MiuixTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = "数值",
+                singleLine = true,
+            )
+            if (parsedValue == null) {
+                Text(
+                    text = "请输入有效的有限数字。",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MiuixTheme.textStyles.footnote1,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TextButton("取消", onDismissRequest, modifier = Modifier.weight(1f))
+                Button(
+                    onClick = {
+                        source[currentTarget.index] = requireNotNull(parsedValue)
+                        onSave(
+                            if (currentTarget.dark) {
+                                settings.copy(
+                                    headsUpGlassDarkParameters = HeadsUpGlassParameters.serialize(source),
+                                )
+                            } else {
+                                settings.copy(
+                                    headsUpGlassParameters = HeadsUpGlassParameters.serialize(source),
+                                )
+                            },
+                        )
+                    },
+                    modifier = Modifier.weight(1f),
+                    enabled = parsedValue != null,
+                    colors = ButtonDefaults.buttonColorsPrimary(),
+                ) { Text("保存") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeadsUpGlassPresetDialog(
+    mode: HeadsUpGlassPresetDialogMode?,
+    settings: ModifierSettings,
+    onDismissRequest: () -> Unit,
+    onImport: (ModifierSettings) -> Unit,
+) {
+    val currentMode = mode ?: return
+    val context = LocalContext.current
+    var json by remember(currentMode, settings.headsUpGlassParameters, settings.headsUpGlassDarkParameters) {
+        mutableStateOf(
+            if (currentMode == HeadsUpGlassPresetDialogMode.Export) {
+                HeadsUpGlassPresetJson.export(settings)
+            } else {
+                ""
+            },
+        )
+    }
+    val imported = if (currentMode == HeadsUpGlassPresetDialogMode.Import && json.isNotBlank()) {
+        HeadsUpGlassPresetJson.import(json)
+    } else {
+        null
+    }
+    val isImport = currentMode == HeadsUpGlassPresetDialogMode.Import
+
+    DeadlinerMiuixDialog(
+        show = true,
+        title = if (isImport) "导入 JSON 预设" else "导出 JSON 预设",
+        summary = if (isImport) {
+            "仅接受 MyHyperModifier 的悬浮通知玻璃 JSON 格式；导入会覆盖普通与深色的全部 42 项并启用自定义参数。"
+        } else {
+            "已导出当前普通与深色参数。复制后可保存，也可在其他设备的导入页粘贴。"
+        },
+        onDismissRequest = onDismissRequest,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            MiuixTextField(
+                value = json,
+                onValueChange = { if (isImport) json = it },
+                modifier = Modifier.fillMaxWidth().height(260.dp),
+                label = "JSON",
+                readOnly = !isImport,
+                singleLine = false,
+                maxLines = Int.MAX_VALUE,
+            )
+            if (isImport && json.isNotBlank() && imported == null) {
+                Text(
+                    "JSON 格式无效，或普通 / 深色参数不是 42 个有限数字。",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MiuixTheme.textStyles.footnote1,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TextButton("取消", onDismissRequest, modifier = Modifier.weight(1f))
+                if (isImport) {
+                    Button(
+                        onClick = {
+                            val preset = requireNotNull(imported)
+                            onImport(
+                                settings.copy(
+                                    headsUpGlassParametersEnabled = true,
+                                    headsUpGlassParameters = HeadsUpGlassParameters.serialize(preset.regular),
+                                    headsUpGlassDarkParameters = HeadsUpGlassParameters.serialize(preset.dark),
+                                ),
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = imported != null,
+                        colors = ButtonDefaults.buttonColorsPrimary(),
+                    ) { Text("导入并启用") }
+                } else {
+                    Button(
+                        onClick = {
+                            val clipboard = context.getSystemService(ClipboardManager::class.java)
+                            clipboard.setPrimaryClip(ClipData.newPlainText("Heads-up glass preset", json))
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColorsPrimary(),
+                    ) { Text("复制 JSON") }
+                }
+            }
+        }
     }
 }
 
@@ -968,10 +1461,24 @@ private fun MarketSettingsPage(
                 !settings.marketMiuixIconsEnabled,
         )
         SettingsSwitchItem(
-            "显示底栏角标",
-            "同步应用商店原生 Tab 的红点和数字状态；关闭后不会清除应用内未读信息",
-            settings.marketNavigationBadgesEnabled,
-            { update(settings.copy(marketNavigationBadgesEnabled = it)) },
+            "隐藏“游戏” Tab",
+            "仅从柔光玻璃底栏隐藏；应用的原生路由仍保留",
+            settings.marketHideGamesTab,
+            { update(settings.copy(marketHideGamesTab = it)) },
+            enabled = settings.marketFloatingNavigationEnabled,
+        )
+        SettingsSwitchItem(
+            "隐藏“榜单” Tab",
+            "仅从柔光玻璃底栏隐藏；应用的原生路由仍保留",
+            settings.marketHideRankingsTab,
+            { update(settings.copy(marketHideRankingsTab = it)) },
+            enabled = settings.marketFloatingNavigationEnabled,
+        )
+        SettingsSwitchItem(
+            "隐藏“我的” Tab",
+            "仅从柔光玻璃底栏隐藏；应用的原生路由仍保留",
+            settings.marketHideProfileTab,
+            { update(settings.copy(marketHideProfileTab = it)) },
             enabled = settings.marketFloatingNavigationEnabled,
         )
     }
@@ -1003,14 +1510,6 @@ private fun MiHomeSettingsPage(
             settings.miHomeMiuixIconsEnabled,
             { update(settings.copy(miHomeMiuixIconsEnabled = it)) },
             enabled = settings.miHomeFloatingNavigationEnabled,
-        )
-        SettingsSwitchItem(
-            "使用单色图标",
-            "将应用原生图标固定为柔光玻璃底栏的默认前景色",
-            settings.miHomeMonochromeIconsEnabled,
-            { update(settings.copy(miHomeMonochromeIconsEnabled = it)) },
-            enabled = settings.miHomeFloatingNavigationEnabled &&
-                !settings.miHomeMiuixIconsEnabled,
         )
         SettingsSwitchItem(
             "显示底栏角标",
@@ -1160,7 +1659,7 @@ private fun SpotifySettingsPage(
         SettingsSwitchItem("AOD 隐藏设备切换", "隐藏 media_seamless；退出 Full AOD 后自动恢复", settings.hideAodSeamless, { update(settings.copy(hideAodSeamless = it)) })
     }
     SettingsSection(topLabel = "灵动岛媒体") {
-        SettingsSwitchItem("启用灵动岛高度", "expanded_island_height_dp · ${settings.islandHeight.toInt()} dp", settings.islandEnabled, { update(settings.copy(islandEnabled = it)) })
+        SettingsSwitchItem("启用灵动岛高度", "仅媒体灵动岛弹出时 · ${settings.islandHeight.toInt()} dp", settings.islandEnabled, { update(settings.copy(islandEnabled = it)) })
         SettingsSliderItemWithLabel("灵动岛高度", settings.islandHeight, 96f..200f, { update(settings.copy(islandHeight = it)) }, steps = 25, enabled = settings.islandEnabled)
         SettingsSwitchItem(
             "进度条光效",
@@ -1194,6 +1693,54 @@ private fun SpotifySettingsPage(
             settings.showLockscreenFingerprintIconOnAod,
             { update(settings.copy(showLockscreenFingerprintIconOnAod = it)) },
             enabled = settings.hideLockscreenFingerprintIcon,
+        )
+    }
+    SettingsSection(topLabel = "密码输入界面") {
+        SettingsSwitchItem(
+            "自定义密码页背景",
+            "暂时停用：已确认多个候选链路均未改变实际密码页渲染，保留入口等待后续重新定位。",
+            settings.lockscreenPasswordBackgroundBlurEnabled,
+            { update(settings.copy(lockscreenPasswordBackgroundBlurEnabled = it)) },
+            enabled = false,
+        )
+        SettingsSliderItemWithLabel(
+            label = "背景不透明度",
+            value = settings.lockscreenPasswordBackgroundOpacity * 100f,
+            valueRange = 0f..100f,
+            onValueChange = {
+                update(settings.copy(lockscreenPasswordBackgroundOpacity = it / 100f))
+            },
+            steps = 100,
+            valueText = { "${it.toInt()}%" },
+            enabled = false,
+        )
+        SettingsSwitchItem(
+            "数字按钮柔光玻璃",
+            "为 PIN 的 0–9 数字键添加 SystemUI 提供的 MiGlassCompat 柔光玻璃材质，不替换原有输入与验证逻辑。",
+            settings.lockscreenPinKeySoftGlassEnabled,
+            { update(settings.copy(lockscreenPinKeySoftGlassEnabled = it)) },
+        )
+        SettingsSliderItemWithLabel(
+            label = "按钮额外半径",
+            value = settings.lockscreenPinKeyGlassExtraRadius,
+            valueRange = 0f..16f,
+            onValueChange = {
+                update(settings.copy(lockscreenPinKeyGlassExtraRadius = it))
+            },
+            steps = 15,
+            valueText = { "${it.toInt()} dp" },
+            enabled = settings.lockscreenPinKeySoftGlassEnabled,
+        )
+        SettingsSliderItemWithLabel(
+            label = "按钮上下间距",
+            value = settings.lockscreenPinKeyGlassVerticalGap,
+            valueRange = 0f..32f,
+            onValueChange = {
+                update(settings.copy(lockscreenPinKeyGlassVerticalGap = it))
+            },
+            steps = 31,
+            valueText = { "${it.toInt()} dp" },
+            enabled = settings.lockscreenPinKeySoftGlassEnabled,
         )
     }
 }
@@ -1436,6 +1983,9 @@ private fun UpdateCheckDialog(
 private fun settingNumber(value: Float): String =
     if (value == value.toInt().toFloat()) value.toInt().toString()
     else String.format(Locale.US, "%.1f", value)
+
+private fun formatGlassParameter(value: Float): String =
+    String.format(Locale.US, "%.4f", value).trimEnd('0').trimEnd('.').ifEmpty { "0" }
 
 private fun Context.openDetailSettings(destination: SettingsDestination) {
     if (destination.isTopLevel) return

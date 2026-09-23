@@ -16,7 +16,8 @@ and Xiaomi Community 6.6.9.
 - Notification and Control Center corner radii: `28dp`.
 - MiLink Fusion Device Center card radius: `20dp`.
 - Media card heights: expanded `152dp`, collapsed `120dp`, full AOD `80dp`.
-- Dynamic Island expanded-media integer height: `160dp`.
+- Dynamic Island media height: `160dp`, scoped to the media island without changing other
+  Super Island cards.
 - Both media ConstraintSets receive the edited XML constraints, and the normal media seek bar is
   configured with the Island seek bar attributes.
 - `onFullAodStateChanged(true)` forces `action0` through `action4` to `GONE`.

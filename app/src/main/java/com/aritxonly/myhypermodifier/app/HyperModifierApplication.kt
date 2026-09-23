@@ -12,6 +12,7 @@ class HyperModifierApplication : Application(), XposedServiceHelper.OnServiceLis
     }
 
     override fun onServiceBind(service: XposedService) {
+        ModifierSettingsStore.onXposedServiceBound(this, service)
         ModuleFrameworkState.onServiceBound(
             apiVersion = service.apiVersion,
             frameworkName = service.frameworkName,
@@ -22,10 +23,12 @@ class HyperModifierApplication : Application(), XposedServiceHelper.OnServiceLis
     }
 
     override fun onServiceDied(service: XposedService) {
+        ModifierSettingsStore.onXposedServiceDied()
         ModuleFrameworkState.onServiceDied()
     }
 
     override fun onTerminate() {
+        ModifierSettingsStore.onXposedServiceDied()
         ModuleFrameworkState.onServiceDied()
         super.onTerminate()
     }

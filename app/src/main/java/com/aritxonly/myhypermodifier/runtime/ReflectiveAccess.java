@@ -108,6 +108,26 @@ final class ReflectiveAccess {
         }
     }
 
+    /** Sets a private field declared by a framework or SystemUI implementation class. */
+    static void setDeclaredFieldValue(Object target, String fieldName, Object value) {
+        if (target == null) {
+            return;
+        }
+        Class<?> type = target.getClass();
+        while (type != null) {
+            try {
+                Field field = type.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                field.set(target, value);
+                return;
+            } catch (NoSuchFieldException ignored) {
+                type = type.getSuperclass();
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                return;
+            }
+        }
+    }
+
     static void invokeBoolean(Object target, String name, boolean value) {
         try {
             target.getClass().getMethod(name, boolean.class).invoke(target, value);

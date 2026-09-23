@@ -7,6 +7,7 @@ import android.graphics.PixelFormat
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
+import android.graphics.drawable.Drawable
 import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
@@ -43,11 +44,8 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.findViewTreeLifecycleOwner
-import androidx.lifecycle.findViewTreeViewModelStoreOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
-import androidx.savedstate.findViewTreeSavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBar
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarDefaults
@@ -85,7 +83,7 @@ internal object MiHomeFloatingNavigation {
             pendingAttachments.containsKey(activity) || startupSuppressors.containsKey(activity)
         ) return
 
-        ModuleSettings.ensureLoaded()
+        ModuleSettings.loadImmediately(activity.applicationContext)
         if (ModuleSettings.isLoaded() && !ModuleSettings.miHomeFloatingNavigationEnabled) return
         val startupLayout = MiHomeEarlyImmersiveLayout(activity)
         startupSuppressors[activity] = EarlyBottomBarSuppressor(
@@ -104,7 +102,7 @@ internal object MiHomeFloatingNavigation {
             pendingAttachments.containsKey(activity)
         ) return
 
-        ModuleSettings.ensureLoaded()
+        ModuleSettings.markLoaded(activity.applicationContext)
         if (ModuleSettings.isLoaded() && !ModuleSettings.miHomeFloatingNavigationEnabled) {
             startupSuppressors.remove(activity)?.restore()
             return
@@ -119,7 +117,7 @@ internal object MiHomeFloatingNavigation {
                 startupSuppressors.remove(activity)?.restore()
                 return@Runnable
             }
-            ModuleSettings.ensureLoaded()
+            ModuleSettings.markLoaded(activity.applicationContext)
             if (ModuleSettings.isLoaded() && !ModuleSettings.miHomeFloatingNavigationEnabled) {
                 pendingAttachments.remove(activity)
                 startupSuppressors.remove(activity)?.restore()
@@ -169,6 +167,7 @@ private data class MiHomeTabState(
     val badge: Boolean,
     val icons: NativeTabIconPair?,
     val lottie: MiHomeLottieSpec?,
+    val staticIcon: MiHomeDrawableIconSpec?,
 )
 
 private data class MiHomeLottieSpec(
@@ -178,10 +177,27 @@ private data class MiHomeLottieSpec(
     val settleWithoutAnimationResourceId: Int?,
 )
 
+/** A cloneable, stateful copy of an OEM ImageView source that Compose can host directly. */
+private data class MiHomeDrawableIconSpec(
+    val constantState: Drawable.ConstantState,
+    val state: IntArray,
+    val level: Int,
+    val tint: android.content.res.ColorStateList?,
+    val tintMode: PorterDuff.Mode?,
+    val colorFilter: android.graphics.ColorFilter?,
+    val imageAlpha: Int,
+    val viewAlpha: Float,
+    val scaleType: ImageView.ScaleType,
+    val backgroundTint: android.content.res.ColorStateList?,
+    val backgroundTintMode: PorterDuff.Mode?,
+    val usesBackground: Boolean,
+)
+
 private data class MiHomeNavigationState(
     val tabs: List<MiHomeTabState> = emptyList(),
     val selectedIndex: Int = 0,
     val visible: Boolean = false,
+    val navigationLiftDp: Float = 24f,
 )
 
 private class MiHomeNavigationHost private constructor(
@@ -194,13 +210,20 @@ private class MiHomeNavigationHost private constructor(
     private var state by mutableStateOf(MiHomeNavigationState())
     private var backdropSnapshot by mutableStateOf<ViewBackdropSnapshot?>(null)
     private val owner = InjectedViewTreeOwner()
-    private val previousLifecycleOwner = overlayParent.findViewTreeLifecycleOwner()
-    private val previousViewModelStoreOwner = overlayParent.findViewTreeViewModelStoreOwner()
-    private val previousSavedStateRegistryOwner = overlayParent.findViewTreeSavedStateRegistryOwner()
     private val windowImmersion = InjectedBottomNavigationImmersion(activity)
     private val windowManager = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val composeView = ComposeView(activity)
     private var composeWindowAttached = false
+    private var lastNavigationDiagnostic: String? = null
+    private val settingsRefreshRunnable = object : Runnable {
+        override fun run() {
+            if (!composeWindowAttached || activity.isFinishing || activity.isDestroyed) return
+            if (!ModuleSettings.isLoaded()) {
+                ModuleSettings.markLoaded(activity.applicationContext)
+                composeView.postDelayed(this, 250L)
+            }
+        }
+    }
     private val sampler = ViewBackdropSampler(
         source = samplingView,
         excludedView = composeView,
@@ -233,14 +256,12 @@ private class MiHomeNavigationHost private constructor(
             sampler.requestCaptureBurst()
         }
         syncNativeState()
+        logNavigationGeometry()
         sampler.onFrame()
         true
     }
 
     init {
-        overlayParent.setViewTreeLifecycleOwner(owner)
-        overlayParent.setViewTreeViewModelStoreOwner(owner)
-        overlayParent.setViewTreeSavedStateRegistryOwner(owner)
         composeView.apply {
             setViewTreeLifecycleOwner(owner)
             setViewTreeViewModelStoreOwner(owner)
@@ -275,6 +296,12 @@ private class MiHomeNavigationHost private constructor(
         }
         windowManager.addView(composeView, overlayLayoutParams)
         composeWindowAttached = true
+        ModuleSettings.onLoaded {
+            composeView.post {
+                if (composeWindowAttached) syncNativeState()
+            }
+        }
+        composeView.post(settingsRefreshRunnable)
         composeView.addOnLayoutChangeListener(composeLayoutListener)
         overlayParent.viewTreeObserver.addOnPreDrawListener(preDrawListener)
         startupCaptureRunnables.forEachIndexed { index, runnable ->
@@ -286,6 +313,7 @@ private class MiHomeNavigationHost private constructor(
 
     fun dispose() {
         sampler.dispose()
+        composeView.removeCallbacks(settingsRefreshRunnable)
         startupCaptureRunnables.forEach(composeView::removeCallbacks)
         composeView.removeOnLayoutChangeListener(composeLayoutListener)
         contentBottomPadding.dispose()
@@ -300,9 +328,6 @@ private class MiHomeNavigationHost private constructor(
         nativeTabLayout.importantForAccessibility = originalBottomAccessibility
         restoreContentReservation()
         windowImmersion.dispose()
-        overlayParent.setViewTreeLifecycleOwner(previousLifecycleOwner)
-        overlayParent.setViewTreeViewModelStoreOwner(previousViewModelStoreOwner)
-        overlayParent.setViewTreeSavedStateRegistryOwner(previousSavedStateRegistryOwner)
         owner.dispose()
     }
 
@@ -376,12 +401,13 @@ private class MiHomeNavigationHost private constructor(
         val next = MiHomeNavigationState(
             tabs = tabs.mapIndexed { index, tab ->
                 val cachedIcon = state.tabs.getOrNull(index)?.takeUnless { shouldRefreshIcons }
-                    ?.let { MiHomeNativeIcon(it.icons, it.lottie) }
+                    ?.let { MiHomeNativeIcon(it.icons, it.lottie, it.staticIcon) }
                 tab.readState(index, index == selected, cachedIcon)
             },
             selectedIndex = selected,
             visible = nativeTabLayout.visibility == View.VISIBLE &&
                 nativeTabLayout.isShown && tabs.size > 1,
+            navigationLiftDp = ModuleSettings.hyperGlassifyHiddenNavigationLift.coerceIn(0f, 48f),
         )
         val selectionChanged = next.selectedIndex != state.selectedIndex
         val becameVisible = next.visible && !state.visible
@@ -390,6 +416,20 @@ private class MiHomeNavigationHost private constructor(
         updateNativeChromeReplacement(next.visible)
         composeView.visibility = if (next.visible) View.VISIBLE else View.GONE
         if (selectionChanged || becameVisible) sampler.requestCaptureBurst()
+    }
+
+    private fun logNavigationGeometry() {
+        if (!composeWindowAttached || !state.visible) return
+        val location = IntArray(2)
+        composeView.getLocationOnScreen(location)
+        val message = "MiHomeNav geometry lift=${state.navigationLiftDp} loaded=${ModuleSettings.isLoaded()} " +
+            "settings=${ModuleSettings.loadStatus()} " +
+            "panelY=${location[1]} panelHeight=${composeView.height} " +
+            "panelNavInset=${composeView.rootWindowInsets?.systemWindowInsetBottom ?: -1}"
+        if (message != lastNavigationDiagnostic) {
+            lastNavigationDiagnostic = message
+            Log.i("MyHyperModifier", message)
+        }
     }
 
     private fun setBackdropScreenBounds(screenBounds: ViewBackdropBounds) {
@@ -421,6 +461,7 @@ private class MiHomeNavigationHost private constructor(
             badge = ModuleSettings.miHomeNavigationBadgesEnabled && badge,
             icons = nativeIcon.icons,
             lottie = nativeIcon.lottie,
+            staticIcon = nativeIcon.staticIcon,
         )
     }
 
@@ -551,13 +592,18 @@ private fun MiHomeNavigationContent(
     val materialColors = remember(dark) { MhmPresetColors.material(dark) }
     val miuixColors = remember(dark, materialColors) { MhmPresetColors.miuix(materialColors, dark) }
     val backdrop = rememberLayerBackdrop()
-    val hiddenNavigationLift = hyperGlassifyHiddenNavigationLift()
+    val hiddenNavigationLift = state.navigationLiftDp.coerceIn(0f, 48f).dp
     val items = state.tabs.mapIndexed { index, tab ->
         val useMiuixIcons = ModuleSettings.miHomeMiuixIconsEnabled
-        val nativeIcons = tab.icons?.takeUnless { useMiuixIcons }
+        // Mi Home's glass navigation has one foreground-color contract. Keeping this fixed also
+        // makes the Marketplace ImageView follow selected/unselected tint just like every tab.
+        val monochromeEnabled = true
+        // Marketplace uses the original static ImageView directly. This avoids re-rasterizing
+        // its drawable, which is what made that OEM icon disappear in the Compose copy.
+        val originalMarketplaceIcon = tab.staticIcon?.takeIf { tab.isMarketplace() }
+        val nativeIcons = tab.icons?.takeUnless { useMiuixIcons || originalMarketplaceIcon != null }
         val nativeLottie = tab.lottie?.takeUnless { useMiuixIcons }
-        val monochrome = (nativeIcons != null || nativeLottie != null) &&
-            ModuleSettings.miHomeMonochromeIconsEnabled
+        val monochrome = (nativeIcons != null || nativeLottie != null) && monochromeEnabled
         val selectedPainter = nativeIcons?.let {
             val bitmap = if (monochrome) it.selectedMonochrome else it.selected
             remember(bitmap) { BitmapPainter(bitmap) }
@@ -567,7 +613,9 @@ private fun MiHomeNavigationContent(
             remember(bitmap) { BitmapPainter(bitmap) }
         } ?: rememberVectorPainter(miHomeIcon(tab, index))
         val liveIconContent: (@Composable (Boolean, Color) -> Unit)? =
-            nativeLottie?.let { spec ->
+            originalMarketplaceIcon?.let { spec ->
+                { _, tint -> MiHomeStaticIcon(spec, tint) }
+            } ?: nativeLottie?.let { spec ->
                 { selected, tint ->
                     MiHomeLottieIcon(
                         spec = spec,
@@ -581,7 +629,9 @@ private fun MiHomeNavigationContent(
             label = tab.label,
             selectedIcon = selectedPainter,
             unselectedIcon = unselectedPainter,
-            preserveOriginalIconColors = (nativeIcons != null || nativeLottie != null) && !monochrome,
+            preserveOriginalIconColors =
+                (nativeIcons != null || nativeLottie != null || originalMarketplaceIcon != null) &&
+                    !monochrome,
             badge = if (tab.badge) "" else null,
             iconContent = liveIconContent,
         )
@@ -630,6 +680,12 @@ private fun MiHomeNavigationContent(
     }
 }
 
+private fun MiHomeTabState.isMarketplace(): Boolean {
+    val identity = "$tag $label".lowercase()
+    return identity.contains("discover") || identity.contains("shop") ||
+        identity.contains("发现") || identity.contains("商城")
+}
+
 private fun miHomeIcon(tab: MiHomeTabState, index: Int): ImageVector {
     val identity = "${tab.tag} ${tab.label}".lowercase()
     return when {
@@ -637,8 +693,7 @@ private fun miHomeIcon(tab: MiHomeTabState, index: Int): ImageVector {
             identity.contains("设备") || identity.contains("首页") -> MiuixIcons.Home
         identity.contains("smart") || identity.contains("scene") ||
             identity.contains("智能") || identity.contains("场景") -> MiuixIcons.All
-        identity.contains("discover") || identity.contains("shop") ||
-            identity.contains("发现") || identity.contains("商城") -> MiuixIcons.AppRecording
+        tab.isMarketplace() -> MiuixIcons.AppRecording
         identity.contains("mine") || identity.contains("profile") ||
             identity.contains("我的") -> MiuixIcons.ContactsCircle
         else -> listOf(
@@ -684,6 +739,7 @@ private fun Any.readField(name: String): Any? {
 private data class MiHomeNativeIcon(
     val icons: NativeTabIconPair?,
     val lottie: MiHomeLottieSpec?,
+    val staticIcon: MiHomeDrawableIconSpec?,
 )
 
 private class MiHomeTabIconSnapshotter(activity: Activity) {
@@ -697,6 +753,13 @@ private class MiHomeTabIconSnapshotter(activity: Activity) {
             ?: animationViewId.takeIf { it != 0 }?.let(tab::findViewById)
         val staticView = (tab.readField("mImageView") as? ImageView)
             ?: staticViewId.takeIf { it != 0 }?.let(tab::findViewById)
+        // Some Marketplace builds do not retain the icon in either named field. Fall back to
+        // the actual drawable-bearing ImageView in this tab rather than substituting an icon.
+        val discoveredView = findNativeTabIconView(
+            root = tab,
+            preferredId = staticViewId,
+            excludedIds = emptySet(),
+        )
         // DeviceAnimTabView owns separate Lottie files for selected and unselected states. Keep
         // both: caching only getCurrentJson() freezes the Compose copy in whichever state happened
         // to be active when it was first read.
@@ -721,7 +784,20 @@ private class MiHomeTabIconSnapshotter(activity: Activity) {
         val unselectedResource = unselectedCandidate.rawResourceOrNull()
             ?: currentResource.takeIf { !selected }
             ?: loadedResource
-        if (animationView != null && selectedResource != null && unselectedResource != null) {
+        val source = listOfNotNull(animationView, staticView, discoveredView)
+            .distinct()
+            .filter { it.drawable != null || it.background != null }
+            .maxByOrNull { view ->
+                var score = if (view.visibility == View.VISIBLE) 10_000 else 0
+                if (view.isMiHomeLottieRenderer()) score += 1_000
+                score + maxOf(1, view.width) * maxOf(1, view.height)
+            }
+        // Resource IDs alone do not identify Lottie: static Marketplace tabs expose matching
+        // fields on some versions. Only invoke the Lottie renderer when the source View actually
+        // exposes its animation API.
+        if (animationView != null && animationView.isMiHomeLottieRenderer() &&
+            selectedResource != null && unselectedResource != null
+        ) {
             return MiHomeNativeIcon(
                 icons = null,
                 lottie = MiHomeLottieSpec(
@@ -730,18 +806,13 @@ private class MiHomeTabIconSnapshotter(activity: Activity) {
                     unselectedResourceId = unselectedResource,
                     settleWithoutAnimationResourceId = ordinaryUnselected,
                 ),
+                staticIcon = null,
             )
         }
-        val source = listOfNotNull(animationView, staticView)
-            .filter { it.drawable != null || it.background != null }
-            .maxByOrNull { view ->
-                var score = if (view.visibility == View.VISIBLE) 10_000 else 0
-                if (view.javaClass.name.contains("LottieAnimationView")) score += 1_000
-                score + maxOf(1, view.width) * maxOf(1, view.height)
-            }
         return MiHomeNativeIcon(
             icons = delegate.snapshot(tab, source, selected),
             lottie = null,
+            staticIcon = source?.toMiHomeDrawableIconSpec(),
         )
     }
 
@@ -750,6 +821,80 @@ private class MiHomeTabIconSnapshotter(activity: Activity) {
             resources.getResourceTypeName(resourceId) == "raw"
         }.getOrDefault(false)
     }
+}
+
+private fun ImageView.isMiHomeLottieRenderer(): Boolean {
+    if (javaClass.name.contains("LottieAnimationView")) return true
+    var type: Class<*>? = javaClass
+    while (type != null) {
+        if (type.declaredMethods.any { method ->
+            method.name == "setAnimation" && method.parameterTypes.size == 1 &&
+                method.parameterTypes[0] == Int::class.javaPrimitiveType
+        }) return true
+        type = type.superclass
+    }
+    return false
+}
+
+private fun ImageView.toMiHomeDrawableIconSpec(): MiHomeDrawableIconSpec? {
+    val source = drawable ?: background ?: return null
+    val state = source.constantState ?: return null
+    return MiHomeDrawableIconSpec(
+        constantState = state,
+        state = source.state.clone(),
+        level = source.level,
+        tint = imageTintList,
+        tintMode = imageTintMode,
+        colorFilter = colorFilter,
+        imageAlpha = imageAlpha,
+        viewAlpha = alpha,
+        scaleType = scaleType,
+        backgroundTint = backgroundTintList,
+        backgroundTintMode = backgroundTintMode,
+        usesBackground = drawable == null,
+    )
+}
+
+@Composable
+private fun MiHomeStaticIcon(spec: MiHomeDrawableIconSpec, tint: Color) {
+    AndroidView(
+        factory = { context ->
+            ImageView(context).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(MiuixFloatingTabBarDefaults.TabIconSize),
+        update = { imageView ->
+            val copy = spec.constantState.newDrawable(imageView.resources, imageView.context.theme)
+                .mutate()
+                .apply {
+                    state = spec.state
+                    level = spec.level
+                }
+            // The original Drawable supplies the correct shape and state, while the glass bar
+            // owns its foreground color. Applying the live tint to both drawable routes keeps
+            // Marketplace in sync whether Mi Home placed the icon in src or background.
+            val colorFilter = PorterDuffColorFilter(tint.toArgb(), PorterDuff.Mode.SRC_IN)
+            copy.colorFilter = colorFilter
+            imageView.imageTintList = android.content.res.ColorStateList.valueOf(tint.toArgb())
+            imageView.imageTintMode = PorterDuff.Mode.SRC_IN
+            imageView.colorFilter = colorFilter
+            imageView.imageAlpha = spec.imageAlpha
+            imageView.alpha = spec.viewAlpha
+            imageView.scaleType = spec.scaleType
+            imageView.backgroundTintList = android.content.res.ColorStateList.valueOf(tint.toArgb())
+            imageView.backgroundTintMode = PorterDuff.Mode.SRC_IN
+            if (spec.usesBackground) {
+                imageView.setImageDrawable(null)
+                imageView.background = copy
+            } else {
+                imageView.background = null
+                imageView.setImageDrawable(copy)
+            }
+        },
+    )
 }
 
 private fun Any.invokeNoArg(name: String): Any? {

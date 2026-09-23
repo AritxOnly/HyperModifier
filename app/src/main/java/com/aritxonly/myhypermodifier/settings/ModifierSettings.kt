@@ -1,11 +1,22 @@
 package com.aritxonly.myhypermodifier
 
 import android.content.Context
+import android.content.SharedPreferences
+import android.net.Uri
 import android.os.Bundle
+import android.util.Log
+import io.github.libxposed.service.XposedService
 
 data class ModifierSettings(
     val notificationsEnabled: Boolean = false,
     val notificationRadius: Float = 28f,
+    val headsUpGlassParametersEnabled: Boolean = false,
+    val headsUpGlassParameters: String = HeadsUpGlassParameters.regularSerialized,
+    val headsUpGlassDarkParameters: String = HeadsUpGlassParameters.darkSerialized,
+    val headsUpBackgroundBlurRadiusEnabled: Boolean = false,
+    val headsUpBackgroundBlurRadius: Float = 60f,
+    /** Multiplies the stock blur radius for shared SystemUI background surfaces. */
+    val globalBackgroundBlurPercent: Float = 100f,
     val controlCenterEnabled: Boolean = false,
     val controlCenterRadius: Float = 28f,
     val advancedControlCenterCorners: Boolean = false,
@@ -30,6 +41,13 @@ data class ModifierSettings(
     val sinkLockscreenNotificationsForFingerprint: Boolean = false,
     val hideLockscreenFingerprintIcon: Boolean = false,
     val showLockscreenFingerprintIconOnAod: Boolean = false,
+    val lockscreenPasswordBackgroundBlurEnabled: Boolean = false,
+    /** Absolute value returned by SystemUI's wallpaperBlurRatio coroutine, from 0.0 to 1.0. */
+    val lockscreenPasswordBackgroundOpacity: Float = 0f,
+    val lockscreenPasswordBackgroundFollowShadeBlend: Boolean = true,
+    val lockscreenPinKeySoftGlassEnabled: Boolean = false,
+    val lockscreenPinKeyGlassExtraRadius: Float = 6f,
+    val lockscreenPinKeyGlassVerticalGap: Float = 16f,
     val statusBarNetworkTypeEnabled: Boolean = false,
     val statusBarNetworkTypeSize: Float = 13.5f,
     val statusBarNetworkTypeBold: Boolean = true,
@@ -41,10 +59,13 @@ data class ModifierSettings(
     val marketFloatingNavigationEnabled: Boolean = true,
     val marketMiuixIconsEnabled: Boolean = false,
     val marketMonochromeIconsEnabled: Boolean = true,
-    val marketNavigationBadgesEnabled: Boolean = true,
+    // Application Store badges stay hidden in the glass navigation by design.
+    val marketNavigationBadgesEnabled: Boolean = false,
+    val marketHideGamesTab: Boolean = false,
+    val marketHideRankingsTab: Boolean = false,
+    val marketHideProfileTab: Boolean = false,
     val miHomeFloatingNavigationEnabled: Boolean = true,
     val miHomeMiuixIconsEnabled: Boolean = false,
-    val miHomeMonochromeIconsEnabled: Boolean = true,
     val miHomeNavigationBadgesEnabled: Boolean = true,
     val amapFloatingNavigationEnabled: Boolean = true,
     val amapMiuixIconsEnabled: Boolean = false,
@@ -83,6 +104,9 @@ object ModifierSettingsPresets {
         sinkLockscreenNotificationsForFingerprint = false,
         hideLockscreenFingerprintIcon = false,
         showLockscreenFingerprintIconOnAod = false,
+        lockscreenPasswordBackgroundBlurEnabled = false,
+        lockscreenPasswordBackgroundFollowShadeBlend = true,
+        lockscreenPinKeySoftGlassEnabled = false,
         statusBarNetworkTypeEnabled = false,
         xiaomiHealthFloatingNavigationEnabled = false,
         xiaomiHealthMiuixIconsEnabled = false,
@@ -91,9 +115,11 @@ object ModifierSettingsPresets {
         marketMiuixIconsEnabled = false,
         marketMonochromeIconsEnabled = false,
         marketNavigationBadgesEnabled = false,
+        marketHideGamesTab = false,
+        marketHideRankingsTab = false,
+        marketHideProfileTab = false,
         miHomeFloatingNavigationEnabled = false,
         miHomeMiuixIconsEnabled = false,
-        miHomeMonochromeIconsEnabled = false,
         miHomeNavigationBadgesEnabled = false,
         amapFloatingNavigationEnabled = false,
         amapMiuixIconsEnabled = false,
@@ -112,10 +138,18 @@ object ModifierSettingsPresets {
 }
 
 object ModifierSettingsStore {
+    private const val TAG = "MyHyperModifier"
     const val PREFS = "modifier_settings"
     const val METHOD_GET = "get_settings"
     private const val KEY_NOTIFICATIONS = "notifications_enabled"
     private const val KEY_NOTIFICATION_RADIUS = "notification_radius"
+    private const val KEY_HEADS_UP_GLASS_PARAMETERS_ENABLED = "heads_up_glass_parameters_enabled"
+    private const val KEY_HEADS_UP_GLASS_PARAMETERS = "heads_up_glass_parameters"
+    private const val KEY_HEADS_UP_GLASS_DARK_PARAMETERS = "heads_up_glass_dark_parameters"
+    private const val KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS_ENABLED =
+        "heads_up_background_blur_radius_enabled"
+    private const val KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS = "heads_up_background_blur_radius"
+    private const val KEY_GLOBAL_BACKGROUND_BLUR_PERCENT = "global_background_blur_percent"
     private const val KEY_CONTROL_CENTER = "control_center_enabled"
     private const val KEY_CONTROL_CENTER_RADIUS = "control_center_radius"
     private const val KEY_ADVANCED_CONTROL_CENTER_CORNERS = "advanced_control_center_corners"
@@ -142,6 +176,18 @@ object ModifierSettingsStore {
     private const val KEY_HIDE_LOCKSCREEN_FINGERPRINT_ICON = "hide_lockscreen_fingerprint_icon"
     private const val KEY_SHOW_LOCKSCREEN_FINGERPRINT_ICON_ON_AOD =
         "show_lockscreen_fingerprint_icon_on_aod"
+    private const val KEY_LOCKSCREEN_PASSWORD_BACKGROUND_BLUR_ENABLED =
+        "lockscreen_password_background_blur_enabled"
+    private const val KEY_LOCKSCREEN_PASSWORD_BACKGROUND_OPACITY =
+        "lockscreen_password_background_opacity"
+    private const val KEY_LOCKSCREEN_PASSWORD_BACKGROUND_FOLLOW_SHADE_BLEND =
+        "lockscreen_password_background_follow_shade_blend"
+    private const val KEY_LOCKSCREEN_PIN_KEY_SOFT_GLASS_ENABLED =
+        "lockscreen_pin_key_soft_glass_enabled"
+    private const val KEY_LOCKSCREEN_PIN_KEY_GLASS_EXTRA_RADIUS =
+        "lockscreen_pin_key_glass_extra_radius"
+    private const val KEY_LOCKSCREEN_PIN_KEY_GLASS_VERTICAL_GAP =
+        "lockscreen_pin_key_glass_vertical_gap"
     private const val KEY_STATUS_BAR_NETWORK_TYPE_ENABLED = "status_bar_network_type_enabled"
     private const val KEY_STATUS_BAR_NETWORK_TYPE_SIZE = "status_bar_network_type_size"
     private const val KEY_STATUS_BAR_NETWORK_TYPE_BOLD = "status_bar_network_type_bold"
@@ -157,6 +203,9 @@ object ModifierSettingsStore {
     private const val KEY_MARKET_MIUIX_ICONS = "market_miuix_icons_enabled"
     private const val KEY_MARKET_MONOCHROME_ICONS = "market_monochrome_icons_enabled"
     private const val KEY_MARKET_NAVIGATION_BADGES = "market_navigation_badges_enabled"
+    private const val KEY_MARKET_HIDE_GAMES_TAB = "market_hide_games_tab"
+    private const val KEY_MARKET_HIDE_RANKINGS_TAB = "market_hide_rankings_tab"
+    private const val KEY_MARKET_HIDE_PROFILE_TAB = "market_hide_profile_tab"
     private const val KEY_MI_HOME_FLOATING_NAVIGATION = "mi_home_floating_navigation_enabled"
     private const val KEY_MI_HOME_MIUIX_ICONS = "mi_home_miuix_icons_enabled"
     private const val KEY_MI_HOME_MONOCHROME_ICONS = "mi_home_monochrome_icons_enabled"
@@ -185,6 +234,34 @@ object ModifierSettingsStore {
         return ModifierSettings(
             notificationsEnabled = prefs.getBoolean(KEY_NOTIFICATIONS, false),
             notificationRadius = prefs.getFloat(KEY_NOTIFICATION_RADIUS, 28f),
+            headsUpGlassParametersEnabled = prefs.getBoolean(
+                KEY_HEADS_UP_GLASS_PARAMETERS_ENABLED,
+                false,
+            ),
+            headsUpGlassParameters = HeadsUpGlassParameters.serialize(
+                HeadsUpGlassParameters.parseSerializedOrDefault(
+                    prefs.getString(KEY_HEADS_UP_GLASS_PARAMETERS, null),
+                    HeadsUpGlassParameters.regularDefault,
+                ),
+            ),
+            headsUpGlassDarkParameters = HeadsUpGlassParameters.serialize(
+                HeadsUpGlassParameters.parseSerializedOrDefault(
+                    prefs.getString(KEY_HEADS_UP_GLASS_DARK_PARAMETERS, null),
+                    HeadsUpGlassParameters.darkDefault,
+                ),
+            ),
+            headsUpBackgroundBlurRadiusEnabled = prefs.getBoolean(
+                KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS_ENABLED,
+                false,
+            ),
+            headsUpBackgroundBlurRadius = prefs.getFloat(
+                KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS,
+                60f,
+            ).coerceIn(0f, 200f),
+            globalBackgroundBlurPercent = prefs.getFloat(
+                KEY_GLOBAL_BACKGROUND_BLUR_PERCENT,
+                100f,
+            ).coerceIn(0f, 200f),
             controlCenterEnabled = prefs.getBoolean(KEY_CONTROL_CENTER, false),
             controlCenterRadius = prefs.getFloat(KEY_CONTROL_CENTER_RADIUS, 28f),
             advancedControlCenterCorners = prefs.getBoolean(KEY_ADVANCED_CONTROL_CENTER_CORNERS, false),
@@ -215,6 +292,30 @@ object ModifierSettingsStore {
                 KEY_SHOW_LOCKSCREEN_FINGERPRINT_ICON_ON_AOD,
                 false,
             ),
+            lockscreenPasswordBackgroundBlurEnabled = prefs.getBoolean(
+                KEY_LOCKSCREEN_PASSWORD_BACKGROUND_BLUR_ENABLED,
+                false,
+            ),
+            lockscreenPasswordBackgroundOpacity = prefs.getFloat(
+                KEY_LOCKSCREEN_PASSWORD_BACKGROUND_OPACITY,
+                0f,
+            ).coerceIn(0f, 1f),
+            lockscreenPasswordBackgroundFollowShadeBlend = prefs.getBoolean(
+                KEY_LOCKSCREEN_PASSWORD_BACKGROUND_FOLLOW_SHADE_BLEND,
+                true,
+            ),
+            lockscreenPinKeySoftGlassEnabled = prefs.getBoolean(
+                KEY_LOCKSCREEN_PIN_KEY_SOFT_GLASS_ENABLED,
+                false,
+            ),
+            lockscreenPinKeyGlassExtraRadius = prefs.getFloat(
+                KEY_LOCKSCREEN_PIN_KEY_GLASS_EXTRA_RADIUS,
+                6f,
+            ).coerceIn(0f, 16f),
+            lockscreenPinKeyGlassVerticalGap = prefs.getFloat(
+                KEY_LOCKSCREEN_PIN_KEY_GLASS_VERTICAL_GAP,
+                16f,
+            ).coerceIn(0f, 32f),
             statusBarNetworkTypeEnabled = prefs.getBoolean(KEY_STATUS_BAR_NETWORK_TYPE_ENABLED, false),
             statusBarNetworkTypeSize = prefs.getFloat(KEY_STATUS_BAR_NETWORK_TYPE_SIZE, 13.5f),
             statusBarNetworkTypeBold = prefs.getBoolean(KEY_STATUS_BAR_NETWORK_TYPE_BOLD, true),
@@ -235,10 +336,12 @@ object ModifierSettingsStore {
             marketFloatingNavigationEnabled = prefs.getBoolean(KEY_MARKET_FLOATING_NAVIGATION, true),
             marketMiuixIconsEnabled = prefs.getBoolean(KEY_MARKET_MIUIX_ICONS, false),
             marketMonochromeIconsEnabled = prefs.getBoolean(KEY_MARKET_MONOCHROME_ICONS, true),
-            marketNavigationBadgesEnabled = prefs.getBoolean(KEY_MARKET_NAVIGATION_BADGES, true),
+            marketNavigationBadgesEnabled = false,
+            marketHideGamesTab = prefs.getBoolean(KEY_MARKET_HIDE_GAMES_TAB, false),
+            marketHideRankingsTab = prefs.getBoolean(KEY_MARKET_HIDE_RANKINGS_TAB, false),
+            marketHideProfileTab = prefs.getBoolean(KEY_MARKET_HIDE_PROFILE_TAB, false),
             miHomeFloatingNavigationEnabled = prefs.getBoolean(KEY_MI_HOME_FLOATING_NAVIGATION, true),
             miHomeMiuixIconsEnabled = prefs.getBoolean(KEY_MI_HOME_MIUIX_ICONS, false),
-            miHomeMonochromeIconsEnabled = prefs.getBoolean(KEY_MI_HOME_MONOCHROME_ICONS, true),
             miHomeNavigationBadgesEnabled = prefs.getBoolean(KEY_MI_HOME_NAVIGATION_BADGES, true),
             amapFloatingNavigationEnabled = prefs.getBoolean(KEY_AMAP_FLOATING_NAVIGATION, true),
             amapMiuixIconsEnabled = prefs.getBoolean(KEY_AMAP_MIUIX_ICONS, false),
@@ -275,6 +378,40 @@ object ModifierSettingsStore {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_NOTIFICATIONS, value.notificationsEnabled)
             .putFloat(KEY_NOTIFICATION_RADIUS, value.notificationRadius)
+            .putBoolean(
+                KEY_HEADS_UP_GLASS_PARAMETERS_ENABLED,
+                value.headsUpGlassParametersEnabled,
+            )
+            .putString(
+                KEY_HEADS_UP_GLASS_PARAMETERS,
+                HeadsUpGlassParameters.serialize(
+                    HeadsUpGlassParameters.parseSerializedOrDefault(
+                        value.headsUpGlassParameters,
+                        HeadsUpGlassParameters.regularDefault,
+                    ),
+                ),
+            )
+            .putString(
+                KEY_HEADS_UP_GLASS_DARK_PARAMETERS,
+                HeadsUpGlassParameters.serialize(
+                    HeadsUpGlassParameters.parseSerializedOrDefault(
+                        value.headsUpGlassDarkParameters,
+                        HeadsUpGlassParameters.darkDefault,
+                    ),
+                ),
+            )
+            .putBoolean(
+                KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS_ENABLED,
+                value.headsUpBackgroundBlurRadiusEnabled,
+            )
+            .putFloat(
+                KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS,
+                value.headsUpBackgroundBlurRadius.coerceIn(0f, 200f),
+            )
+            .putFloat(
+                KEY_GLOBAL_BACKGROUND_BLUR_PERCENT,
+                value.globalBackgroundBlurPercent.coerceIn(0f, 200f),
+            )
             .remove("notification_background_effect_enabled")
             .remove("notification_background_blur_radius")
             .remove("notification_background_dim_amount")
@@ -311,6 +448,30 @@ object ModifierSettingsStore {
                 KEY_SHOW_LOCKSCREEN_FINGERPRINT_ICON_ON_AOD,
                 value.showLockscreenFingerprintIconOnAod,
             )
+            .putBoolean(
+                KEY_LOCKSCREEN_PASSWORD_BACKGROUND_BLUR_ENABLED,
+                value.lockscreenPasswordBackgroundBlurEnabled,
+            )
+            .putFloat(
+                KEY_LOCKSCREEN_PASSWORD_BACKGROUND_OPACITY,
+                value.lockscreenPasswordBackgroundOpacity,
+            )
+            .putBoolean(
+                KEY_LOCKSCREEN_PASSWORD_BACKGROUND_FOLLOW_SHADE_BLEND,
+                value.lockscreenPasswordBackgroundFollowShadeBlend,
+            )
+            .putBoolean(
+                KEY_LOCKSCREEN_PIN_KEY_SOFT_GLASS_ENABLED,
+                value.lockscreenPinKeySoftGlassEnabled,
+            )
+            .putFloat(
+                KEY_LOCKSCREEN_PIN_KEY_GLASS_EXTRA_RADIUS,
+                value.lockscreenPinKeyGlassExtraRadius,
+            )
+            .putFloat(
+                KEY_LOCKSCREEN_PIN_KEY_GLASS_VERTICAL_GAP,
+                value.lockscreenPinKeyGlassVerticalGap,
+            )
             .putBoolean(KEY_STATUS_BAR_NETWORK_TYPE_ENABLED, value.statusBarNetworkTypeEnabled)
             .putFloat(KEY_STATUS_BAR_NETWORK_TYPE_SIZE, value.statusBarNetworkTypeSize)
             .putBoolean(KEY_STATUS_BAR_NETWORK_TYPE_BOLD, value.statusBarNetworkTypeBold)
@@ -331,10 +492,13 @@ object ModifierSettingsStore {
             .putBoolean(KEY_MARKET_FLOATING_NAVIGATION, value.marketFloatingNavigationEnabled)
             .putBoolean(KEY_MARKET_MIUIX_ICONS, value.marketMiuixIconsEnabled)
             .putBoolean(KEY_MARKET_MONOCHROME_ICONS, value.marketMonochromeIconsEnabled)
-            .putBoolean(KEY_MARKET_NAVIGATION_BADGES, value.marketNavigationBadgesEnabled)
+            .remove(KEY_MARKET_NAVIGATION_BADGES)
+            .putBoolean(KEY_MARKET_HIDE_GAMES_TAB, value.marketHideGamesTab)
+            .putBoolean(KEY_MARKET_HIDE_RANKINGS_TAB, value.marketHideRankingsTab)
+            .putBoolean(KEY_MARKET_HIDE_PROFILE_TAB, value.marketHideProfileTab)
             .putBoolean(KEY_MI_HOME_FLOATING_NAVIGATION, value.miHomeFloatingNavigationEnabled)
             .putBoolean(KEY_MI_HOME_MIUIX_ICONS, value.miHomeMiuixIconsEnabled)
-            .putBoolean(KEY_MI_HOME_MONOCHROME_ICONS, value.miHomeMonochromeIconsEnabled)
+            .remove(KEY_MI_HOME_MONOCHROME_ICONS)
             .putBoolean(KEY_MI_HOME_NAVIGATION_BADGES, value.miHomeNavigationBadgesEnabled)
             .putBoolean(KEY_AMAP_FLOATING_NAVIGATION, value.amapFloatingNavigationEnabled)
             .putBoolean(KEY_AMAP_MIUIX_ICONS, value.amapMiuixIconsEnabled)
@@ -362,11 +526,70 @@ object ModifierSettingsStore {
             .putBoolean(KEY_CUSTOM_MEDIA_CONSTRAINT_SET, value.customMediaConstraintSetEnabled)
             .putString(KEY_CUSTOM_MEDIA_CONSTRAINT_SET_XML, value.customMediaConstraintSetXml)
             .apply()
+        syncRemotePreferences(context)
+        context.contentResolver.notifyChange(SETTINGS_URI, null)
     }
+
+    /**
+     * API 102 remote preferences are an LSPosed-owned key/value store, separate from this
+     * application's private SharedPreferences XML. Keep a complete mirror there so hooked
+     * processes can retrieve settings without resolving a cross-package ContentProvider.
+     */
+    fun onXposedServiceBound(context: Context, service: XposedService) {
+        remoteService = service
+        syncRemotePreferences(context)
+    }
+
+    fun onXposedServiceDied() {
+        remoteService = null
+    }
+
+    private fun syncRemotePreferences(context: Context) {
+        val service = remoteService ?: return
+        try {
+            val source = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val editor = service.getRemotePreferences(PREFS).edit().clear()
+            source.all.forEach { (key, value) -> editor.putRemoteValue(key, value) }
+            // A synchronous commit makes the snapshot available before LSPosed starts a scoped
+            // process immediately after the user changes a setting.
+            editor.commit()
+        } catch (throwable: Throwable) {
+            Log.w(TAG, "Could not mirror settings to LSPosed remote preferences", throwable)
+        }
+    }
+
+    private fun SharedPreferences.Editor.putRemoteValue(key: String, value: Any?) {
+        when (value) {
+            is Boolean -> putBoolean(key, value)
+            is Float -> putFloat(key, value)
+            is Int -> putInt(key, value)
+            is Long -> putLong(key, value)
+            is String -> putString(key, value)
+            is Set<*> -> putStringSet(key, value.filterIsInstance<String>().toSet())
+        }
+    }
+
+    private val SETTINGS_URI = Uri.parse("content://com.aritxonly.myhypermodifier.settings")
+    @Volatile private var remoteService: XposedService? = null
 
     fun toBundle(value: ModifierSettings) = Bundle().apply {
         putBoolean(KEY_NOTIFICATIONS, value.notificationsEnabled)
         putFloat(KEY_NOTIFICATION_RADIUS, value.notificationRadius)
+        putBoolean(KEY_HEADS_UP_GLASS_PARAMETERS_ENABLED, value.headsUpGlassParametersEnabled)
+        putString(KEY_HEADS_UP_GLASS_PARAMETERS, value.headsUpGlassParameters)
+        putString(KEY_HEADS_UP_GLASS_DARK_PARAMETERS, value.headsUpGlassDarkParameters)
+        putBoolean(
+            KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS_ENABLED,
+            value.headsUpBackgroundBlurRadiusEnabled,
+        )
+        putFloat(
+            KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS,
+            value.headsUpBackgroundBlurRadius.coerceIn(0f, 200f),
+        )
+        putFloat(
+            KEY_GLOBAL_BACKGROUND_BLUR_PERCENT,
+            value.globalBackgroundBlurPercent.coerceIn(0f, 200f),
+        )
         putBoolean(KEY_CONTROL_CENTER, value.controlCenterEnabled)
         putFloat(KEY_CONTROL_CENTER_RADIUS, value.controlCenterRadius)
         putBoolean(KEY_ADVANCED_CONTROL_CENTER_CORNERS, value.advancedControlCenterCorners)
@@ -397,6 +620,30 @@ object ModifierSettingsStore {
             KEY_SHOW_LOCKSCREEN_FINGERPRINT_ICON_ON_AOD,
             value.showLockscreenFingerprintIconOnAod,
         )
+        putBoolean(
+            KEY_LOCKSCREEN_PASSWORD_BACKGROUND_BLUR_ENABLED,
+            value.lockscreenPasswordBackgroundBlurEnabled,
+        )
+        putFloat(
+            KEY_LOCKSCREEN_PASSWORD_BACKGROUND_OPACITY,
+            value.lockscreenPasswordBackgroundOpacity,
+        )
+        putBoolean(
+            KEY_LOCKSCREEN_PASSWORD_BACKGROUND_FOLLOW_SHADE_BLEND,
+            value.lockscreenPasswordBackgroundFollowShadeBlend,
+        )
+        putBoolean(
+            KEY_LOCKSCREEN_PIN_KEY_SOFT_GLASS_ENABLED,
+            value.lockscreenPinKeySoftGlassEnabled,
+        )
+        putFloat(
+            KEY_LOCKSCREEN_PIN_KEY_GLASS_EXTRA_RADIUS,
+            value.lockscreenPinKeyGlassExtraRadius,
+        )
+        putFloat(
+            KEY_LOCKSCREEN_PIN_KEY_GLASS_VERTICAL_GAP,
+            value.lockscreenPinKeyGlassVerticalGap,
+        )
         putBoolean(KEY_STATUS_BAR_NETWORK_TYPE_ENABLED, value.statusBarNetworkTypeEnabled)
         putFloat(KEY_STATUS_BAR_NETWORK_TYPE_SIZE, value.statusBarNetworkTypeSize)
         putBoolean(KEY_STATUS_BAR_NETWORK_TYPE_BOLD, value.statusBarNetworkTypeBold)
@@ -417,10 +664,12 @@ object ModifierSettingsStore {
         putBoolean(KEY_MARKET_FLOATING_NAVIGATION, value.marketFloatingNavigationEnabled)
         putBoolean(KEY_MARKET_MIUIX_ICONS, value.marketMiuixIconsEnabled)
         putBoolean(KEY_MARKET_MONOCHROME_ICONS, value.marketMonochromeIconsEnabled)
-        putBoolean(KEY_MARKET_NAVIGATION_BADGES, value.marketNavigationBadgesEnabled)
+        putBoolean(KEY_MARKET_NAVIGATION_BADGES, false)
+        putBoolean(KEY_MARKET_HIDE_GAMES_TAB, value.marketHideGamesTab)
+        putBoolean(KEY_MARKET_HIDE_RANKINGS_TAB, value.marketHideRankingsTab)
+        putBoolean(KEY_MARKET_HIDE_PROFILE_TAB, value.marketHideProfileTab)
         putBoolean(KEY_MI_HOME_FLOATING_NAVIGATION, value.miHomeFloatingNavigationEnabled)
         putBoolean(KEY_MI_HOME_MIUIX_ICONS, value.miHomeMiuixIconsEnabled)
-        putBoolean(KEY_MI_HOME_MONOCHROME_ICONS, value.miHomeMonochromeIconsEnabled)
         putBoolean(KEY_MI_HOME_NAVIGATION_BADGES, value.miHomeNavigationBadgesEnabled)
         putBoolean(KEY_AMAP_FLOATING_NAVIGATION, value.amapFloatingNavigationEnabled)
         putBoolean(KEY_AMAP_MIUIX_ICONS, value.amapMiuixIconsEnabled)
