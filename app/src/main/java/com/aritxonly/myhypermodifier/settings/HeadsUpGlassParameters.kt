@@ -69,19 +69,8 @@ internal object HeadsUpGlassParameters {
         Definition("按压环强度 1", "mask.pressRingStrength[1]", 0f..1f),
     ).also { require(it.size == COUNT) }
 
-    val regularDefault = floatArrayOf(
-        0.5f, 1f, 0f, 0.8f, 0.5f, 1.2f, 0f, 0.2f, 0f, 0f, 0.03f,
-        1f, 1f, 1f, 1.5f, 0f, 0.6f, 0.6f, 1f, 62f, 3.8f, 80f, 600f,
-        1f, 0.8f, -0.4f, 0.6f, -0.8f, 1.2f, 0.6f, 0.8f, 1.15f, 3f,
-        0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f,
-    )
-
-    val darkDefault = floatArrayOf(
-        0.8f, 1f, 0f, 1f, 0.2f, 2f, 0.14f, 0.1f, 0f, 0f, 0.02f,
-        0.27f, 0.27f, 0.27f, 0.6f, 0f, 0.2f, 1.2f, 1f, 72f, 3.8f, 80f,
-        600f, 1f, 0.8f, -0.4f, 0.6f, -0.8f, 1.5f, 1f, 0.8f, 1.15f, 3f,
-        0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f,
-    )
+    val regularDefault = HeadsUpGlassDefaults.regular().also { require(it.size == COUNT) }
+    val darkDefault = HeadsUpGlassDefaults.dark().also { require(it.size == COUNT) }
 
     val regularSerialized: String = serialize(regularDefault)
     val darkSerialized: String = serialize(darkDefault)

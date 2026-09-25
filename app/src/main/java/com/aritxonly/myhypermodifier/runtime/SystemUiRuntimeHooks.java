@@ -59,6 +59,7 @@ final class SystemUiRuntimeHooks {
     private static final String MILINK = "com.milink.service";
     private static final String MILINK_FUSION_ACTIVITY =
             "com.miui.circulate.world.CirculateWorldActivity";
+    private static final int MILINK_FUSION_MATERIAL_BLUR_RADIUS = 110;
     private static final String XIAOMI_HEALTH = "com.mi.health";
     private static final String MARKET = "com.xiaomi.market";
     private static final String MI_HOME = "com.xiaomi.smarthome";
@@ -127,6 +128,12 @@ final class SystemUiRuntimeHooks {
             new AtomicBoolean();
     private static final AtomicBoolean SYSTEM_UI_RUNTIME_ENTRY_LOGGED = new AtomicBoolean();
     private static final AtomicBoolean GLOBAL_BACKGROUND_BLUR_HOOK_INSTALLED = new AtomicBoolean();
+    private static final AtomicBoolean CONTROL_CENTER_MILINK_MATERIAL_HOOK_INSTALLED =
+            new AtomicBoolean();
+    private static final AtomicBoolean CONTROL_CENTER_MILINK_MATERIAL_LOGGED =
+            new AtomicBoolean();
+    private static final AtomicBoolean CONTROL_CENTER_MILINK_MATERIAL_FAILURE_LOGGED =
+            new AtomicBoolean();
     private static final AtomicBoolean MILINK_FUSION_BACKGROUND_BLUR_HOOK_INSTALLED =
             new AtomicBoolean();
     private static final AtomicBoolean MILINK_FUSION_BACKGROUND_OWNER_HOOK_INSTALLED =
@@ -134,6 +141,8 @@ final class SystemUiRuntimeHooks {
     private static final AtomicBoolean MILINK_FUSION_BACKGROUND_OWNER_LOGGED =
             new AtomicBoolean();
     private static final AtomicBoolean MILINK_FUSION_BACKGROUND_BLUR_LOGGED = new AtomicBoolean();
+    private static final AtomicBoolean MILINK_FUSION_BACKGROUND_RADIUS_FAILURE_LOGGED =
+            new AtomicBoolean();
     private static final Set<Method> INSTALLED_SYSTEM_UI_METHOD_HOOKS =
             ConcurrentHashMap.newKeySet();
     private static final Set<Method> INSTALLED_PLUGIN_METHOD_HOOKS =
@@ -149,6 +158,8 @@ final class SystemUiRuntimeHooks {
     private static final Map<View, Integer> PIN_GLASS_ORIGINAL_CONTAINER_HEIGHTS =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<View, Boolean> MILINK_FUSION_BACKGROUND_VIEWS =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<Object, int[]> CONTROL_CENTER_BACKGROUND_MATERIAL_DEFAULTS =
             Collections.synchronizedMap(new WeakHashMap<>());
 
     private final XposedModule module;
@@ -180,6 +191,7 @@ final class SystemUiRuntimeHooks {
                     Class.forName(PLAYER_ISLAND_CONSTRAINT_LAYOUT, false, classLoader));
             installHeadsUpGlassEffectHooks(classLoader);
             installGlobalBackgroundBlurHook();
+            installControlCenterMiLinkBackgroundMaterialHook(classLoader);
             new LockscreenHooks(module).installLockscreenNotificationHooks(classLoader);
             new LockscreenHooks(module).installLockscreenFingerprintHooks(classLoader);
             new LockscreenHooks(module).installLockscreenCredentialHooks(classLoader);
@@ -256,7 +268,7 @@ final class SystemUiRuntimeHooks {
                     .intercept(chain -> {
                         ensureLoaded();
                         Object result = chain.proceed();
-                        if (headsUpGlassParametersEnabled || headsUpBackgroundBlurRadiusEnabled) {
+                        if (headsUpGlassParametersEnabled) {
                             applyHeadsUpCustomizations(chain.getArg(0), dark);
                         }
                         return result;
@@ -276,11 +288,6 @@ final class SystemUiRuntimeHooks {
             if (headsUpGlassParametersEnabled) {
                 Method setMiGlass = View.class.getMethod("setMiGlass", float[].class);
                 setMiGlass.invoke(background, (Object) headsUpGlassParameters(dark));
-            }
-            if (headsUpBackgroundBlurRadiusEnabled) {
-                Method setMiBackgroundBlurRadius = View.class.getMethod(
-                        "setMiBackgroundBlurRadius", int.class);
-                setMiBackgroundBlurRadius.invoke(background, headsUpBackgroundBlurRadius);
             }
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             // Adjacent HyperOS versions can rename these view bridges; stock rendering stays intact.
@@ -317,6 +324,100 @@ final class SystemUiRuntimeHooks {
         } catch (Throwable throwable) {
             GLOBAL_BACKGROUND_BLUR_HOOK_INSTALLED.set(false);
             Log.w(TAG, "Global background blur hook unavailable", throwable);
+        }
+    }
+
+    /**
+     * The installed SystemUI uses the same blend colors as stock MiLink for both classic and
+     * bionics material, but its Control Center backdrop uses a 100px blur baseline and a
+     * background scale ratio. MiLink's backdrop uses 110px and does not set that scale. Alter
+     * only the Control Center BlurProvider, leaving notification shade and card blur untouched.
+     */
+    private void installControlCenterMiLinkBackgroundMaterialHook(ClassLoader classLoader) {
+        if (!CONTROL_CENTER_MILINK_MATERIAL_HOOK_INSTALLED.compareAndSet(false, true)) return;
+        try {
+            Class<?> provider = Class.forName(
+                    "com.miui.systemui.shade.blur.ShadeBlendBlurControllerImpl$BlurProvider",
+                    false, classLoader);
+            Field viewField = provider.getDeclaredField("view");
+            Field radiusField = provider.getDeclaredField("maxRadius");
+            Field smallGlassRadiusField = provider.getDeclaredField("maxGlassSmallBlurRadius");
+            Field bigGlassRadiusField = provider.getDeclaredField("maxGlassBigBlurRadius");
+            Field scaleField = provider.getDeclaredField("enableScale");
+            viewField.setAccessible(true);
+            radiusField.setAccessible(true);
+            smallGlassRadiusField.setAccessible(true);
+            bigGlassRadiusField.setAccessible(true);
+            scaleField.setAccessible(true);
+            module.hook(provider.getDeclaredMethod("setBlurRatio", float.class))
+                    .setId("control-center-follow-milink-background-material")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        try {
+                            Object instance = chain.getThisObject();
+                            Object view = viewField.get(instance);
+                            if (view instanceof View && isControlCenterBackgroundView((View) view)) {
+                                ensureLoaded();
+                                if (controlCenterFollowMiLinkBackgroundMaterial) {
+                                    synchronized (CONTROL_CENTER_BACKGROUND_MATERIAL_DEFAULTS) {
+                                        if (!CONTROL_CENTER_BACKGROUND_MATERIAL_DEFAULTS
+                                                .containsKey(instance)) {
+                                            CONTROL_CENTER_BACKGROUND_MATERIAL_DEFAULTS.put(
+                                                    instance, new int[]{radiusField.getInt(instance),
+                                                            smallGlassRadiusField.getInt(instance),
+                                                            bigGlassRadiusField.getInt(instance),
+                                                            scaleField.getBoolean(instance) ? 1 : 0});
+                                        }
+                                    }
+                                    radiusField.setInt(instance, MILINK_FUSION_MATERIAL_BLUR_RADIUS);
+                                    smallGlassRadiusField.setInt(instance,
+                                            MILINK_FUSION_MATERIAL_BLUR_RADIUS);
+                                    bigGlassRadiusField.setInt(instance,
+                                            MILINK_FUSION_MATERIAL_BLUR_RADIUS);
+                                    scaleField.setBoolean(instance, false);
+                                    if (CONTROL_CENTER_MILINK_MATERIAL_LOGGED
+                                            .compareAndSet(false, true)) {
+                                        Log.i(TAG, "Control Center backdrop follows stock MiLink "
+                                                + "material: radius 110, background scale off");
+                                    }
+                                } else {
+                                    int[] defaults;
+                                    synchronized (CONTROL_CENTER_BACKGROUND_MATERIAL_DEFAULTS) {
+                                        defaults = CONTROL_CENTER_BACKGROUND_MATERIAL_DEFAULTS
+                                                .remove(instance);
+                                    }
+                                    if (defaults != null) {
+                                        radiusField.setInt(instance, defaults[0]);
+                                        smallGlassRadiusField.setInt(instance, defaults[1]);
+                                        bigGlassRadiusField.setInt(instance, defaults[2]);
+                                        scaleField.setBoolean(instance, defaults[3] != 0);
+                                    }
+                                }
+                            }
+                        } catch (ReflectiveOperationException | RuntimeException exception) {
+                            if (CONTROL_CENTER_MILINK_MATERIAL_FAILURE_LOGGED
+                                    .compareAndSet(false, true)) {
+                                Log.w(TAG, "Control Center MiLink material adjustment unavailable",
+                                        exception);
+                            }
+                        }
+                        return chain.proceed();
+                    });
+            Log.i(TAG, "Control Center MiLink background material hook installed");
+        } catch (Throwable throwable) {
+            CONTROL_CENTER_MILINK_MATERIAL_HOOK_INSTALLED.set(false);
+            Log.w(TAG, "Control Center MiLink background material hook unavailable", throwable);
+        }
+    }
+
+    private static boolean isControlCenterBackgroundView(View view) {
+        if ("com.miui.systemui.controlcenter.container.ControlCenterContainer"
+                .equals(view.getClass().getName())) return true;
+        try {
+            return view.getId() != View.NO_ID && "control_center_container".equals(
+                    view.getResources().getResourceEntryName(view.getId()));
+        } catch (Resources.NotFoundException ignored) {
+            return false;
         }
     }
 
@@ -413,12 +514,22 @@ final class SystemUiRuntimeHooks {
 
     /**
      * MiLink's device center renders through either View.setMiBackgroundBlurRadius or the
-     * SurfaceControl fallback. Both paths converge on BlurControllerImpl.setBlurRatio.
+     * SurfaceControl fallback. Both paths converge on BlurControllerImpl.setBlurRatio. On the
+     * material path the ratio controls both radius and blend alpha, so leave the ratio alone and
+     * override only the resulting radius, matching the SystemUI slider's behavior. The material
+     * and its background scale remain stock MiLink, which is the opt-in Control Center baseline.
      */
     void installMiLinkFusionBackgroundBlurHook(ClassLoader classLoader) {
         installMiLinkFusionBackgroundOwnerHook(classLoader);
         if (!MILINK_FUSION_BACKGROUND_BLUR_HOOK_INSTALLED.compareAndSet(false, true)) return;
         try {
+            Method radiusMethod = null;
+            try {
+                radiusMethod = View.class.getMethod("setMiBackgroundBlurRadius", int.class);
+            } catch (NoSuchMethodException exception) {
+                Log.w(TAG, "MiLink background radius API unavailable; using ratio fallback");
+            }
+            final Method backgroundRadiusMethod = radiusMethod;
             Class<?> blurController = Class.forName(
                     "com.miui.circulate.world.utils.BlurUtils$BlurControllerImpl",
                     false, classLoader);
@@ -435,14 +546,37 @@ final class SystemUiRuntimeHooks {
                             return chain.proceed();
                         }
                         int percent = globalBackgroundBlurPercent;
-                        if (percent == 100) return chain.proceed();
                         float original = (Float) ratio;
                         float adjusted = Math.max(0f, original * percent / 100f);
-                        if (MILINK_FUSION_BACKGROUND_BLUR_LOGGED.compareAndSet(false, true)) {
-                            Log.i(TAG, "Fusion Device Center blur " + original + " -> " + adjusted
-                                    + " (global " + percent + "% )");
+                        // MaterialUtils.z uses 110 * ratio for radius, but its blend alpha uses
+                        // the same ratio. Replacing the ratio would unintentionally wash out the
+                        // tint when the global blur slider is below 100%.
+                        boolean materialPath = chain.getThisObject().getClass().getName()
+                                .equals("com.miui.circulate.world.utils.BlurUtils$f")
+                                && backgroundRadiusMethod != null;
+                        Object result = materialPath || percent == 100 ? chain.proceed()
+                                : chain.proceed(new Object[]{adjusted});
+                        if (materialPath && percent != 100) {
+                            int stockRadius = Math.max(0,
+                                    (int) (MILINK_FUSION_MATERIAL_BLUR_RADIUS * original));
+                            int radius = Math.max(0, Math.min(500,
+                                    Math.round(stockRadius * percent / 100f)));
+                            try {
+                                backgroundRadiusMethod.invoke(target, radius);
+                            } catch (ReflectiveOperationException | RuntimeException exception) {
+                                if (MILINK_FUSION_BACKGROUND_RADIUS_FAILURE_LOGGED
+                                        .compareAndSet(false, true)) {
+                                    Log.w(TAG, "MiLink background radius override unavailable",
+                                            exception);
+                                }
+                            }
                         }
-                        return chain.proceed(new Object[]{adjusted});
+                        if (percent != 100
+                                && MILINK_FUSION_BACKGROUND_BLUR_LOGGED.compareAndSet(false, true)) {
+                            Log.i(TAG, "Fusion Device Center blur " + original + " -> " + adjusted
+                                    + " (global " + percent + "%, material=" + materialPath + ")");
+                        }
+                        return result;
                     });
 
             Log.i(TAG, "MiLink Fusion Device Center blur ratio hook installed");

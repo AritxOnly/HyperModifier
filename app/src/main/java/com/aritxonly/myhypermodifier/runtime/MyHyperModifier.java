@@ -90,6 +90,10 @@ public final class MyHyperModifier extends XposedModule {
             installSettingsLoader();
             ClassLoader classLoader = param.getDefaultClassLoader();
             if (SYSTEM_UI.equals(packageName)) {
+                HeadsUpMiniBarHooks.install(this, classLoader);
+                HeadsUpBottomMarginHooks.install(this, classLoader);
+                AodClockWeightHooks.install(this, classLoader);
+                LockscreenClockColonHooks.install(this, classLoader);
                 // This is intentionally before every plugin-factory, media and heads-up hook.
                 // A missing cosmetic class must never suppress the password-page control point.
                 if (LOCKSCREEN_PASSWORD_BACKGROUND_EXPERIMENT_ENABLED) {
@@ -162,6 +166,10 @@ public final class MyHyperModifier extends XposedModule {
             }
             installResourceValueHooks();
             if (SYSTEM_UI.equals(packageName)) {
+                HeadsUpMiniBarHooks.install(this, param.getClassLoader());
+                HeadsUpBottomMarginHooks.install(this, param.getClassLoader());
+                AodClockWeightHooks.install(this, param.getClassLoader());
+                LockscreenClockColonHooks.install(this, param.getClassLoader());
                 if (LOCKSCREEN_PASSWORD_BACKGROUND_EXPERIMENT_ENABLED) {
                     lockscreenHooks().installLockscreenBouncerBlurCompatHook(param.getClassLoader());
                     lockscreenHooks().installLockscreenPasswordWallpaperRatioHook(param.getClassLoader());

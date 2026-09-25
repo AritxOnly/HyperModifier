@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,20 +53,27 @@ fun SettingItem(
     enabled: Boolean = true,
     trailingContent: @Composable (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
+    leadingContent: @Composable (() -> Unit)? = null,
 ) {
     val itemModifier = if (enabled && onClick != null) modifier.clickable(onClick = onClick) else modifier
     Row(
         modifier = itemModifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        leadingContent?.let {
+            it()
+            androidx.compose.foundation.layout.Spacer(Modifier.width(12.dp))
+        }
         Column(Modifier.weight(1f).padding(end = 12.dp)) {
             Text(text = headlineText, style = MiuixTheme.textStyles.body1)
-            Text(
-                text = supportingText,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                style = MiuixTheme.textStyles.footnote1,
-                modifier = Modifier.padding(top = 3.dp),
-            )
+            if (supportingText.isNotBlank()) {
+                Text(
+                    text = supportingText,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    style = MiuixTheme.textStyles.footnote1,
+                    modifier = Modifier.padding(top = 3.dp),
+                )
+            }
         }
         trailingContent?.invoke()
     }
@@ -97,12 +105,14 @@ fun SettingsSwitchItem(
     ) {
         Column(Modifier.weight(1f).padding(end = 12.dp)) {
             Text(text = label, style = MiuixTheme.textStyles.body1)
-            Text(
-                text = supportingText,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                style = MiuixTheme.textStyles.footnote1,
-                modifier = Modifier.padding(top = 3.dp),
-            )
+            if (supportingText.isNotBlank()) {
+                Text(
+                    text = supportingText,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    style = MiuixTheme.textStyles.footnote1,
+                    modifier = Modifier.padding(top = 3.dp),
+                )
+            }
         }
         DeadlinerSwitch(
             checked = checked,
@@ -131,7 +141,9 @@ fun SettingsCheckboxItem(
     ) {
         Column(Modifier.weight(1f).padding(end = 12.dp)) {
             Text(text = label, style = MiuixTheme.textStyles.body1)
-            Text(text = supportingText, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, style = MiuixTheme.textStyles.footnote1)
+            if (supportingText.isNotBlank()) {
+                Text(text = supportingText, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, style = MiuixTheme.textStyles.footnote1)
+            }
         }
         DeadlinerCheckbox(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
     }

@@ -27,6 +27,7 @@ import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.basic.Scaffold as MiuixScaffold
 import com.aritxonly.deadliner.ui.material.glass.LocalTopBarScrollProgress
+import com.aritxonly.deadliner.ui.material.glass.LocalImmersiveExperienceEnabled
 import com.aritxonly.deadliner.ui.material.glass.ProgressiveTopBarMaterial
 
 /**
@@ -51,6 +52,7 @@ fun DeadlinerMiuixScaffold(
     CompositionLocalProvider(
         LocalAdvancedMaterialSpec provides advancedMaterial,
         LocalAdvancedMaterialBackdrop provides backdrop,
+        LocalImmersiveExperienceEnabled provides true,
         LocalTopBarScrollProgress provides scrollProgress,
     ) {
         MiuixScaffold(

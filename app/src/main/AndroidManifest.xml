@@ -2,6 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <queries>
+        <package android:name="com.mi.health" />
+        <package android:name="com.xiaomi.market" />
+        <package android:name="com.xiaomi.smarthome" />
+        <package android:name="com.autonavi.minimap" />
+        <package android:name="com.xiaomi.vipaccount" />
+    </queries>
+
     <application
         android:name=".HyperModifierApplication"
         android:allowBackup="false"

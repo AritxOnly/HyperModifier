@@ -69,6 +69,9 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 private const val MI_HOME_TAB_LAYOUT_CLASS =
     "com.xiaomi.smarthome.newui.buttomtab.TabPageIndicatorNew"
 private const val MI_HOME_VIEW_PAGER_CLASS = "com.xiaomi.smarthome.ui.LinearViewPager"
+private const val MI_HOME_SCENE_TAB_CLASS = "com.xiaomi.smarthome.scene.SceneTabFragment"
+private const val MI_HOME_SCENE_LIST_CLASS =
+    "com.xiaomi.smarthome.scene.ui.list.MySceneFragmentkt"
 
 /** Replaces Mi Home's visual tab strip while keeping its native routing and analytics intact. */
 internal object MiHomeFloatingNavigation {
@@ -398,15 +401,18 @@ private class MiHomeNavigationHost private constructor(
         }.getOrDefault(state.selectedIndex).coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
         val shouldRefreshIcons = state.tabs.size != tabs.size ||
             state.tabs.isEmpty() || selected != state.selectedIndex
+        val tabStates = tabs.mapIndexed { index, tab ->
+            val cachedIcon = state.tabs.getOrNull(index)?.takeUnless { shouldRefreshIcons }
+                ?.let { MiHomeNativeIcon(it.icons, it.lottie, it.staticIcon) }
+            tab.readState(index, index == selected, cachedIcon)
+        }
         val next = MiHomeNavigationState(
-            tabs = tabs.mapIndexed { index, tab ->
-                val cachedIcon = state.tabs.getOrNull(index)?.takeUnless { shouldRefreshIcons }
-                    ?.let { MiHomeNativeIcon(it.icons, it.lottie, it.staticIcon) }
-                tab.readState(index, index == selected, cachedIcon)
-            },
+            tabs = tabStates,
             selectedIndex = selected,
-            visible = nativeTabLayout.visibility == View.VISIBLE &&
-                nativeTabLayout.isShown && tabs.size > 1,
+            visible = activity.hasWindowFocus() &&
+                nativeTabLayout.visibility == View.VISIBLE &&
+                nativeTabLayout.isShown && tabs.size > 1 &&
+                (tabStates.getOrNull(selected)?.isSceneTab() != true || !isSceneSelectionActive()),
             navigationLiftDp = ModuleSettings.hyperGlassifyHiddenNavigationLift.coerceIn(0f, 48f),
         )
         val selectionChanged = next.selectedIndex != state.selectedIndex
@@ -416,6 +422,17 @@ private class MiHomeNavigationHost private constructor(
         updateNativeChromeReplacement(next.visible)
         composeView.visibility = if (next.visible) View.VISIBLE else View.GONE
         if (selectionChanged || becameVisible) sampler.requestCaptureBurst()
+    }
+
+    /** Mi Home 11.8.605 leaves the main tab strip visible during scene multi-selection. */
+    private fun isSceneSelectionActive(): Boolean {
+        val sceneTab = runCatching {
+            activity.javaClass.getMethod("getSceneTabPage").invoke(activity)
+        }.getOrNull()?.takeIf { it.javaClass.name == MI_HOME_SCENE_TAB_CLASS } ?: return false
+        val sceneList = sceneTab.readField("OoooO0")
+            ?.takeIf { it.javaClass.name == MI_HOME_SCENE_LIST_CLASS } ?: return false
+        // MySceneFragmentkt's selection controller drives both the top and bottom edit bars.
+        return sceneList.readField("OoooO0O")?.readField("OooO00o") == true
     }
 
     private fun logNavigationGeometry() {
@@ -684,6 +701,12 @@ private fun MiHomeTabState.isMarketplace(): Boolean {
     val identity = "$tag $label".lowercase()
     return identity.contains("discover") || identity.contains("shop") ||
         identity.contains("发现") || identity.contains("商城")
+}
+
+private fun MiHomeTabState.isSceneTab(): Boolean {
+    val identity = "$tag $label".lowercase()
+    return identity.contains("scene") || identity.contains("smart") ||
+        identity.contains("智能") || identity.contains("场景")
 }
 
 private fun miHomeIcon(tab: MiHomeTabState, index: Int): ImageVector {

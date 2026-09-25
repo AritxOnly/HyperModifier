@@ -40,8 +40,8 @@ android {
         applicationId = "com.aritxonly.myhypermodifier"
         minSdk = 33
         targetSdk = 35
-        versionCode = 33
-        versionName = "1.3.8"
+        versionCode = 34
+        versionName = "1.4.0"
     }
 
     signingConfigs {

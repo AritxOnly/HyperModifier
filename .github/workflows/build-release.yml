@@ -9,6 +9,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      HAS_SIGNING_KEY: ${{ secrets.HYPERMODIFIER_KEYSTORE_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -19,18 +21,18 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Calculate this run's patch version
+      - name: Read project version
         id: version
         shell: bash
         run: |
-          source_name=$(sed -n 's/.*configuredVersionName = .*?: "\([0-9.]*\)"/\1/p' app/build.gradle.kts | head -n 1)
-          source_code=$(sed -n 's/.*?: \([0-9][0-9]*\)$/\1/p' app/build.gradle.kts | head -n 1)
-          IFS='.' read -r major minor patch <<< "$source_name"
-          echo "name=$major.$minor.$((patch + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
-          echo "code=$((source_code + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
+          source_name=$(sed -n 's/^[[:space:]]*versionName = "\([0-9.]*\)"/\1/p' app/build.gradle.kts | head -n 1)
+          source_code=$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\)/\1/p' app/build.gradle.kts | head -n 1)
+          test -n "$source_name" && test -n "$source_code"
+          echo "name=$source_name" >> "$GITHUB_OUTPUT"
+          echo "code=$source_code" >> "$GITHUB_OUTPUT"
 
       - name: Assemble installable debug APK
-        run: ./gradlew assembleDebug -PversionName=${{ steps.version.outputs.name }} -PversionCode=${{ steps.version.outputs.code }}
+        run: ./gradlew assembleDebug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -41,20 +43,22 @@ jobs:
       # Add these repository secrets to publish an installable release:
       # HYPERMODIFIER_KEYSTORE_BASE64, HYPERMODIFIER_KEY_ALIAS and HYPERMODIFIER_SIGNING_PASSWORD.
       - name: Restore signing key
-        if: ${{ secrets.HYPERMODIFIER_KEYSTORE_BASE64 != '' }}
-        run: echo "${{ secrets.HYPERMODIFIER_KEYSTORE_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/hypermodifier.jks"
+        if: ${{ env.HAS_SIGNING_KEY == 'true' }}
+        env:
+          HYPERMODIFIER_KEYSTORE_BASE64: ${{ secrets.HYPERMODIFIER_KEYSTORE_BASE64 }}
+        run: echo "$HYPERMODIFIER_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/hypermodifier.jks"
 
       - name: Assemble signed release APK
-        if: ${{ secrets.HYPERMODIFIER_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.HAS_SIGNING_KEY == 'true' }}
         env:
           HYPERMODIFIER_SIGNING_PASSWORD: ${{ secrets.HYPERMODIFIER_SIGNING_PASSWORD }}
-        run: ./gradlew assembleRelease -PversionName=${{ steps.version.outputs.name }} -PversionCode=${{ steps.version.outputs.code }} -PhypermodifierStoreFile="$RUNNER_TEMP/hypermodifier.jks" -PhypermodifierKeyAlias=${{ secrets.HYPERMODIFIER_KEY_ALIAS }}
+        run: ./gradlew assembleRelease -PhypermodifierStoreFile="$RUNNER_TEMP/hypermodifier.jks" -PhypermodifierKeyAlias=${{ secrets.HYPERMODIFIER_KEY_ALIAS }}
 
       - name: Publish GitHub Release
-        if: ${{ secrets.HYPERMODIFIER_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.HAS_SIGNING_KEY == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.name }}
           name: HyperModifier v${{ steps.version.outputs.name }}
-          generate_release_notes: true
+          body_path: RELEASE_NOTES_v${{ steps.version.outputs.name }}.md
           files: app/build/outputs/apk/release/app-release.apk

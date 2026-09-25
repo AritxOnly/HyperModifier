@@ -136,6 +136,8 @@ final class LockscreenHooks {
             ConcurrentHashMap.newKeySet();
     private static final Set<Method> INSTALLED_PLUGIN_METHOD_HOOKS =
             ConcurrentHashMap.newKeySet();
+    private static final Set<Object> CREDENTIAL_HIDDEN_FINGERPRINT_ICONS =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     private static final ThreadLocal<Boolean> INSTALLING_LOADED_CLASS_HOOK = new ThreadLocal<>();
     private static final ThreadLocal<ControlCenterSurface> INFLATING_PLUGIN_DRAWABLE = new ThreadLocal<>();
     private static final Map<View, List<Method>> CONTROL_CENTER_REFRESH_METHODS =
@@ -183,6 +185,8 @@ final class LockscreenHooks {
 
             Class<?> notificationPositionFlow = loadFirstAvailableClass(classLoader,
                     "com.android.keyguard.panel.KeyguardPanelViewController"
+                            + "$nsslLockYPosition_delegate$lambda$102$$inlined$combine$1$3",
+                    "com.android.keyguard.panel.KeyguardPanelViewController"
                             + "$nsslLockYPosition_delegate$lambda$104$$inlined$combine$1$3",
                     "com.android.keyguard.panel.KeyguardPanelViewController"
                             + "$nsslLockYPosition_delegate$lambda$106$$inlined$combine$1$3");
@@ -226,6 +230,18 @@ final class LockscreenHooks {
             Class<?> iconClass = Class.forName(
                     "com.miui.keyguard.biometrics.fod.MiuiGxzwIconView", false, classLoader);
             Method dismissIcon = iconClass.getMethod("dismissFingerpirntIcon");
+            Method showIcon = iconClass.getMethod("setGxzwIconOpaque");
+            Class<?> managerClass = Class.forName(
+                    "com.miui.keyguard.biometrics.fod.MiuiGxzwManager", false, classLoader);
+            Class<?> factoryClass = Class.forName(
+                    "com.miui.keyguard.biometrics.fod.MiuiFingerPrintFactory", false, classLoader);
+            Method getFingerprintManager = factoryClass.getMethod("getFingerPrintManager");
+            Field bouncer = managerClass.getDeclaredField("mBouncer");
+            Field securityMode = managerClass.getDeclaredField("mSecurityMode");
+            Field managerIcon = managerClass.getDeclaredField("mMiuiGxzwIconView");
+            bouncer.setAccessible(true);
+            securityMode.setAccessible(true);
+            managerIcon.setAccessible(true);
             module.hook(dismissIcon)
                     .setId("lockscreen-fingerprint-aod-dismiss")
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
@@ -256,9 +272,24 @@ final class LockscreenHooks {
                             Object result = chain.proceed();
                             boolean keepForAod = shouldKeepFingerprintIconOnAod(
                                     chain.getThisObject());
-                            if (hideLockscreenFingerprintIcon && !keepForAod) {
+                            boolean hideForCredential = false;
+                            if (lowerLockscreenPasswordPage
+                                    && !booleanDeclaredField(chain.getThisObject(), "mDozing", false)) {
+                                try {
+                                    hideForCredential = shouldHideCredentialFingerprintIcon(
+                                            getFingerprintManager.invoke(null), chain.getThisObject(),
+                                            bouncer, securityMode, managerIcon);
+                                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                                    // Keep the stock icon if this build changes its manager.
+                                }
+                            }
+                            if ((hideLockscreenFingerprintIcon && !keepForAod)
+                                    || hideForCredential) {
                                 try {
                                     dismissIcon.invoke(chain.getThisObject());
+                                    if (hideForCredential) {
+                                        CREDENTIAL_HIDDEN_FINGERPRINT_ICONS.add(chain.getThisObject());
+                                    }
                                 } catch (ReflectiveOperationException | RuntimeException ignored) {
                                     // The visual-only method is optional on adjacent HyperOS builds.
                                 }
@@ -269,6 +300,31 @@ final class LockscreenHooks {
             if (hookedMethods == 0) {
                 throw new NoSuchMethodException("No MiuiGxzwIconView display methods found");
             }
+            module.hook(managerClass.getDeclaredMethod("updateGxzwState"))
+                    .setId("lockscreen-password-fingerprint-state")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        ensureLoaded();
+                        Object result = chain.proceed();
+                        Object manager = chain.getThisObject();
+                        try {
+                            Object icon = managerIcon.get(manager);
+                            if (icon != null && !booleanDeclaredField(icon, "mDozing", false)) {
+                                boolean hide = lowerLockscreenPasswordPage
+                                        && shouldHideCredentialFingerprintIcon(
+                                                manager, icon, bouncer, securityMode, managerIcon);
+                                if (hide) {
+                                    dismissIcon.invoke(icon);
+                                    CREDENTIAL_HIDDEN_FINGERPRINT_ICONS.add(icon);
+                                } else if (CREDENTIAL_HIDDEN_FINGERPRINT_ICONS.remove(icon)) {
+                                    showIcon.invoke(icon);
+                                }
+                            }
+                        } catch (ReflectiveOperationException | RuntimeException ignored) {
+                            // Adjacent builds can change the FOD manager's view fields.
+                        }
+                        return result;
+                    });
             module.log(Log.INFO, TAG, "Installed " + hookedMethods + " lockscreen fingerprint hook(s)");
         } catch (Throwable throwable) {
             module.log(Log.WARN, TAG, "Could not install lockscreen fingerprint hooks", throwable);
@@ -279,6 +335,15 @@ final class LockscreenHooks {
         return hideLockscreenFingerprintIcon
                 && showLockscreenFingerprintIconOnAod
                 && booleanDeclaredField(iconView, "mDozing", false);
+    }
+
+    private static boolean shouldHideCredentialFingerprintIcon(
+            Object manager, Object icon, Field bouncer, Field securityMode, Field managerIcon)
+            throws ReflectiveOperationException {
+        if (manager == null || !bouncer.getBoolean(manager)
+                || managerIcon.get(manager) != icon) return false;
+        String mode = String.valueOf(securityMode.get(manager));
+        return "PIN".equals(mode) || "Password".equals(mode);
     }
 
     /**
@@ -430,7 +495,7 @@ final class LockscreenHooks {
         Method onFinishInflate = findMethodInHierarchy(credentialClass, "onFinishInflate");
         if (!claimSystemUiMethod(onFinishInflate)) return false;
         module.hook(onFinishInflate)
-                .setId(pin ? "lockscreen-pin-material" : "lockscreen-password-background")
+                .setId(pin ? "lockscreen-pin-credential" : "lockscreen-password-credential")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .intercept(chain -> {
                     Object result = chain.proceed();
@@ -443,6 +508,21 @@ final class LockscreenHooks {
                     }
                     return result;
                 });
+        Method updatePositionForFod = credentialClass.getDeclaredMethod("updatePositionForFod");
+        if (claimSystemUiMethod(updatePositionForFod)) {
+            module.hook(updatePositionForFod)
+                    .setId(pin ? "lockscreen-pin-lower-position"
+                            : "lockscreen-password-lower-position")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        Object result = chain.proceed();
+                        ensureLoaded();
+                        if (lowerLockscreenPasswordPage && chain.getThisObject() instanceof View) {
+                            lowerLockscreenCredential((View) chain.getThisObject(), pin);
+                        }
+                        return result;
+                    });
+        }
         return true;
     }
 
@@ -463,8 +543,20 @@ final class LockscreenHooks {
 
     private static void applyLockscreenCredentialCustomizations(
             View root, ClassLoader classLoader, boolean pin) {
+        if (lowerLockscreenPasswordPage) lowerLockscreenCredential(root, pin);
         if (pin && lockscreenPinKeySoftGlassEnabled) {
             applyLockscreenPinKeyGlass(root, classLoader);
+        }
+    }
+
+    private static void lowerLockscreenCredential(View root, boolean pin) {
+        int fodSpaceId = root.getResources().getIdentifier(pin
+                        ? "pin_fod_bottom_distance" : "password_fod_bottom_distance",
+                "id", "com.android.systemui");
+        if (fodSpaceId == 0) return;
+        View fodSpace = root.findViewById(fodSpaceId);
+        if (fodSpace != null && fodSpace.getVisibility() != View.GONE) {
+            fodSpace.setVisibility(View.GONE);
         }
     }
 

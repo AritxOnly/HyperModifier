@@ -33,22 +33,18 @@ final class ModuleSettings {
 
     static volatile boolean notificationsEnabled = false;
     static volatile float notificationRadius = 28f;
+    static volatile boolean hideHeadsUpMiniBar = false;
+    static volatile boolean headsUpBottomMarginEnabled = false;
+    static volatile float headsUpBottomMarginDp = 13f;
     static volatile boolean headsUpGlassParametersEnabled = false;
     static volatile boolean headsUpBackgroundBlurRadiusEnabled = false;
     static volatile int headsUpBackgroundBlurRadius = 60;
     static volatile int globalBackgroundBlurPercent = 100;
-    private static final float[] DEFAULT_HEADS_UP_GLASS_PARAMETERS = new float[] {
-            0.5f, 1f, 0f, 0.8f, 0.5f, 1.2f, 0f, 0.2f, 0f, 0f, 0.03f,
-            1f, 1f, 1f, 1.5f, 0f, 0.6f, 0.6f, 1f, 62f, 3.8f, 80f, 600f,
-            1f, 0.8f, -0.4f, 0.6f, -0.8f, 1.2f, 0.6f, 0.8f, 1.15f, 3f,
-            0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f
-    };
-    private static final float[] DEFAULT_HEADS_UP_GLASS_DARK_PARAMETERS = new float[] {
-            0.8f, 1f, 0f, 1f, 0.2f, 2f, 0.14f, 0.1f, 0f, 0f, 0.02f,
-            0.27f, 0.27f, 0.27f, 0.6f, 0f, 0.2f, 1.2f, 1f, 72f, 3.8f, 80f,
-            600f, 1f, 0.8f, -0.4f, 0.6f, -0.8f, 1.5f, 1f, 0.8f, 1.15f, 3f,
-            0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f
-    };
+    static volatile boolean controlCenterFollowMiLinkBackgroundMaterial = true;
+    private static final float[] DEFAULT_HEADS_UP_GLASS_PARAMETERS =
+            HeadsUpGlassDefaults.regular();
+    private static final float[] DEFAULT_HEADS_UP_GLASS_DARK_PARAMETERS =
+            HeadsUpGlassDefaults.dark();
     private static volatile float[] headsUpGlassParameters =
             DEFAULT_HEADS_UP_GLASS_PARAMETERS.clone();
     private static volatile float[] headsUpGlassDarkParameters =
@@ -76,7 +72,11 @@ final class ModuleSettings {
     static volatile boolean hideAodSeamless = false;
     static volatile boolean sinkLockscreenNotificationsForFingerprint = false;
     static volatile boolean hideLockscreenFingerprintIcon = false;
+    static volatile boolean lowerLockscreenPasswordPage = false;
     static volatile boolean showLockscreenFingerprintIconOnAod = false;
+    static volatile boolean forceLockscreenClockColon = false;
+    static volatile boolean aodClockWeightEnabled = false;
+    static volatile int aodClockWeight = 400;
     static volatile boolean lockscreenPasswordBackgroundBlurEnabled = false;
     static volatile float lockscreenPasswordBackgroundOpacity = 0f;
     static volatile boolean lockscreenPasswordBackgroundFollowShadeBlend = true;
@@ -309,6 +309,13 @@ final class ModuleSettings {
             Bundle values = preferencesToBundle(preferences);
             notificationsEnabled = values.getBoolean("notifications_enabled", false);
             notificationRadius = values.getFloat("notification_radius", 28f);
+            hideHeadsUpMiniBar = values.getBoolean("hide_heads_up_mini_bar", false);
+            headsUpBottomMarginEnabled = values.getBoolean(
+                    "heads_up_bottom_margin_enabled", false);
+            float requestedBottomMargin = values.getFloat("heads_up_bottom_margin_dp", 13f);
+            headsUpBottomMarginDp = Float.isNaN(requestedBottomMargin)
+                    || Float.isInfinite(requestedBottomMargin) ? 13f
+                    : Math.max(0f, Math.min(32f, requestedBottomMargin));
             headsUpGlassParametersEnabled = values.getBoolean(
                     "heads_up_glass_parameters_enabled", false);
             headsUpGlassParameters = parseHeadsUpGlassParameters(values.getString(
@@ -316,12 +323,20 @@ final class ModuleSettings {
             headsUpGlassDarkParameters = parseHeadsUpGlassParameters(values.getString(
                     "heads_up_glass_dark_parameters", ""),
                     DEFAULT_HEADS_UP_GLASS_DARK_PARAMETERS);
+            if (HeadsUpGlassDefaults.isLegacyDefaultPair(
+                    headsUpGlassParameters, headsUpGlassDarkParameters)) {
+                headsUpGlassParameters = HeadsUpGlassDefaults.regular();
+                headsUpGlassDarkParameters = HeadsUpGlassDefaults.dark();
+            }
             headsUpBackgroundBlurRadiusEnabled = values.getBoolean(
                     "heads_up_background_blur_radius_enabled", false);
             headsUpBackgroundBlurRadius = Math.max(0, Math.min(200, Math.round(values.getFloat(
                     "heads_up_background_blur_radius", 60f))));
             globalBackgroundBlurPercent = Math.max(0, Math.min(200, Math.round(values.getFloat(
                     "global_background_blur_percent", 100f))));
+            // The new key ignores the earlier visible switch's saved false state.
+            controlCenterFollowMiLinkBackgroundMaterial = values.getBoolean(
+                    "control_center_follow_milink_background_material_default_on", true);
             controlCenterEnabled = values.getBoolean("control_center_enabled", false);
             controlCenterRadius = values.getFloat("control_center_radius", 28f);
             advancedControlCenterCorners = values.getBoolean("advanced_control_center_corners", false);
@@ -347,8 +362,16 @@ final class ModuleSettings {
                     "sink_lockscreen_notifications_for_fingerprint", false);
             hideLockscreenFingerprintIcon = values.getBoolean(
                     "hide_lockscreen_fingerprint_icon", false);
+            lowerLockscreenPasswordPage = values.getBoolean(
+                    "lower_lockscreen_password_page", false);
             showLockscreenFingerprintIconOnAod = values.getBoolean(
                     "show_lockscreen_fingerprint_icon_on_aod", false);
+            forceLockscreenClockColon = values.getBoolean("force_lockscreen_clock_colon", false);
+            aodClockWeightEnabled = values.getBoolean("aod_clock_weight_enabled", false);
+            float requestedAodWeight = values.getFloat("aod_clock_weight", 400f);
+            aodClockWeight = Float.isNaN(requestedAodWeight)
+                    || Float.isInfinite(requestedAodWeight) ? 400
+                    : Math.max(100, Math.min(700, Math.round(requestedAodWeight)));
             lockscreenPasswordBackgroundBlurEnabled = values.getBoolean(
                     "lockscreen_password_background_blur_enabled", false);
             lockscreenPasswordBackgroundOpacity = Math.max(0f, Math.min(1f, values.getFloat(

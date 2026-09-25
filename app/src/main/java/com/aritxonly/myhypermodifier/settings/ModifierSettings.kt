@@ -10,6 +10,9 @@ import io.github.libxposed.service.XposedService
 data class ModifierSettings(
     val notificationsEnabled: Boolean = false,
     val notificationRadius: Float = 28f,
+    val hideHeadsUpMiniBar: Boolean = false,
+    val headsUpBottomMarginEnabled: Boolean = false,
+    val headsUpBottomMarginDp: Float = 13f,
     val headsUpGlassParametersEnabled: Boolean = false,
     val headsUpGlassParameters: String = HeadsUpGlassParameters.regularSerialized,
     val headsUpGlassDarkParameters: String = HeadsUpGlassParameters.darkSerialized,
@@ -17,6 +20,7 @@ data class ModifierSettings(
     val headsUpBackgroundBlurRadius: Float = 60f,
     /** Multiplies the stock blur radius for shared SystemUI background surfaces. */
     val globalBackgroundBlurPercent: Float = 100f,
+    val controlCenterFollowMiLinkBackgroundMaterial: Boolean = true,
     val controlCenterEnabled: Boolean = false,
     val controlCenterRadius: Float = 28f,
     val advancedControlCenterCorners: Boolean = false,
@@ -40,7 +44,11 @@ data class ModifierSettings(
     val hideAodSeamless: Boolean = false,
     val sinkLockscreenNotificationsForFingerprint: Boolean = false,
     val hideLockscreenFingerprintIcon: Boolean = false,
+    val lowerLockscreenPasswordPage: Boolean = false,
     val showLockscreenFingerprintIconOnAod: Boolean = false,
+    val forceLockscreenClockColon: Boolean = false,
+    val aodClockWeightEnabled: Boolean = false,
+    val aodClockWeight: Float = 400f,
     val lockscreenPasswordBackgroundBlurEnabled: Boolean = false,
     /** Absolute value returned by SystemUI's wallpaperBlurRatio coroutine, from 0.0 to 1.0. */
     val lockscreenPasswordBackgroundOpacity: Float = 0f,
@@ -87,12 +95,29 @@ object ModifierSettingsPresets {
     /** Fresh installs enable HyperGlassify only; SystemUI beautification stays opt-in. */
     fun moduleDefault(): ModifierSettings = ModifierSettings()
 
+    /** Apply the paired light/dark heads-up preset without changing unrelated module settings. */
+    fun headsUpGlassModuleDefault(settings: ModifierSettings): ModifierSettings = settings.copy(
+        headsUpGlassParametersEnabled = true,
+        headsUpBackgroundBlurRadiusEnabled = false,
+        headsUpGlassParameters = HeadsUpGlassParameters.regularSerialized,
+        headsUpGlassDarkParameters = HeadsUpGlassParameters.darkSerialized,
+    )
+
+    /** Restore stock heads-up rendering while keeping the user's editable values. */
+    fun headsUpGlassSystemDefault(settings: ModifierSettings): ModifierSettings = settings.copy(
+        headsUpGlassParametersEnabled = false,
+        headsUpBackgroundBlurRadiusEnabled = false,
+    )
+
     /**
-     * Stock HyperOS behavior.  Numeric values remain harmless defaults, while every hook that
-     * changes SystemUI is disabled so SystemUI receives its original resources and layouts.
+     * Most optional appearance hooks are disabled. The hidden Control Center/MiLink background
+     * material alignment remains enabled by the module's default policy.
      */
     fun systemDefault(): ModifierSettings = ModifierSettings(
         notificationsEnabled = false,
+        controlCenterFollowMiLinkBackgroundMaterial = true,
+        hideHeadsUpMiniBar = false,
+        headsUpBottomMarginEnabled = false,
         controlCenterEnabled = false,
         volumePanelRadius = 0f,
         miLinkMainCardsEnabled = false,
@@ -103,7 +128,10 @@ object ModifierSettingsPresets {
         hideAodSeamless = false,
         sinkLockscreenNotificationsForFingerprint = false,
         hideLockscreenFingerprintIcon = false,
+        lowerLockscreenPasswordPage = false,
         showLockscreenFingerprintIconOnAod = false,
+        forceLockscreenClockColon = false,
+        aodClockWeightEnabled = false,
         lockscreenPasswordBackgroundBlurEnabled = false,
         lockscreenPasswordBackgroundFollowShadeBlend = true,
         lockscreenPinKeySoftGlassEnabled = false,
@@ -143,6 +171,9 @@ object ModifierSettingsStore {
     const val METHOD_GET = "get_settings"
     private const val KEY_NOTIFICATIONS = "notifications_enabled"
     private const val KEY_NOTIFICATION_RADIUS = "notification_radius"
+    private const val KEY_HIDE_HEADS_UP_MINI_BAR = "hide_heads_up_mini_bar"
+    private const val KEY_HEADS_UP_BOTTOM_MARGIN_ENABLED = "heads_up_bottom_margin_enabled"
+    private const val KEY_HEADS_UP_BOTTOM_MARGIN_DP = "heads_up_bottom_margin_dp"
     private const val KEY_HEADS_UP_GLASS_PARAMETERS_ENABLED = "heads_up_glass_parameters_enabled"
     private const val KEY_HEADS_UP_GLASS_PARAMETERS = "heads_up_glass_parameters"
     private const val KEY_HEADS_UP_GLASS_DARK_PARAMETERS = "heads_up_glass_dark_parameters"
@@ -150,6 +181,9 @@ object ModifierSettingsStore {
         "heads_up_background_blur_radius_enabled"
     private const val KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS = "heads_up_background_blur_radius"
     private const val KEY_GLOBAL_BACKGROUND_BLUR_PERCENT = "global_background_blur_percent"
+    // New key intentionally ignores the earlier opt-in switch's saved false state.
+    private const val KEY_CONTROL_CENTER_FOLLOW_MILINK_BACKGROUND_MATERIAL =
+        "control_center_follow_milink_background_material_default_on"
     private const val KEY_CONTROL_CENTER = "control_center_enabled"
     private const val KEY_CONTROL_CENTER_RADIUS = "control_center_radius"
     private const val KEY_ADVANCED_CONTROL_CENTER_CORNERS = "advanced_control_center_corners"
@@ -174,8 +208,12 @@ object ModifierSettingsStore {
     private const val KEY_SINK_LOCKSCREEN_NOTIFICATIONS_FOR_FINGERPRINT =
         "sink_lockscreen_notifications_for_fingerprint"
     private const val KEY_HIDE_LOCKSCREEN_FINGERPRINT_ICON = "hide_lockscreen_fingerprint_icon"
+    private const val KEY_LOWER_LOCKSCREEN_PASSWORD_PAGE = "lower_lockscreen_password_page"
     private const val KEY_SHOW_LOCKSCREEN_FINGERPRINT_ICON_ON_AOD =
         "show_lockscreen_fingerprint_icon_on_aod"
+    private const val KEY_FORCE_LOCKSCREEN_CLOCK_COLON = "force_lockscreen_clock_colon"
+    private const val KEY_AOD_CLOCK_WEIGHT_ENABLED = "aod_clock_weight_enabled"
+    private const val KEY_AOD_CLOCK_WEIGHT = "aod_clock_weight"
     private const val KEY_LOCKSCREEN_PASSWORD_BACKGROUND_BLUR_ENABLED =
         "lockscreen_password_background_blur_enabled"
     private const val KEY_LOCKSCREEN_PASSWORD_BACKGROUND_OPACITY =
@@ -231,24 +269,32 @@ object ModifierSettingsStore {
 
     fun load(context: Context): ModifierSettings {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val regularGlass = HeadsUpGlassParameters.parseSerializedOrDefault(
+            prefs.getString(KEY_HEADS_UP_GLASS_PARAMETERS, null),
+            HeadsUpGlassParameters.regularDefault,
+        )
+        val darkGlass = HeadsUpGlassParameters.parseSerializedOrDefault(
+            prefs.getString(KEY_HEADS_UP_GLASS_DARK_PARAMETERS, null),
+            HeadsUpGlassParameters.darkDefault,
+        )
+        val migrateGlassDefaults = HeadsUpGlassDefaults.isLegacyDefaultPair(regularGlass, darkGlass)
         return ModifierSettings(
             notificationsEnabled = prefs.getBoolean(KEY_NOTIFICATIONS, false),
             notificationRadius = prefs.getFloat(KEY_NOTIFICATION_RADIUS, 28f),
+            hideHeadsUpMiniBar = prefs.getBoolean(KEY_HIDE_HEADS_UP_MINI_BAR, false),
+            headsUpBottomMarginEnabled = prefs.getBoolean(KEY_HEADS_UP_BOTTOM_MARGIN_ENABLED, false),
+            headsUpBottomMarginDp = normalizedHeadsUpBottomMargin(
+                prefs.getFloat(KEY_HEADS_UP_BOTTOM_MARGIN_DP, 13f),
+            ),
             headsUpGlassParametersEnabled = prefs.getBoolean(
                 KEY_HEADS_UP_GLASS_PARAMETERS_ENABLED,
                 false,
             ),
             headsUpGlassParameters = HeadsUpGlassParameters.serialize(
-                HeadsUpGlassParameters.parseSerializedOrDefault(
-                    prefs.getString(KEY_HEADS_UP_GLASS_PARAMETERS, null),
-                    HeadsUpGlassParameters.regularDefault,
-                ),
+                if (migrateGlassDefaults) HeadsUpGlassParameters.regularDefault else regularGlass,
             ),
             headsUpGlassDarkParameters = HeadsUpGlassParameters.serialize(
-                HeadsUpGlassParameters.parseSerializedOrDefault(
-                    prefs.getString(KEY_HEADS_UP_GLASS_DARK_PARAMETERS, null),
-                    HeadsUpGlassParameters.darkDefault,
-                ),
+                if (migrateGlassDefaults) HeadsUpGlassParameters.darkDefault else darkGlass,
             ),
             headsUpBackgroundBlurRadiusEnabled = prefs.getBoolean(
                 KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS_ENABLED,
@@ -262,6 +308,10 @@ object ModifierSettingsStore {
                 KEY_GLOBAL_BACKGROUND_BLUR_PERCENT,
                 100f,
             ).coerceIn(0f, 200f),
+            controlCenterFollowMiLinkBackgroundMaterial = prefs.getBoolean(
+                KEY_CONTROL_CENTER_FOLLOW_MILINK_BACKGROUND_MATERIAL,
+                true,
+            ),
             controlCenterEnabled = prefs.getBoolean(KEY_CONTROL_CENTER, false),
             controlCenterRadius = prefs.getFloat(KEY_CONTROL_CENTER_RADIUS, 28f),
             advancedControlCenterCorners = prefs.getBoolean(KEY_ADVANCED_CONTROL_CENTER_CORNERS, false),
@@ -288,10 +338,14 @@ object ModifierSettingsStore {
                 false,
             ),
             hideLockscreenFingerprintIcon = prefs.getBoolean(KEY_HIDE_LOCKSCREEN_FINGERPRINT_ICON, false),
+            lowerLockscreenPasswordPage = prefs.getBoolean(KEY_LOWER_LOCKSCREEN_PASSWORD_PAGE, false),
             showLockscreenFingerprintIconOnAod = prefs.getBoolean(
                 KEY_SHOW_LOCKSCREEN_FINGERPRINT_ICON_ON_AOD,
                 false,
             ),
+            forceLockscreenClockColon = prefs.getBoolean(KEY_FORCE_LOCKSCREEN_CLOCK_COLON, false),
+            aodClockWeightEnabled = prefs.getBoolean(KEY_AOD_CLOCK_WEIGHT_ENABLED, false),
+            aodClockWeight = normalizedAodClockWeight(prefs.getFloat(KEY_AOD_CLOCK_WEIGHT, 400f)),
             lockscreenPasswordBackgroundBlurEnabled = prefs.getBoolean(
                 KEY_LOCKSCREEN_PASSWORD_BACKGROUND_BLUR_ENABLED,
                 false,
@@ -378,6 +432,12 @@ object ModifierSettingsStore {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_NOTIFICATIONS, value.notificationsEnabled)
             .putFloat(KEY_NOTIFICATION_RADIUS, value.notificationRadius)
+            .putBoolean(KEY_HIDE_HEADS_UP_MINI_BAR, value.hideHeadsUpMiniBar)
+            .putBoolean(KEY_HEADS_UP_BOTTOM_MARGIN_ENABLED, value.headsUpBottomMarginEnabled)
+            .putFloat(
+                KEY_HEADS_UP_BOTTOM_MARGIN_DP,
+                normalizedHeadsUpBottomMargin(value.headsUpBottomMarginDp),
+            )
             .putBoolean(
                 KEY_HEADS_UP_GLASS_PARAMETERS_ENABLED,
                 value.headsUpGlassParametersEnabled,
@@ -412,6 +472,10 @@ object ModifierSettingsStore {
                 KEY_GLOBAL_BACKGROUND_BLUR_PERCENT,
                 value.globalBackgroundBlurPercent.coerceIn(0f, 200f),
             )
+            .putBoolean(
+                KEY_CONTROL_CENTER_FOLLOW_MILINK_BACKGROUND_MATERIAL,
+                value.controlCenterFollowMiLinkBackgroundMaterial,
+            )
             .remove("notification_background_effect_enabled")
             .remove("notification_background_blur_radius")
             .remove("notification_background_dim_amount")
@@ -444,10 +508,14 @@ object ModifierSettingsStore {
                 value.sinkLockscreenNotificationsForFingerprint,
             )
             .putBoolean(KEY_HIDE_LOCKSCREEN_FINGERPRINT_ICON, value.hideLockscreenFingerprintIcon)
+            .putBoolean(KEY_LOWER_LOCKSCREEN_PASSWORD_PAGE, value.lowerLockscreenPasswordPage)
             .putBoolean(
                 KEY_SHOW_LOCKSCREEN_FINGERPRINT_ICON_ON_AOD,
                 value.showLockscreenFingerprintIconOnAod,
             )
+            .putBoolean(KEY_FORCE_LOCKSCREEN_CLOCK_COLON, value.forceLockscreenClockColon)
+            .putBoolean(KEY_AOD_CLOCK_WEIGHT_ENABLED, value.aodClockWeightEnabled)
+            .putFloat(KEY_AOD_CLOCK_WEIGHT, normalizedAodClockWeight(value.aodClockWeight))
             .putBoolean(
                 KEY_LOCKSCREEN_PASSWORD_BACKGROUND_BLUR_ENABLED,
                 value.lockscreenPasswordBackgroundBlurEnabled,
@@ -575,6 +643,12 @@ object ModifierSettingsStore {
     fun toBundle(value: ModifierSettings) = Bundle().apply {
         putBoolean(KEY_NOTIFICATIONS, value.notificationsEnabled)
         putFloat(KEY_NOTIFICATION_RADIUS, value.notificationRadius)
+        putBoolean(KEY_HIDE_HEADS_UP_MINI_BAR, value.hideHeadsUpMiniBar)
+        putBoolean(KEY_HEADS_UP_BOTTOM_MARGIN_ENABLED, value.headsUpBottomMarginEnabled)
+        putFloat(
+            KEY_HEADS_UP_BOTTOM_MARGIN_DP,
+            normalizedHeadsUpBottomMargin(value.headsUpBottomMarginDp),
+        )
         putBoolean(KEY_HEADS_UP_GLASS_PARAMETERS_ENABLED, value.headsUpGlassParametersEnabled)
         putString(KEY_HEADS_UP_GLASS_PARAMETERS, value.headsUpGlassParameters)
         putString(KEY_HEADS_UP_GLASS_DARK_PARAMETERS, value.headsUpGlassDarkParameters)
@@ -589,6 +663,10 @@ object ModifierSettingsStore {
         putFloat(
             KEY_GLOBAL_BACKGROUND_BLUR_PERCENT,
             value.globalBackgroundBlurPercent.coerceIn(0f, 200f),
+        )
+        putBoolean(
+            KEY_CONTROL_CENTER_FOLLOW_MILINK_BACKGROUND_MATERIAL,
+            value.controlCenterFollowMiLinkBackgroundMaterial,
         )
         putBoolean(KEY_CONTROL_CENTER, value.controlCenterEnabled)
         putFloat(KEY_CONTROL_CENTER_RADIUS, value.controlCenterRadius)
@@ -616,10 +694,14 @@ object ModifierSettingsStore {
             value.sinkLockscreenNotificationsForFingerprint,
         )
         putBoolean(KEY_HIDE_LOCKSCREEN_FINGERPRINT_ICON, value.hideLockscreenFingerprintIcon)
+        putBoolean(KEY_LOWER_LOCKSCREEN_PASSWORD_PAGE, value.lowerLockscreenPasswordPage)
         putBoolean(
             KEY_SHOW_LOCKSCREEN_FINGERPRINT_ICON_ON_AOD,
             value.showLockscreenFingerprintIconOnAod,
         )
+        putBoolean(KEY_FORCE_LOCKSCREEN_CLOCK_COLON, value.forceLockscreenClockColon)
+        putBoolean(KEY_AOD_CLOCK_WEIGHT_ENABLED, value.aodClockWeightEnabled)
+        putFloat(KEY_AOD_CLOCK_WEIGHT, normalizedAodClockWeight(value.aodClockWeight))
         putBoolean(
             KEY_LOCKSCREEN_PASSWORD_BACKGROUND_BLUR_ENABLED,
             value.lockscreenPasswordBackgroundBlurEnabled,
@@ -698,4 +780,9 @@ object ModifierSettingsStore {
         putString(KEY_CUSTOM_MEDIA_CONSTRAINT_SET_XML, value.customMediaConstraintSetXml)
     }
 
+    private fun normalizedAodClockWeight(weight: Float): Float =
+        if (weight.isFinite()) weight.coerceIn(100f, 700f) else 400f
+
+    private fun normalizedHeadsUpBottomMargin(margin: Float): Float =
+        if (margin.isFinite()) margin.coerceIn(0f, 32f) else 13f
 }
