@@ -176,8 +176,8 @@ import androidx.core.graphics.ColorUtils
     }
     SettingsSection(topLabel = "密码输入界面") {
         SettingsSwitchItem(
-            "密码页下沉并隐藏指纹图标",
-            "密码页关闭指纹触摸，点击底部按钮返回指纹解锁",
+            "密码页下沉与指纹切换",
+            "密码页与指纹页可通过底部按钮或滑动切换",
             settings.lowerLockscreenPasswordPage,
             { update(settings.copy(lowerLockscreenPasswordPage = it)) },
         )

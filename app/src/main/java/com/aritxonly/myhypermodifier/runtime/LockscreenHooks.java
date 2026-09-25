@@ -18,9 +18,11 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.util.Xml;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
+import android.view.ViewConfiguration;
 import android.widget.ImageView;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -80,6 +82,8 @@ final class LockscreenHooks {
             "com.android.keyguard.KeyguardPinViewController";
     private static final String KEYGUARD_PASSWORD_VIEW_CONTROLLER =
             "com.android.keyguard.KeyguardPasswordViewController";
+    private static final String KEYGUARD_SECURITY_CONTAINER =
+            "com.android.keyguard.KeyguardSecurityContainer";
     private static final String MI_GLASS_COMPAT = "com.miui.systemui.util.MiGlassCompat";
     private static final String MI_BLUR_COMPAT = "com.miui.systemui.util.MiBlurCompat";
     private static final int KEYGUARD_BOUNCER_CONTAINER_ID = 0x7f0b05df;
@@ -145,6 +149,8 @@ final class LockscreenHooks {
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     private static final Set<Object> FINGERPRINT_MODE_REQUESTED_MANAGERS =
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    private static final Map<View, WeakReference<CredentialSwitchState>> CREDENTIAL_SWITCH_STATES =
+            Collections.synchronizedMap(new WeakHashMap<>());
     private static final ThreadLocal<Boolean> INSTALLING_LOADED_CLASS_HOOK = new ThreadLocal<>();
     private static final ThreadLocal<ControlCenterSurface> INFLATING_PLUGIN_DRAWABLE = new ThreadLocal<>();
     private static final Map<View, List<Method>> CONTROL_CENTER_REFRESH_METHODS =
@@ -357,7 +363,8 @@ final class LockscreenHooks {
         if (!lowerLockscreenPasswordPage || manager == null || !bouncer.getBoolean(manager)
                 || booleanDeclaredField(manager, "mDozing", false)) return false;
         String mode = String.valueOf(securityMode.get(manager));
-        return "PIN".equals(mode) || "Password".equals(mode);
+        return ("PIN".equals(mode) || "Password".equals(mode))
+                && !FINGERPRINT_MODE_REQUESTED_MANAGERS.contains(manager);
     }
 
     /**
@@ -499,6 +506,11 @@ final class LockscreenHooks {
                     classLoader, KEYGUARD_PIN_VIEW_CONTROLLER, true);
             hooked += hookLockscreenCredentialControllerSafely(
                     classLoader, KEYGUARD_PASSWORD_VIEW_CONTROLLER, false);
+            try {
+                hooked += hookLockscreenCredentialSwipe(classLoader) ? 1 : 0;
+            } catch (Throwable throwable) {
+                module.log(Log.WARN, TAG, "Credential fingerprint swipe unavailable", throwable);
+            }
             if (hooked == 0) throw new NoSuchMethodException("No keyguard credential inflation hook");
             module.log(Log.INFO, TAG, "Installed " + hooked + " lockscreen credential hook(s)");
         } catch (Throwable throwable) {
@@ -551,6 +563,21 @@ final class LockscreenHooks {
                         return result;
                     });
         }
+        Method startAppearAnimation = credentialClass.getDeclaredMethod("startAppearAnimation");
+        if (claimSystemUiMethod(startAppearAnimation)) {
+            module.hook(startAppearAnimation)
+                    .setId(pin ? "lockscreen-pin-fingerprint-page-reset"
+                            : "lockscreen-password-fingerprint-page-reset")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        Object value = chain.getThisObject();
+                        if (value instanceof View) {
+                            CredentialSwitchState state = credentialSwitchState((View) value);
+                            if (state != null) state.returnToPassword(false);
+                        }
+                        return chain.proceed();
+                    });
+        }
         return true;
     }
 
@@ -571,66 +598,275 @@ final class LockscreenHooks {
                         View credentialView = (View) value;
                         onLoaded(() -> credentialView.post(() ->
                                 installCredentialFingerprintSwitch(
-                                        credentialView, controller, classLoader)));
+                                        credentialView, classLoader, pin)));
                     }
                     return result;
                 });
         return true;
     }
 
-    private static void installCredentialFingerprintSwitch(
-            View credentialView, Object controller, ClassLoader classLoader) {
-        if (!lowerLockscreenPasswordPage || !credentialView.isAttachedToWindow()) return;
-        int cancelId = credentialView.getResources().getIdentifier(
-                "cancel_button", "id", "com.android.systemui");
-        if (cancelId == 0) return;
-        View cancelButton = credentialView.findViewById(cancelId);
-        if (!(cancelButton instanceof TextView)) return;
-        Object bouncerManager = resolveBouncerManager(controller);
-        if (bouncerManager == null) return;
-        Method hideBouncer;
-        Method getFingerprintManager;
-        try {
-            hideBouncer = bouncerManager.getClass().getMethod("hideBouncer", boolean.class);
-            Class<?> factory = Class.forName(
-                    "com.miui.keyguard.biometrics.fod.MiuiFingerPrintFactory", false, classLoader);
-            getFingerprintManager = factory.getMethod("getFingerPrintManager");
-            Class<?> gxzwManager = Class.forName(
-                    "com.miui.keyguard.biometrics.fod.MiuiGxzwManager", false, classLoader);
-            if (!gxzwManager.isInstance(getFingerprintManager.invoke(null))) return;
-        } catch (ReflectiveOperationException | RuntimeException ignored) {
-            return;
-        }
-        TextView switchButton = (TextView) cancelButton;
-        switchButton.setText("使用指纹解锁");
-        switchButton.setContentDescription("返回锁屏并使用指纹解锁");
-        switchButton.setOnClickListener(view -> {
-            Object fingerprintManager = null;
-            try {
-                fingerprintManager = getFingerprintManager.invoke(null);
-                if (fingerprintManager != null) {
-                    FINGERPRINT_MODE_REQUESTED_MANAGERS.add(fingerprintManager);
-                }
-                hideBouncer.invoke(bouncerManager, false);
-            } catch (ReflectiveOperationException | RuntimeException ignored) {
-                if (fingerprintManager != null) {
-                    FINGERPRINT_MODE_REQUESTED_MANAGERS.remove(fingerprintManager);
-                }
-            }
-        });
+    private boolean hookLockscreenCredentialSwipe(ClassLoader classLoader) throws Throwable {
+        Class<?> containerClass = Class.forName(KEYGUARD_SECURITY_CONTAINER, false, classLoader);
+        Method dispatchTouchEvent = containerClass.getDeclaredMethod(
+                "dispatchTouchEvent", MotionEvent.class);
+        Class<?> flipperClass = Class.forName(
+                "com.android.keyguard.KeyguardSecurityViewFlipper", false, classLoader);
+        Method getSecurityView = flipperClass.getMethod("getSecurityView");
+        if (!claimSystemUiMethod(dispatchTouchEvent)) return false;
+        module.hook(dispatchTouchEvent)
+                .setId("lockscreen-credential-fingerprint-swipe")
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept(chain -> {
+                    ensureLoaded();
+                    if (!lowerLockscreenPasswordPage) return chain.proceed();
+                    try {
+                        Object flipper = readFieldInHierarchy(
+                                chain.getThisObject(), "mSecurityViewFlipper");
+                        Object current = flipper == null ? null : getSecurityView.invoke(flipper);
+                        if (current instanceof View) {
+                            CredentialSwitchState state = credentialSwitchState((View) current);
+                            if (state != null && state.handleSwipe((MotionEvent) chain.getArg(0),
+                                    (View) chain.getThisObject())) return true;
+                        }
+                    } catch (ReflectiveOperationException | RuntimeException ignored) {
+                        // A changed bouncer view leaves stock touch dispatch intact.
+                    }
+                    return chain.proceed();
+                });
+        return true;
     }
 
-    private static Object resolveBouncerManager(Object controller) {
-        Object callback = readFieldInHierarchy(controller, "mKeyguardSecurityCallback");
-        Object container = readFieldInHierarchy(callback, "this$0");
-        Object mediatorCallback = readFieldInHierarchy(container, "mViewMediatorCallback");
-        Object mediator = readFieldInHierarchy(mediatorCallback, "this$0");
-        Object lazyManager = readFieldInHierarchy(mediator, "mKeyguardViewControllerLazy");
-        if (lazyManager == null) return null;
+    private static CredentialSwitchState credentialSwitchState(View view) {
+        WeakReference<CredentialSwitchState> reference = CREDENTIAL_SWITCH_STATES.get(view);
+        return reference == null ? null : reference.get();
+    }
+
+    private static void installCredentialFingerprintSwitch(
+            View credentialView, ClassLoader classLoader, boolean pin) {
+        CredentialSwitchState previous = credentialSwitchState(credentialView);
+        if (previous != null) previous.close();
+        if (!lowerLockscreenPasswordPage || !credentialView.isAttachedToWindow()) return;
+        View cancelButton = findSystemUiView(credentialView, "cancel_button");
+        if (!(cancelButton instanceof TextView)) return;
+        String[] keyboardIds = pin
+                ? new String[] {"row0", "row1", "row2", "row3", "row4"}
+                : new String[] {"passwordEntry", "mixed_password_keyboard_view"};
+        View[] keyboardParts = new View[keyboardIds.length];
+        for (int index = 0; index < keyboardIds.length; index++) {
+            keyboardParts[index] = findSystemUiView(credentialView, keyboardIds[index]);
+            if (keyboardParts[index] == null) return;
+        }
         try {
-            return lazyManager.getClass().getMethod("get").invoke(lazyManager);
+            Class<?> factory = Class.forName(
+                    "com.miui.keyguard.biometrics.fod.MiuiFingerPrintFactory", false, classLoader);
+            Object manager = factory.getMethod("getFingerPrintManager").invoke(null);
+            Class<?> managerClass = Class.forName(
+                    "com.miui.keyguard.biometrics.fod.MiuiGxzwManager", false, classLoader);
+            if (!managerClass.isInstance(manager)) return;
+            Method dismiss = managerClass.getMethod("dismissGxzwView");
+            Method show = managerClass.getMethod("onKeyguardShow");
+            CredentialSwitchState state = new CredentialSwitchState(credentialView,
+                    (TextView) cancelButton, keyboardParts, manager, dismiss, show);
+            CREDENTIAL_SWITCH_STATES.put(credentialView, new WeakReference<>(state));
+            credentialView.addOnAttachStateChangeListener(state);
+            state.showPasswordButton();
+            cancelButton.setOnClickListener(view -> state.toggle());
         } catch (ReflectiveOperationException | RuntimeException ignored) {
-            return null;
+            // Keep the stock return button if this build has a different FOD manager.
+        }
+    }
+
+    private static View findSystemUiView(View root, String name) {
+        int id = root.getResources().getIdentifier(name, "id", SYSTEM_UI);
+        return id == 0 ? null : root.findViewById(id);
+    }
+
+    /** The bouncer stays open while its password controls and FOD window trade places. */
+    private static final class CredentialSwitchState implements View.OnAttachStateChangeListener {
+        private static final long SWITCH_ANIMATION_MS = 240L;
+
+        private final View root;
+        private final TextView button;
+        private final View[] keyboardParts;
+        private final Object fingerprintManager;
+        private final Method dismissFingerprint;
+        private final Method showFingerprint;
+        private final CharSequence originalButtonText;
+        private final CharSequence originalContentDescription;
+        private final float keyboardTravelPx;
+        private final float swipeThresholdPx;
+        private boolean fingerprintMode;
+        private boolean transitioning;
+        private boolean closed;
+        private boolean swipeTracking;
+        private boolean swipeConsumed;
+        private float swipeStartX;
+        private float swipeStartY;
+
+        CredentialSwitchState(View root, TextView button, View[] keyboardParts,
+                Object fingerprintManager, Method dismissFingerprint, Method showFingerprint) {
+            this.root = root;
+            this.button = button;
+            this.keyboardParts = keyboardParts;
+            this.fingerprintManager = fingerprintManager;
+            this.dismissFingerprint = dismissFingerprint;
+            this.showFingerprint = showFingerprint;
+            this.originalButtonText = button.getText();
+            this.originalContentDescription = button.getContentDescription();
+            float density = root.getResources().getDisplayMetrics().density;
+            this.keyboardTravelPx = 24f * density;
+            this.swipeThresholdPx = Math.max(64f * density,
+                    4f * ViewConfiguration.get(root.getContext()).getScaledTouchSlop());
+        }
+
+        void toggle() {
+            if (fingerprintMode) returnToPassword(true);
+            else enterFingerprintMode();
+        }
+
+        void showPasswordButton() {
+            button.setText("使用指纹解锁");
+            button.setContentDescription("切换到指纹解锁");
+        }
+
+        private void showFingerprintButton() {
+            button.setText("使用密码解锁");
+            button.setContentDescription("返回密码输入");
+        }
+
+        private void enterFingerprintMode() {
+            if (closed || fingerprintMode || !root.isAttachedToWindow()) return;
+            fingerprintMode = true;
+            transitioning = true;
+            showFingerprintButton();
+            for (int index = 0; index < keyboardParts.length; index++) {
+                View part = keyboardParts[index];
+                part.animate().cancel();
+                part.setVisibility(View.VISIBLE);
+                android.view.ViewPropertyAnimator animator = part.animate()
+                        .alpha(0f).translationY(keyboardTravelPx)
+                        .setDuration(SWITCH_ANIMATION_MS);
+                if (index == keyboardParts.length - 1) {
+                    animator.withEndAction(() -> {
+                        if (closed || !fingerprintMode) return;
+                        transitioning = false;
+                        for (View keyboardPart : keyboardParts) {
+                            keyboardPart.setVisibility(View.INVISIBLE);
+                        }
+                        FINGERPRINT_MODE_REQUESTED_MANAGERS.add(fingerprintManager);
+                        CREDENTIAL_SUPPRESSED_FOD_MANAGERS.remove(fingerprintManager);
+                        try {
+                            showFingerprint.invoke(fingerprintManager);
+                        } catch (ReflectiveOperationException | RuntimeException ignored) {
+                            returnToPassword(true);
+                        }
+                    });
+                }
+                animator.start();
+            }
+        }
+
+        void returnToPassword(boolean animated) {
+            if (closed || (!fingerprintMode && !transitioning)) return;
+            fingerprintMode = false;
+            transitioning = false;
+            FINGERPRINT_MODE_REQUESTED_MANAGERS.remove(fingerprintManager);
+            CREDENTIAL_SUPPRESSED_FOD_MANAGERS.add(fingerprintManager);
+            try {
+                dismissFingerprint.invoke(fingerprintManager);
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // A failed dismiss must not strand the user outside password entry.
+            }
+            showPasswordButton();
+            for (View part : keyboardParts) {
+                part.animate().cancel();
+                part.setVisibility(View.VISIBLE);
+                if (animated && root.isAttachedToWindow()) {
+                    part.setAlpha(0f);
+                    part.setTranslationY(keyboardTravelPx);
+                    part.animate().alpha(1f).translationY(0f)
+                            .setDuration(SWITCH_ANIMATION_MS).start();
+                } else {
+                    part.setAlpha(1f);
+                    part.setTranslationY(0f);
+                }
+            }
+        }
+
+        boolean handleSwipe(MotionEvent event, View container) {
+            if (closed || !root.isAttachedToWindow() || root.getVisibility() != View.VISIBLE) {
+                return false;
+            }
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) {
+                swipeStartX = event.getX();
+                swipeStartY = event.getY();
+                swipeTracking = swipeStartY >= container.getHeight() * 0.45f;
+                swipeConsumed = false;
+                return false;
+            }
+            if (swipeConsumed) {
+                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                    swipeConsumed = false;
+                    swipeTracking = false;
+                }
+                return true;
+            }
+            if (action == MotionEvent.ACTION_POINTER_DOWN) swipeTracking = false;
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                swipeTracking = false;
+            }
+            if (action != MotionEvent.ACTION_MOVE || !swipeTracking
+                    || event.getPointerCount() != 1) return false;
+            float deltaY = event.getY() - swipeStartY;
+            float deltaX = event.getX() - swipeStartX;
+            boolean requestedDirection = fingerprintMode
+                    ? deltaY > swipeThresholdPx : deltaY < -swipeThresholdPx;
+            if (!requestedDirection || Math.abs(deltaX) > Math.abs(deltaY) * 0.75f) return false;
+            swipeConsumed = true;
+            swipeTracking = false;
+            MotionEvent cancel = MotionEvent.obtain(event);
+            try {
+                cancel.setAction(MotionEvent.ACTION_CANCEL);
+                root.dispatchTouchEvent(cancel);
+            } finally {
+                cancel.recycle();
+            }
+            toggle();
+            return true;
+        }
+
+        @Override
+        public void onViewAttachedToWindow(View view) {}
+
+        @Override
+        public void onViewDetachedFromWindow(View view) {
+            close();
+        }
+
+        void close() {
+            if (closed) return;
+            closed = true;
+            if (fingerprintMode && booleanDeclaredField(
+                    fingerprintManager, "mBouncer", false)) {
+                CREDENTIAL_SUPPRESSED_FOD_MANAGERS.add(fingerprintManager);
+                try {
+                    dismissFingerprint.invoke(fingerprintManager);
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    // The keyguard lifecycle can remove this window independently.
+                }
+            }
+            FINGERPRINT_MODE_REQUESTED_MANAGERS.remove(fingerprintManager);
+            for (View part : keyboardParts) {
+                part.animate().cancel();
+                part.setVisibility(View.VISIBLE);
+                part.setAlpha(1f);
+                part.setTranslationY(0f);
+            }
+            button.setText(originalButtonText);
+            button.setContentDescription(originalContentDescription);
+            root.removeOnAttachStateChangeListener(this);
+            CREDENTIAL_SWITCH_STATES.remove(root);
         }
     }
 
