@@ -8,6 +8,8 @@ import android.util.Log
 import io.github.libxposed.service.XposedService
 
 data class ModifierSettings(
+    val gestureHandleModulePreset: Boolean = true,
+    val gestureHandleAppModes: Map<String, String> = emptyMap(),
     val notificationsEnabled: Boolean = false,
     val notificationRadius: Float = 28f,
     val hideHeadsUpMiniBar: Boolean = false,
@@ -16,10 +18,18 @@ data class ModifierSettings(
     val headsUpGlassParametersEnabled: Boolean = false,
     val headsUpGlassParameters: String = HeadsUpGlassParameters.regularSerialized,
     val headsUpGlassDarkParameters: String = HeadsUpGlassParameters.darkSerialized,
+    val shadeCardGlassParametersEnabled: Boolean = false,
+    val shadeCardGlassParameters: String = HeadsUpGlassParameters.serialize(ShadeCardGlassPolicy.defaults()),
+    val globalGlassBlurEnabled: Boolean = false,
+    val shadeCardBackgroundBlurPercent: Float = 100f,
+    val shadeCardGlassBlurEnabled: Boolean = false,
+    val shadeCardGlassBlurRadius: Float = 20f,
     val headsUpBackgroundBlurRadiusEnabled: Boolean = false,
     val headsUpBackgroundBlurRadius: Float = 60f,
     /** Multiplies the stock blur radius for shared SystemUI background surfaces. */
     val globalBackgroundBlurPercent: Float = 100f,
+    val globalBackgroundDimEnabled: Boolean = false,
+    val globalBackgroundDimPercent: Float = 20f,
     val controlCenterFollowMiLinkBackgroundMaterial: Boolean = true,
     val controlCenterEnabled: Boolean = false,
     val controlCenterRadius: Float = 28f,
@@ -83,6 +93,14 @@ data class ModifierSettings(
     val xiaomiCommunityMiuixIconsEnabled: Boolean = false,
     val xiaomiCommunityMonochromeIconsEnabled: Boolean = true,
     val xiaomiCommunityNavigationBadgesEnabled: Boolean = true,
+    val bilibiliFloatingNavigationEnabled: Boolean = true,
+    val bilibiliNavigationBadgesEnabled: Boolean = true,
+    val bilibiliHomeTabVisible: Boolean = true,
+    val bilibiliDynamicTabVisible: Boolean = true,
+    val bilibiliFollowTabVisible: Boolean = true,
+    val bilibiliMallTabVisible: Boolean = true,
+    val bilibiliMineTabVisible: Boolean = true,
+    val bilibiliPublishButtonVisible: Boolean = true,
     val spotifyFloatingNavigationEnabled: Boolean = false,
     val spotifyFavoriteButtonEnabled: Boolean = false,
     val spotifyShuffleButtonEnabled: Boolean = false,
@@ -92,8 +110,18 @@ data class ModifierSettings(
 
 /** Explicit presets keep reset behavior independent from persisted values and future migrations. */
 object ModifierSettingsPresets {
-    /** Fresh installs enable HyperGlassify only; SystemUI beautification stays opt-in. */
+    /** Fresh installs enable HyperGlassify and the rule-based gesture handle module preset. */
     fun moduleDefault(): ModifierSettings = ModifierSettings()
+
+    fun gestureHandleModuleDefault(settings: ModifierSettings): ModifierSettings = settings.copy(
+        gestureHandleModulePreset = true,
+        gestureHandleAppModes = emptyMap(),
+    )
+
+    fun gestureHandleSystemDefault(settings: ModifierSettings): ModifierSettings = settings.copy(
+        gestureHandleModulePreset = false,
+        gestureHandleAppModes = emptyMap(),
+    )
 
     /** Apply the paired light/dark heads-up preset without changing unrelated module settings. */
     fun headsUpGlassModuleDefault(settings: ModifierSettings): ModifierSettings = settings.copy(
@@ -114,6 +142,7 @@ object ModifierSettingsPresets {
      * material alignment remains enabled by the module's default policy.
      */
     fun systemDefault(): ModifierSettings = ModifierSettings(
+        gestureHandleModulePreset = false,
         notificationsEnabled = false,
         controlCenterFollowMiLinkBackgroundMaterial = true,
         hideHeadsUpMiniBar = false,
@@ -157,6 +186,7 @@ object ModifierSettingsPresets {
         xiaomiCommunityMiuixIconsEnabled = false,
         xiaomiCommunityMonochromeIconsEnabled = false,
         xiaomiCommunityNavigationBadgesEnabled = false,
+        bilibiliFloatingNavigationEnabled = false,
         spotifyFloatingNavigationEnabled = false,
         spotifyFavoriteButtonEnabled = false,
         spotifyShuffleButtonEnabled = false,
@@ -169,6 +199,9 @@ object ModifierSettingsStore {
     private const val TAG = "MyHyperModifier"
     const val PREFS = "modifier_settings"
     const val METHOD_GET = "get_settings"
+    private const val KEY_GESTURE_HANDLE_MODULE_PRESET = "gesture_handle_module_preset"
+    private const val KEY_GESTURE_HANDLE_SCOPE_PACKAGES = "gesture_handle_scope_packages"
+    private const val KEY_GESTURE_HANDLE_APP_MODES = "gesture_handle_app_modes"
     private const val KEY_NOTIFICATIONS = "notifications_enabled"
     private const val KEY_NOTIFICATION_RADIUS = "notification_radius"
     private const val KEY_HIDE_HEADS_UP_MINI_BAR = "hide_heads_up_mini_bar"
@@ -177,10 +210,19 @@ object ModifierSettingsStore {
     private const val KEY_HEADS_UP_GLASS_PARAMETERS_ENABLED = "heads_up_glass_parameters_enabled"
     private const val KEY_HEADS_UP_GLASS_PARAMETERS = "heads_up_glass_parameters"
     private const val KEY_HEADS_UP_GLASS_DARK_PARAMETERS = "heads_up_glass_dark_parameters"
+    private const val KEY_SHADE_CARD_GLASS_ENABLED = "shade_card_glass_parameters_enabled"
+    private const val KEY_GLOBAL_GLASS_BLUR_ENABLED = "global_glass_blur_enabled"
+    private const val KEY_SHADE_CARD_GLASS_PARAMETERS = "shade_card_glass_parameters"
+    private const val KEY_SHADE_CARD_GLASS_DARK_PARAMETERS = "shade_card_glass_dark_parameters"
+    private const val KEY_SHADE_CARD_BACKGROUND_BLUR_PERCENT = "shade_card_background_blur_percent"
+    private const val KEY_SHADE_CARD_GLASS_BLUR_ENABLED = "shade_card_glass_blur_enabled"
+    private const val KEY_SHADE_CARD_GLASS_BLUR_RADIUS = "shade_card_glass_blur_radius"
     private const val KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS_ENABLED =
         "heads_up_background_blur_radius_enabled"
     private const val KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS = "heads_up_background_blur_radius"
     private const val KEY_GLOBAL_BACKGROUND_BLUR_PERCENT = "global_background_blur_percent"
+    private const val KEY_GLOBAL_BACKGROUND_DIM_ENABLED = "global_background_dim_enabled"
+    private const val KEY_GLOBAL_BACKGROUND_DIM_PERCENT = "global_background_dim_percent"
     // New key intentionally ignores the earlier opt-in switch's saved false state.
     private const val KEY_CONTROL_CENTER_FOLLOW_MILINK_BACKGROUND_MATERIAL =
         "control_center_follow_milink_background_material_default_on"
@@ -261,6 +303,14 @@ object ModifierSettingsStore {
         "xiaomi_community_monochrome_icons_enabled"
     private const val KEY_XIAOMI_COMMUNITY_NAVIGATION_BADGES =
         "xiaomi_community_navigation_badges_enabled"
+    private const val KEY_BILIBILI_FLOATING_NAVIGATION_ENABLED = "bilibili_floating_navigation_enabled"
+    private const val KEY_BILIBILI_NAVIGATION_BADGES_ENABLED = "bilibili_navigation_badges_enabled"
+    private const val KEY_BILIBILI_HOME_TAB_VISIBLE = "bilibili_home_tab_visible"
+    private const val KEY_BILIBILI_FOLLOW_TAB_VISIBLE = "bilibili_follow_tab_visible"
+    private const val KEY_BILIBILI_DYNAMIC_TAB_VISIBLE = "bilibili_dynamic_tab_visible"
+    private const val KEY_BILIBILI_MALL_TAB_VISIBLE = "bilibili_mall_tab_visible"
+    private const val KEY_BILIBILI_MINE_TAB_VISIBLE = "bilibili_mine_tab_visible"
+    private const val KEY_BILIBILI_PUBLISH_BUTTON_VISIBLE = "bilibili_publish_button_visible"
     private const val KEY_SPOTIFY_FLOATING_NAVIGATION = "spotify_floating_navigation_enabled"
     private const val KEY_SPOTIFY_FAVORITE_BUTTON = "spotify_favorite_button_enabled"
     private const val KEY_SPOTIFY_SHUFFLE_BUTTON = "spotify_shuffle_button_enabled"
@@ -279,6 +329,8 @@ object ModifierSettingsStore {
         )
         val migrateGlassDefaults = HeadsUpGlassDefaults.isLegacyDefaultPair(regularGlass, darkGlass)
         return ModifierSettings(
+            gestureHandleModulePreset = prefs.getBoolean(KEY_GESTURE_HANDLE_MODULE_PRESET, true),
+            gestureHandleAppModes = GestureHandleRules.decode(prefs.getString(KEY_GESTURE_HANDLE_APP_MODES, "")),
             notificationsEnabled = prefs.getBoolean(KEY_NOTIFICATIONS, false),
             notificationRadius = prefs.getFloat(KEY_NOTIFICATION_RADIUS, 28f),
             hideHeadsUpMiniBar = prefs.getBoolean(KEY_HIDE_HEADS_UP_MINI_BAR, false),
@@ -300,14 +352,29 @@ object ModifierSettingsStore {
                 KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS_ENABLED,
                 false,
             ),
-            headsUpBackgroundBlurRadius = prefs.getFloat(
-                KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS,
-                60f,
-            ).coerceIn(0f, 200f),
+            shadeCardGlassParametersEnabled = prefs.getBoolean(KEY_SHADE_CARD_GLASS_ENABLED, false),
+            globalGlassBlurEnabled = prefs.getBoolean(KEY_GLOBAL_GLASS_BLUR_ENABLED,
+                prefs.getBoolean(KEY_SHADE_CARD_GLASS_ENABLED, false)),
+            shadeCardGlassParameters = HeadsUpGlassParameters.serialize(
+                HeadsUpGlassParameters.parseSerializedOrDefault(
+                    prefs.getString(KEY_SHADE_CARD_GLASS_PARAMETERS,
+                        prefs.getString(KEY_SHADE_CARD_GLASS_DARK_PARAMETERS, null)), ShadeCardGlassPolicy.defaults(),
+                ),
+            ),
+            shadeCardBackgroundBlurPercent = ShadeCardGlassPolicy.normalize(prefs.getFloat(KEY_SHADE_CARD_BACKGROUND_BLUR_PERCENT, 100f), 200f, 100f),
+            shadeCardGlassBlurEnabled = prefs.getBoolean(KEY_SHADE_CARD_GLASS_BLUR_ENABLED, false),
+            shadeCardGlassBlurRadius = ShadeCardGlassPolicy.normalize(prefs.getFloat(KEY_SHADE_CARD_GLASS_BLUR_RADIUS, 20f), ShadeCardGlassPolicy.MAX_GLASS_BLUR_RADIUS.toFloat(), 20f),
+            headsUpBackgroundBlurRadius = ShadeCardGlassPolicy.normalize(prefs.getFloat(
+                KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS, 60f,
+            ), ShadeCardGlassPolicy.MAX_GLASS_BLUR_RADIUS.toFloat(), 60f),
             globalBackgroundBlurPercent = prefs.getFloat(
                 KEY_GLOBAL_BACKGROUND_BLUR_PERCENT,
                 100f,
             ).coerceIn(0f, 200f),
+            globalBackgroundDimEnabled = prefs.getBoolean(KEY_GLOBAL_BACKGROUND_DIM_ENABLED, false),
+            globalBackgroundDimPercent = BackgroundDimPolicy.normalizePercent(
+                prefs.getFloat(KEY_GLOBAL_BACKGROUND_DIM_PERCENT, 20f),
+            ),
             controlCenterFollowMiLinkBackgroundMaterial = prefs.getBoolean(
                 KEY_CONTROL_CENTER_FOLLOW_MILINK_BACKGROUND_MATERIAL,
                 true,
@@ -420,6 +487,14 @@ object ModifierSettingsStore {
                 KEY_XIAOMI_COMMUNITY_NAVIGATION_BADGES,
                 true,
             ),
+            bilibiliFloatingNavigationEnabled = prefs.getBoolean(KEY_BILIBILI_FLOATING_NAVIGATION_ENABLED, true),
+            bilibiliNavigationBadgesEnabled = prefs.getBoolean(KEY_BILIBILI_NAVIGATION_BADGES_ENABLED, true),
+            bilibiliHomeTabVisible = prefs.getBoolean(KEY_BILIBILI_HOME_TAB_VISIBLE, true),
+            bilibiliFollowTabVisible = prefs.getBoolean(KEY_BILIBILI_FOLLOW_TAB_VISIBLE, true),
+            bilibiliDynamicTabVisible = prefs.getBoolean(KEY_BILIBILI_DYNAMIC_TAB_VISIBLE, true),
+            bilibiliMallTabVisible = prefs.getBoolean(KEY_BILIBILI_MALL_TAB_VISIBLE, true),
+            bilibiliMineTabVisible = prefs.getBoolean(KEY_BILIBILI_MINE_TAB_VISIBLE, true),
+            bilibiliPublishButtonVisible = prefs.getBoolean(KEY_BILIBILI_PUBLISH_BUTTON_VISIBLE, true),
             spotifyFloatingNavigationEnabled = prefs.getBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, false),
             spotifyFavoriteButtonEnabled = prefs.getBoolean(KEY_SPOTIFY_FAVORITE_BUTTON, false),
             spotifyShuffleButtonEnabled = prefs.getBoolean(KEY_SPOTIFY_SHUFFLE_BUTTON, false),
@@ -430,6 +505,8 @@ object ModifierSettingsStore {
 
     fun save(context: Context, value: ModifierSettings) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_GESTURE_HANDLE_MODULE_PRESET, value.gestureHandleModulePreset)
+            .putString(KEY_GESTURE_HANDLE_APP_MODES, GestureHandleRules.encode(value.gestureHandleAppModes))
             .putBoolean(KEY_NOTIFICATIONS, value.notificationsEnabled)
             .putFloat(KEY_NOTIFICATION_RADIUS, value.notificationRadius)
             .putBoolean(KEY_HIDE_HEADS_UP_MINI_BAR, value.hideHeadsUpMiniBar)
@@ -464,13 +541,27 @@ object ModifierSettingsStore {
                 KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS_ENABLED,
                 value.headsUpBackgroundBlurRadiusEnabled,
             )
+            .putBoolean(KEY_SHADE_CARD_GLASS_ENABLED, value.shadeCardGlassParametersEnabled)
+            .putBoolean(KEY_GLOBAL_GLASS_BLUR_ENABLED, value.globalGlassBlurEnabled)
+            .putString(KEY_SHADE_CARD_GLASS_PARAMETERS, HeadsUpGlassParameters.serialize(
+                HeadsUpGlassParameters.parseSerializedOrDefault(value.shadeCardGlassParameters, ShadeCardGlassPolicy.defaults()),
+            ))
+            // Keep the old dark preference untouched for rollback; the common recipe uses regular.
+            .putFloat(KEY_SHADE_CARD_BACKGROUND_BLUR_PERCENT, ShadeCardGlassPolicy.normalize(value.shadeCardBackgroundBlurPercent, 200f, 100f))
+            .putBoolean(KEY_SHADE_CARD_GLASS_BLUR_ENABLED, value.shadeCardGlassBlurEnabled)
+            .putFloat(KEY_SHADE_CARD_GLASS_BLUR_RADIUS, ShadeCardGlassPolicy.normalize(value.shadeCardGlassBlurRadius, ShadeCardGlassPolicy.MAX_GLASS_BLUR_RADIUS.toFloat(), 20f))
             .putFloat(
                 KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS,
-                value.headsUpBackgroundBlurRadius.coerceIn(0f, 200f),
+                ShadeCardGlassPolicy.normalize(value.headsUpBackgroundBlurRadius, ShadeCardGlassPolicy.MAX_GLASS_BLUR_RADIUS.toFloat(), 60f),
             )
             .putFloat(
                 KEY_GLOBAL_BACKGROUND_BLUR_PERCENT,
                 value.globalBackgroundBlurPercent.coerceIn(0f, 200f),
+            )
+            .putBoolean(KEY_GLOBAL_BACKGROUND_DIM_ENABLED, value.globalBackgroundDimEnabled)
+            .putFloat(
+                KEY_GLOBAL_BACKGROUND_DIM_PERCENT,
+                BackgroundDimPolicy.normalizePercent(value.globalBackgroundDimPercent),
             )
             .putBoolean(
                 KEY_CONTROL_CENTER_FOLLOW_MILINK_BACKGROUND_MATERIAL,
@@ -588,6 +679,14 @@ object ModifierSettingsStore {
                 KEY_XIAOMI_COMMUNITY_NAVIGATION_BADGES,
                 value.xiaomiCommunityNavigationBadgesEnabled,
             )
+            .putBoolean(KEY_BILIBILI_FLOATING_NAVIGATION_ENABLED, value.bilibiliFloatingNavigationEnabled)
+            .putBoolean(KEY_BILIBILI_NAVIGATION_BADGES_ENABLED, value.bilibiliNavigationBadgesEnabled)
+            .putBoolean(KEY_BILIBILI_HOME_TAB_VISIBLE, value.bilibiliHomeTabVisible)
+            .putBoolean(KEY_BILIBILI_FOLLOW_TAB_VISIBLE, value.bilibiliFollowTabVisible)
+            .putBoolean(KEY_BILIBILI_DYNAMIC_TAB_VISIBLE, value.bilibiliDynamicTabVisible)
+            .putBoolean(KEY_BILIBILI_MALL_TAB_VISIBLE, value.bilibiliMallTabVisible)
+            .putBoolean(KEY_BILIBILI_MINE_TAB_VISIBLE, value.bilibiliMineTabVisible)
+            .putBoolean(KEY_BILIBILI_PUBLISH_BUTTON_VISIBLE, value.bilibiliPublishButtonVisible)
             .putBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, value.spotifyFloatingNavigationEnabled)
             .putBoolean(KEY_SPOTIFY_FAVORITE_BUTTON, value.spotifyFavoriteButtonEnabled)
             .putBoolean(KEY_SPOTIFY_SHUFFLE_BUTTON, value.spotifyShuffleButtonEnabled)
@@ -616,6 +715,8 @@ object ModifierSettingsStore {
         val service = remoteService ?: return
         try {
             val source = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            // Preserve the actual framework scope for offline UI and SystemUI classification.
+            source.edit().putString(KEY_GESTURE_HANDLE_SCOPE_PACKAGES, service.scope.joinToString("\n")).apply()
             val editor = service.getRemotePreferences(PREFS).edit().clear()
             source.all.forEach { (key, value) -> editor.putRemoteValue(key, value) }
             // A synchronous commit makes the snapshot available before LSPosed starts a scoped
@@ -640,7 +741,14 @@ object ModifierSettingsStore {
     private val SETTINGS_URI = Uri.parse("content://com.aritxonly.myhypermodifier.settings")
     @Volatile private var remoteService: XposedService? = null
 
+    internal fun gestureHandleScopePackages(context: Context): Set<String> =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_GESTURE_HANDLE_SCOPE_PACKAGES, "").orEmpty()
+            .lineSequence().filter { it.isNotBlank() }.toSet()
+
     fun toBundle(value: ModifierSettings) = Bundle().apply {
+        putBoolean(KEY_GESTURE_HANDLE_MODULE_PRESET, value.gestureHandleModulePreset)
+        putString(KEY_GESTURE_HANDLE_APP_MODES, GestureHandleRules.encode(value.gestureHandleAppModes))
         putBoolean(KEY_NOTIFICATIONS, value.notificationsEnabled)
         putFloat(KEY_NOTIFICATION_RADIUS, value.notificationRadius)
         putBoolean(KEY_HIDE_HEADS_UP_MINI_BAR, value.hideHeadsUpMiniBar)
@@ -652,17 +760,28 @@ object ModifierSettingsStore {
         putBoolean(KEY_HEADS_UP_GLASS_PARAMETERS_ENABLED, value.headsUpGlassParametersEnabled)
         putString(KEY_HEADS_UP_GLASS_PARAMETERS, value.headsUpGlassParameters)
         putString(KEY_HEADS_UP_GLASS_DARK_PARAMETERS, value.headsUpGlassDarkParameters)
+        putBoolean(KEY_SHADE_CARD_GLASS_ENABLED, value.shadeCardGlassParametersEnabled)
+        putBoolean(KEY_GLOBAL_GLASS_BLUR_ENABLED, value.globalGlassBlurEnabled)
+        putString(KEY_SHADE_CARD_GLASS_PARAMETERS, value.shadeCardGlassParameters)
+        putFloat(KEY_SHADE_CARD_BACKGROUND_BLUR_PERCENT, ShadeCardGlassPolicy.normalize(value.shadeCardBackgroundBlurPercent, 200f, 100f))
+        putBoolean(KEY_SHADE_CARD_GLASS_BLUR_ENABLED, value.shadeCardGlassBlurEnabled)
+        putFloat(KEY_SHADE_CARD_GLASS_BLUR_RADIUS, ShadeCardGlassPolicy.normalize(value.shadeCardGlassBlurRadius, ShadeCardGlassPolicy.MAX_GLASS_BLUR_RADIUS.toFloat(), 20f))
         putBoolean(
             KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS_ENABLED,
             value.headsUpBackgroundBlurRadiusEnabled,
         )
         putFloat(
             KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS,
-            value.headsUpBackgroundBlurRadius.coerceIn(0f, 200f),
+            ShadeCardGlassPolicy.normalize(value.headsUpBackgroundBlurRadius, ShadeCardGlassPolicy.MAX_GLASS_BLUR_RADIUS.toFloat(), 60f),
         )
         putFloat(
             KEY_GLOBAL_BACKGROUND_BLUR_PERCENT,
             value.globalBackgroundBlurPercent.coerceIn(0f, 200f),
+        )
+        putBoolean(KEY_GLOBAL_BACKGROUND_DIM_ENABLED, value.globalBackgroundDimEnabled)
+        putFloat(
+            KEY_GLOBAL_BACKGROUND_DIM_PERCENT,
+            BackgroundDimPolicy.normalizePercent(value.globalBackgroundDimPercent),
         )
         putBoolean(
             KEY_CONTROL_CENTER_FOLLOW_MILINK_BACKGROUND_MATERIAL,
@@ -773,6 +892,14 @@ object ModifierSettingsStore {
             KEY_XIAOMI_COMMUNITY_NAVIGATION_BADGES,
             value.xiaomiCommunityNavigationBadgesEnabled,
         )
+        putBoolean(KEY_BILIBILI_FLOATING_NAVIGATION_ENABLED, value.bilibiliFloatingNavigationEnabled)
+        putBoolean(KEY_BILIBILI_NAVIGATION_BADGES_ENABLED, value.bilibiliNavigationBadgesEnabled)
+        putBoolean(KEY_BILIBILI_HOME_TAB_VISIBLE, value.bilibiliHomeTabVisible)
+        putBoolean(KEY_BILIBILI_FOLLOW_TAB_VISIBLE, value.bilibiliFollowTabVisible)
+        putBoolean(KEY_BILIBILI_DYNAMIC_TAB_VISIBLE, value.bilibiliDynamicTabVisible)
+        putBoolean(KEY_BILIBILI_MALL_TAB_VISIBLE, value.bilibiliMallTabVisible)
+        putBoolean(KEY_BILIBILI_MINE_TAB_VISIBLE, value.bilibiliMineTabVisible)
+        putBoolean(KEY_BILIBILI_PUBLISH_BUTTON_VISIBLE, value.bilibiliPublishButtonVisible)
         putBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, value.spotifyFloatingNavigationEnabled)
         putBoolean(KEY_SPOTIFY_FAVORITE_BUTTON, value.spotifyFavoriteButtonEnabled)
         putBoolean(KEY_SPOTIFY_SHUFFLE_BUTTON, value.spotifyShuffleButtonEnabled)

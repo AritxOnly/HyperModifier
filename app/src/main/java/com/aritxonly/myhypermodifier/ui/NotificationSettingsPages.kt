@@ -107,8 +107,17 @@ internal fun NotificationControlCenterSettingsPage(
     padding: PaddingValues,
     settings: ModifierSettings,
     update: (ModifierSettings) -> Unit,
+    onOpenCardGlassSettings: () -> Unit,
+    onOpenGlobalMaterialBlur: () -> Unit,
     onScroll: (Float) -> Unit,
 ) = SettingsScrollPage(padding, onScroll) {
+    SettingsSection(topLabel = "卡片柔光玻璃") {
+        NavigationSettingItem(
+            title = "通知／控制中心卡片柔光玻璃",
+            summary = "调整卡片柔光玻璃配方；共享模糊统一在全局材质模糊中设置",
+            onClick = onOpenCardGlassSettings,
+        )
+    }
     SettingsSection(topLabel = "通知中心") {
         SettingsSwitchItem("通知圆角", "", settings.notificationsEnabled, { update(settings.copy(notificationsEnabled = it)) })
         SettingsSliderItemWithLabel("圆角大小", settings.notificationRadius, 12f..48f, { update(settings.copy(notificationRadius = it)) }, steps = 17, enabled = settings.notificationsEnabled)
@@ -150,22 +159,7 @@ internal fun NotificationControlCenterSettingsPage(
             enabled = settings.miLinkMainCardsEnabled,
         )
     }
-    SettingsSection(topLabel = "全局背景模糊") {
-        SettingsSliderItemWithLabel(
-            label = "全局背景模糊",
-            value = settings.globalBackgroundBlurPercent,
-            valueRange = 0f..200f,
-            onValueChange = { update(settings.copy(globalBackgroundBlurPercent = it)) },
-            steps = 199,
-            valueText = { "${it.toInt()}%" },
-        )
-        Text(
-            "影响通知中心、控制中心和融合设备中心的背景。100% 为系统原有模糊强度；重新打开相关界面后生效。",
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            style = MiuixTheme.textStyles.footnote1,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-        )
-    }
+    GlobalMaterialBlurEntry(settings, onOpenGlobalMaterialBlur)
 }
 
 @Composable
@@ -174,6 +168,7 @@ internal fun HeadsUpNotificationsSettingsPage(
     settings: ModifierSettings,
     update: (ModifierSettings) -> Unit,
     onOpenHeadsUpGlassSettings: () -> Unit,
+    onOpenGlobalMaterialBlur: () -> Unit,
     onScroll: (Float) -> Unit,
 ) = SettingsScrollPage(padding, onScroll) {
     SettingsSection(topLabel = "悬浮通知小窗") {
@@ -199,6 +194,7 @@ internal fun HeadsUpNotificationsSettingsPage(
             valueText = { "${it.toInt()} dp" },
         )
     }
+    GlobalMaterialBlurEntry(settings, onOpenGlobalMaterialBlur)
     SettingsSection(topLabel = "悬浮通知柔光玻璃") {
         NavigationSettingItem(
             title = "悬浮通知柔光玻璃",
@@ -217,27 +213,29 @@ internal fun HeadsUpGlassSettingsPage(
     settings: ModifierSettings,
     update: (ModifierSettings) -> Unit,
     onOpenAdvanced: () -> Unit,
+    onOpenGlobalMaterialBlur: () -> Unit,
     onOpenPresetDialog: (HeadsUpGlassPresetDialogMode) -> Unit,
+    scope: GlassParameterScope = GlassParameterScope.HeadsUp,
     onScroll: (Float) -> Unit,
 ) = SettingsScrollPage(padding, onScroll) {
     SettingsSection(topLabel = "使用方式") {
         SettingsSwitchItem(
             label = "启用自定义参数",
-            supportingText = "",
-            checked = settings.headsUpGlassParametersEnabled,
-            onCheckedChange = { update(settings.copy(headsUpGlassParametersEnabled = it)) },
+            supportingText = "只调整柔光玻璃配方；共享模糊由全局材质模糊页面独立控制",
+            checked = scope.enabled(settings),
+            onCheckedChange = { update(scope.setEnabled(settings, it)) },
         )
     }
     SettingsSection(topLabel = "预设") {
-        val usingModulePreset = settings.headsUpGlassParametersEnabled &&
-            settings.headsUpGlassParameters == HeadsUpGlassParameters.regularSerialized &&
-            settings.headsUpGlassDarkParameters == HeadsUpGlassParameters.darkSerialized
-        val usingSystemPreset = !settings.headsUpGlassParametersEnabled
+        val usingModulePreset = scope.enabled(settings) &&
+            scope.serialized(settings, false) == HeadsUpGlassParameters.serialize(scope.defaults(false)) &&
+            scope.serialized(settings, true) == HeadsUpGlassParameters.serialize(scope.defaults(true))
+        val usingSystemPreset = !scope.enabled(settings)
         Text(
             when {
-                usingModulePreset -> "当前柔光参数：模块默认。亮色与暗色分别应用。"
+                usingModulePreset -> if (scope == GlassParameterScope.ShadeCards) "当前：原生基准，尚未增加参数偏移。" else "当前柔光参数：模块默认。亮色与暗色分别应用。"
                 usingSystemPreset -> "当前：系统默认。自定义参数已保留，可随时重新启用。"
-                else -> "当前：自定义。应用模块默认会重置亮色与暗色参数。"
+                else -> if (scope == GlassParameterScope.ShadeCards) "当前：自定义。亮暗模式共用参数，原生基准会恢复零偏移，不更改全局模糊。" else "当前：自定义。应用模块默认会重置亮色与暗色参数。"
             },
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             style = MiuixTheme.textStyles.footnote1,
@@ -248,20 +246,21 @@ internal fun HeadsUpGlassSettingsPage(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Button(
-                onClick = { update(ModifierSettingsPresets.headsUpGlassModuleDefault(settings)) },
+                onClick = { update(scope.moduleDefault(settings)) },
                 modifier = Modifier.weight(1f),
-            ) { Text("模块默认") }
+            ) { Text(if (scope == GlassParameterScope.ShadeCards) "原生基准" else "模块默认") }
             Button(
-                onClick = { update(ModifierSettingsPresets.headsUpGlassSystemDefault(settings)) },
+                onClick = { update(scope.systemDefault(settings)) },
                 modifier = Modifier.weight(1f),
             ) { Text("系统默认") }
         }
     }
+    GlobalMaterialBlurEntry(settings, onOpenGlobalMaterialBlur)
     SettingsSection(topLabel = "高级设置") {
         NavigationSettingItem(
             title = "高级参数调整",
             summary = "",
-            enabled = settings.headsUpGlassParametersEnabled,
+            enabled = scope.enabled(settings),
             onClick = onOpenAdvanced,
         )
     }
@@ -272,7 +271,7 @@ internal fun HeadsUpGlassSettingsPage(
             onClick = { onOpenPresetDialog(HeadsUpGlassPresetDialogMode.Import) },
         )
         SettingItem(
-            headlineText = "导出已保存的亮暗参数",
+            headlineText = if (scope == GlassParameterScope.ShadeCards) "导出共用材质参数" else "导出已保存的亮暗参数",
             supportingText = "即使当前为系统默认，也可备份保留的自定义参数",
             onClick = { onOpenPresetDialog(HeadsUpGlassPresetDialogMode.Export) },
         )
@@ -287,46 +286,39 @@ internal fun HeadsUpGlassAdvancedSettingsPage(
     selectedTab: Int,
     scrollState: ScrollState,
     onEditParameter: (dark: Boolean, index: Int) -> Unit,
+    scope: GlassParameterScope = GlassParameterScope.HeadsUp,
 ) = SettingsScrollPage(padding, {}, scrollState) {
     Text(
-        "拖动滑块微调，点击名称输入精确数值。保留项建议保持 0，固定项建议保持 1。",
+        if (scope == GlassParameterScope.ShadeCards) {
+            "通知／控制中心、亮暗模式共用一套调整。显示值相对原生基准产生偏移，例如混合亮度从 -0.02 改到 0.18，所有卡片增加 0.20；仍保留各卡片原有差异。"
+        } else "拖动滑块微调，点击名称输入精确数值。保留项建议保持 0，固定项建议保持 1。",
         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         style = MiuixTheme.textStyles.footnote1,
         modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
     )
     if (selectedTab == 0) {
         HeadsUpGlassSliderList(
-            values = HeadsUpGlassParameters.parseSerializedOrDefault(
-                settings.headsUpGlassParameters,
-                HeadsUpGlassParameters.regularDefault,
-            ),
-            enabled = settings.headsUpGlassParametersEnabled,
+            values = scope.values(settings, false),
+            enabled = scope.enabled(settings),
             onValueChange = { index, value ->
-                val values = HeadsUpGlassParameters.parseSerializedOrDefault(
-                    settings.headsUpGlassParameters,
-                    HeadsUpGlassParameters.regularDefault,
-                )
+                val values = scope.values(settings, false)
                 values[index] = value
-                update(settings.copy(headsUpGlassParameters = HeadsUpGlassParameters.serialize(values)))
+                update(scope.setParameters(settings, false, values))
             },
             onEdit = { onEditParameter(false, it) },
+            scope = scope,
         )
     } else {
         HeadsUpGlassSliderList(
-            values = HeadsUpGlassParameters.parseSerializedOrDefault(
-                settings.headsUpGlassDarkParameters,
-                HeadsUpGlassParameters.darkDefault,
-            ),
-            enabled = settings.headsUpGlassParametersEnabled,
+            values = scope.values(settings, true),
+            enabled = scope.enabled(settings),
             onValueChange = { index, value ->
-                val values = HeadsUpGlassParameters.parseSerializedOrDefault(
-                    settings.headsUpGlassDarkParameters,
-                    HeadsUpGlassParameters.darkDefault,
-                )
+                val values = scope.values(settings, true)
                 values[index] = value
-                update(settings.copy(headsUpGlassDarkParameters = HeadsUpGlassParameters.serialize(values)))
+                update(scope.setParameters(settings, true, values))
             },
             onEdit = { onEditParameter(true, it) },
+            scope = scope,
         )
     }
 }
@@ -337,6 +329,7 @@ private fun HeadsUpGlassSliderList(
     enabled: Boolean,
     onValueChange: (Int, Float) -> Unit,
     onEdit: (Int) -> Unit,
+    scope: GlassParameterScope,
 ) {
     HeadsUpGlassParameters.groups.forEach { group ->
         SettingsSection(topLabel = group.title) {
@@ -347,6 +340,7 @@ private fun HeadsUpGlassSliderList(
                     enabled = enabled,
                     onValueChange = { onValueChange(index, it) },
                     onEdit = { onEdit(index) },
+                    scope = scope,
                 )
             }
         }
@@ -360,6 +354,7 @@ private fun HeadsUpGlassSliderItem(
     enabled: Boolean,
     onValueChange: (Float) -> Unit,
     onEdit: () -> Unit,
+    scope: GlassParameterScope,
 ) {
     val parameter = HeadsUpGlassParameters.definitions[index]
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
@@ -369,6 +364,12 @@ private fun HeadsUpGlassSliderItem(
         ) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text("${index.toString().padStart(2, '0')} · ${parameter.label}", style = MiuixTheme.textStyles.body1)
+                Text(parameter.summary, color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    style = MiuixTheme.textStyles.footnote1)
+                if (scope == GlassParameterScope.ShadeCards) {
+                    Text("相对原生偏移：${formatGlassParameter(value - ShadeCardGlassPolicy.defaults()[index])}",
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary, style = MiuixTheme.textStyles.footnote1)
+                }
             }
             Text(
                 formatGlassParameter(value),
@@ -393,21 +394,12 @@ internal fun HeadsUpGlassParameterDialog(
     settings: ModifierSettings,
     onDismissRequest: () -> Unit,
     onSave: (ModifierSettings) -> Unit,
+    scope: GlassParameterScope = GlassParameterScope.HeadsUp,
 ) {
     val currentTarget = target ?: return
     val definition = HeadsUpGlassParameters.definitions[currentTarget.index]
-    val source = if (currentTarget.dark) {
-        HeadsUpGlassParameters.parseSerializedOrDefault(
-            settings.headsUpGlassDarkParameters,
-            HeadsUpGlassParameters.darkDefault,
-        )
-    } else {
-        HeadsUpGlassParameters.parseSerializedOrDefault(
-            settings.headsUpGlassParameters,
-            HeadsUpGlassParameters.regularDefault,
-        )
-    }
-    var draft by remember(currentTarget, settings.headsUpGlassParameters, settings.headsUpGlassDarkParameters) {
+    val source = scope.values(settings, currentTarget.dark)
+    var draft by remember(currentTarget, scope, scope.serialized(settings, currentTarget.dark)) {
         mutableStateOf(source[currentTarget.index].toString())
     }
     val parsedValue = draft.trim().toFloatOrNull()?.takeIf { !it.isNaN() && !it.isInfinite() }
@@ -418,7 +410,8 @@ internal fun HeadsUpGlassParameterDialog(
         summary = when (currentTarget.index) {
             18 -> "固定项，建议保持 1。"
             in 36..39 -> "保留项，建议保持 0。"
-            else -> "调整${if (currentTarget.dark) "暗色" else "亮色"}效果的${definition.label}。"
+            else -> definition.summary +
+                if (scope == GlassParameterScope.ShadeCards) "原生基准：${scope.defaults(currentTarget.dark)[currentTarget.index]}；修改量叠加至各卡片原有参数。" else ""
         },
         onDismissRequest = onDismissRequest,
     ) {
@@ -433,7 +426,7 @@ internal fun HeadsUpGlassParameterDialog(
             if (parsedValue == null) {
                 Text(
                     text = "请输入有效的有限数字。",
-                    color = MaterialTheme.colorScheme.error,
+                    color = MiuixTheme.colorScheme.error,
                     style = MiuixTheme.textStyles.footnote1,
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
                 )
@@ -446,17 +439,7 @@ internal fun HeadsUpGlassParameterDialog(
                 Button(
                     onClick = {
                         source[currentTarget.index] = requireNotNull(parsedValue)
-                        onSave(
-                            if (currentTarget.dark) {
-                                settings.copy(
-                                    headsUpGlassDarkParameters = HeadsUpGlassParameters.serialize(source),
-                                )
-                            } else {
-                                settings.copy(
-                                    headsUpGlassParameters = HeadsUpGlassParameters.serialize(source),
-                                )
-                            },
-                        )
+                        onSave(scope.setParameters(settings, currentTarget.dark, source))
                     },
                     modifier = Modifier.weight(1f),
                     enabled = parsedValue != null,
@@ -473,20 +456,21 @@ internal fun HeadsUpGlassPresetDialog(
     settings: ModifierSettings,
     onDismissRequest: () -> Unit,
     onImport: (ModifierSettings) -> Unit,
+    scope: GlassParameterScope = GlassParameterScope.HeadsUp,
 ) {
     val currentMode = mode ?: return
     val context = LocalContext.current
-    var json by remember(currentMode, settings.headsUpGlassParameters, settings.headsUpGlassDarkParameters) {
+    var json by remember(currentMode, scope, scope.serialized(settings, false), scope.serialized(settings, true)) {
         mutableStateOf(
             if (currentMode == HeadsUpGlassPresetDialogMode.Export) {
-                HeadsUpGlassPresetJson.export(settings)
+                HeadsUpGlassPresetJson.export(settings, scope)
             } else {
                 ""
             },
         )
     }
     val imported = if (currentMode == HeadsUpGlassPresetDialogMode.Import && json.isNotBlank()) {
-        HeadsUpGlassPresetJson.import(json)
+        HeadsUpGlassPresetJson.import(json, scope)
     } else {
         null
     }
@@ -496,9 +480,9 @@ internal fun HeadsUpGlassPresetDialog(
         show = true,
         title = if (isImport) "导入 JSON 预设" else "导出 JSON 预设",
         summary = if (isImport) {
-            "导入会覆盖亮色与暗色的设置，并启用自定义效果。"
+            if (scope == GlassParameterScope.ShadeCards) "导入共用材质参数，启用自定义效果；不更改全局模糊。旧版亮暗预设采用亮色参数。" else "导入会覆盖亮色与暗色的设置，并启用自定义效果。"
         } else {
-            "复制已保存的亮色与暗色参数，供备份或在其他设备导入。"
+            if (scope == GlassParameterScope.ShadeCards) "复制共用材质参数，亮暗模式使用同一套；全局模糊单独管理。" else "复制已保存的亮色与暗色参数，供备份或在其他设备导入。"
         },
         onDismissRequest = onDismissRequest,
     ) {
@@ -514,7 +498,7 @@ internal fun HeadsUpGlassPresetDialog(
             )
             if (isImport && json.isNotBlank() && imported == null) {
                 Text(
-                    "JSON 格式无效，或亮色 / 暗色参数不是 42 个有限数字。",
+                    if (scope == GlassParameterScope.ShadeCards) "JSON 格式无效，或参数数量／模糊设置不符合范围。" else "JSON 格式无效，或亮色 / 暗色参数不是 42 个有限数字。",
                     color = MaterialTheme.colorScheme.error,
                     style = MiuixTheme.textStyles.footnote1,
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
@@ -529,14 +513,7 @@ internal fun HeadsUpGlassPresetDialog(
                     Button(
                         onClick = {
                             val preset = requireNotNull(imported)
-                            onImport(
-                                settings.copy(
-                                    headsUpGlassParametersEnabled = true,
-                                    headsUpBackgroundBlurRadiusEnabled = false,
-                                    headsUpGlassParameters = HeadsUpGlassParameters.serialize(preset.regular),
-                                    headsUpGlassDarkParameters = HeadsUpGlassParameters.serialize(preset.dark),
-                                ),
-                            )
+                            onImport(scope.importPreset(settings, preset))
                         },
                         modifier = Modifier.weight(1f),
                         enabled = imported != null,
@@ -546,7 +523,7 @@ internal fun HeadsUpGlassPresetDialog(
                     Button(
                         onClick = {
                             val clipboard = context.getSystemService(ClipboardManager::class.java)
-                            clipboard.setPrimaryClip(ClipData.newPlainText("Heads-up glass preset", json))
+                            clipboard.setPrimaryClip(ClipData.newPlainText(scope.presetFormat, json))
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColorsPrimary(),

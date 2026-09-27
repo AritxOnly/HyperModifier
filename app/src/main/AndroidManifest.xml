@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The app policy picker includes system packages with enabled Activity pages. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
     <queries>
         <package android:name="com.mi.health" />
@@ -8,6 +10,7 @@
         <package android:name="com.xiaomi.smarthome" />
         <package android:name="com.autonavi.minimap" />
         <package android:name="com.xiaomi.vipaccount" />
+        <package android:name="tv.danmaku.bili" />
     </queries>
 
     <application

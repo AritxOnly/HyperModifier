@@ -1,0 +1,11 @@
+{
+  "format": "myhypermodifier-gesture-handle",
+  "version": 1,
+  "preset": "module",
+  "apps": {
+    "com.example.alwaysvisible": "show",
+    "com.example.hidden": "hide",
+    "com.example.immersive": "immersive",
+    "com.example.systemdefault": "system"
+  }
+}

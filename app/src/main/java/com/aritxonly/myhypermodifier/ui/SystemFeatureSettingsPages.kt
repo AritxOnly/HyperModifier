@@ -472,6 +472,7 @@ internal fun RestartScopeDialogContent(
     restartMiHome: Boolean,
     restartAmap: Boolean,
     restartXiaomiCommunity: Boolean,
+    restartBilibili: Boolean,
     restartSpotify: Boolean,
     restartSystem: Boolean,
     onSystemUiChange: (Boolean) -> Unit,
@@ -482,6 +483,7 @@ internal fun RestartScopeDialogContent(
     onMiHomeChange: (Boolean) -> Unit,
     onAmapChange: (Boolean) -> Unit,
     onXiaomiCommunityChange: (Boolean) -> Unit,
+    onBilibiliChange: (Boolean) -> Unit,
     onSpotifyChange: (Boolean) -> Unit,
     onSystemChange: (Boolean) -> Unit,
     onDismiss: () -> Unit,
@@ -508,6 +510,7 @@ internal fun RestartScopeDialogContent(
                 restartMiHome = restartMiHome,
                 restartAmap = restartAmap,
                 restartXiaomiCommunity = restartXiaomiCommunity,
+                restartBilibili = restartBilibili,
                 restartSpotify = restartSpotify,
                 restartSystem = restartSystem,
                 onSystemUiChange = onSystemUiChange,
@@ -518,6 +521,7 @@ internal fun RestartScopeDialogContent(
                 onMiHomeChange = onMiHomeChange,
                 onAmapChange = onAmapChange,
                 onXiaomiCommunityChange = onXiaomiCommunityChange,
+                onBilibiliChange = onBilibiliChange,
                 onSpotifyChange = onSpotifyChange,
                 onSystemChange = onSystemChange,
             )
@@ -536,6 +540,7 @@ internal fun RestartScopeDialogContent(
     restartMiHome: Boolean,
     restartAmap: Boolean,
     restartXiaomiCommunity: Boolean,
+    restartBilibili: Boolean,
     restartSpotify: Boolean,
     restartSystem: Boolean,
     onSystemUiChange: (Boolean) -> Unit,
@@ -546,6 +551,7 @@ internal fun RestartScopeDialogContent(
     onMiHomeChange: (Boolean) -> Unit,
     onAmapChange: (Boolean) -> Unit,
     onXiaomiCommunityChange: (Boolean) -> Unit,
+    onBilibiliChange: (Boolean) -> Unit,
     onSpotifyChange: (Boolean) -> Unit,
     onSystemChange: (Boolean) -> Unit,
 ) = Column(Modifier.padding(top = 8.dp)) {
@@ -617,6 +623,12 @@ internal fun RestartScopeDialogContent(
         },
     )
     SettingItem(
+        "哔哩哔哩",
+        "",
+        enabled = editable && !restartSystem,
+        trailingContent = { DeadlinerCheckbox(restartBilibili, onBilibiliChange, enabled = editable && !restartSystem) },
+    )
+    SettingItem(
         "小米社区",
         "",
         enabled = editable && !restartSystem,
@@ -655,6 +667,7 @@ internal fun restartSelectedScope(
     miHome: Boolean,
     amap: Boolean,
     xiaomiCommunity: Boolean,
+    bilibili: Boolean,
     spotify: Boolean,
     system: Boolean,
     onCompleted: (Boolean) -> Unit,
@@ -666,7 +679,7 @@ internal fun restartSelectedScope(
         val command = when {
             system -> "reboot"
             systemUi || plugin || miLink || xiaomiHealth || market || miHome || amap ||
-                xiaomiCommunity || spotify -> buildList {
+                xiaomiCommunity || bilibili || spotify -> buildList {
                 if (systemUi || plugin) add("killall com.android.systemui")
                 if (miLink) add("am force-stop com.milink.service")
                 if (xiaomiHealth) add("am force-stop com.mi.health")
@@ -674,6 +687,7 @@ internal fun restartSelectedScope(
                 if (miHome) add("am force-stop com.xiaomi.smarthome")
                 if (amap) add("am force-stop com.autonavi.minimap")
                 if (xiaomiCommunity) add("am force-stop com.xiaomi.vipaccount")
+                if (bilibili) add("am force-stop tv.danmaku.bili")
                 if (spotify) add("am force-stop com.spotify.music")
             }.joinToString("; ")
             else -> ""

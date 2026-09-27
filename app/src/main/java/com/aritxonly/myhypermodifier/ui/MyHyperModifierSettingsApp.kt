@@ -111,20 +111,25 @@ import androidx.core.graphics.ColorUtils
 internal enum class SettingsDestination(val key: String, val label: String) {
     Home("home", "主页"),
     NotificationsControlCenter("notifications-control-center", "通知/控制中心"),
+    GlobalMaterialBlur("global-material-blur", "全局材质模糊"),
     HeadsUpNotifications("heads-up-notifications", "悬浮通知"),
     HeadsUpGlass("heads-up-glass", "悬浮通知柔光玻璃"),
     HeadsUpGlassAdvanced("heads-up-glass-advanced", "高级参数调整"),
+    ShadeCardGlass("shade-card-glass", "通知／控制中心卡片柔光玻璃"),
+    ShadeCardGlassAdvanced("shade-card-glass-advanced", "高级参数调整"),
     XiaomiHealth("xiaomi-health", "小米运动健康"),
     Market("market", "应用商店"),
     MiHome("mi-home", "米家"),
     Amap("amap", "高德地图"),
     XiaomiCommunity("xiaomi-community", "小米社区"),
+    Bilibili("bilibili", "哔哩哔哩"),
     Spotify("spotify", "Spotify"),
     Media("media", "媒体组件"),
     MediaConstraintSet("media-constraint-set", "高级布局编辑"),
     Lockscreen("lockscreen", "锁屏"),
     StatusBar("status-bar", "状态栏"),
     Volume("volume", "音量面板"),
+    GestureHandle("gesture-handle", "小横条"),
     About("about", "关于"),
     ;
 
@@ -148,16 +153,21 @@ private data class RestartScopeDefaults(
     val miHome: Boolean = false,
     val amap: Boolean = false,
     val xiaomiCommunity: Boolean = false,
+    val bilibili: Boolean = false,
     val spotify: Boolean = false,
 )
 
 private fun SettingsDestination.requiredRestartScopes(): RestartScopeDefaults = when (this) {
-    SettingsDestination.NotificationsControlCenter -> RestartScopeDefaults(systemUi = true, plugin = true, miLink = true)
+    SettingsDestination.NotificationsControlCenter,
+    SettingsDestination.GlobalMaterialBlur -> RestartScopeDefaults(systemUi = true, plugin = true, miLink = true)
+    SettingsDestination.ShadeCardGlass,
+    SettingsDestination.ShadeCardGlassAdvanced -> RestartScopeDefaults(systemUi = true, plugin = true)
     SettingsDestination.XiaomiHealth -> RestartScopeDefaults(xiaomiHealth = true)
     SettingsDestination.Market -> RestartScopeDefaults(market = true)
     SettingsDestination.MiHome -> RestartScopeDefaults(miHome = true)
     SettingsDestination.Amap -> RestartScopeDefaults(amap = true)
     SettingsDestination.XiaomiCommunity -> RestartScopeDefaults(xiaomiCommunity = true)
+    SettingsDestination.Bilibili -> RestartScopeDefaults(bilibili = true)
     SettingsDestination.Spotify -> RestartScopeDefaults(spotify = true)
     SettingsDestination.HeadsUpNotifications,
     SettingsDestination.HeadsUpGlass,
@@ -166,6 +176,7 @@ private fun SettingsDestination.requiredRestartScopes(): RestartScopeDefaults = 
     SettingsDestination.MediaConstraintSet,
     SettingsDestination.Lockscreen,
     SettingsDestination.StatusBar,
+    SettingsDestination.GestureHandle,
     SettingsDestination.Volume -> RestartScopeDefaults(systemUi = true)
     SettingsDestination.Home,
     SettingsDestination.About -> RestartScopeDefaults()
@@ -216,6 +227,7 @@ fun MyHyperModifierSettingsApp() {
     var restartMiHome by remember { mutableStateOf(false) }
     var restartAmap by remember { mutableStateOf(false) }
     var restartXiaomiCommunity by remember { mutableStateOf(false) }
+    var restartBilibili by remember { mutableStateOf(false) }
     var restartSpotify by remember { mutableStateOf(false) }
     var restartSystem by remember { mutableStateOf(false) }
     var showRestoreDialog by remember { mutableStateOf(false) }
@@ -301,6 +313,7 @@ fun MyHyperModifierSettingsApp() {
                             restartMiHome = restartMiHome,
                             restartAmap = restartAmap,
                             restartXiaomiCommunity = restartXiaomiCommunity,
+                            restartBilibili = restartBilibili,
                             restartSpotify = restartSpotify,
                             restartSystem = restartSystem,
                             onSystemUiChange = { restartSystemUi = it },
@@ -316,6 +329,7 @@ fun MyHyperModifierSettingsApp() {
                             onMiHomeChange = { restartMiHome = it },
                             onAmapChange = { restartAmap = it },
                             onXiaomiCommunityChange = { restartXiaomiCommunity = it },
+                            onBilibiliChange = { restartBilibili = it },
                             onSpotifyChange = { restartSpotify = it },
                             onSystemChange = { checked ->
                                 restartSystem = checked
@@ -328,13 +342,14 @@ fun MyHyperModifierSettingsApp() {
                                     restartMiHome = false
                                     restartAmap = false
                                     restartXiaomiCommunity = false
+                                    restartBilibili = false
                                     restartSpotify = false
                                 }
                             },
                             onDismiss = { showRestartDialog = false },
                             onConfirm = {
                                 restartState = ScopeRestartState.Restarting
-                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartSpotify, restartSystem) {
+                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem) {
                                     restartState = if (it) ScopeRestartState.Succeeded else ScopeRestartState.Failed
                                 }
                             },
@@ -381,13 +396,18 @@ internal fun MyHyperModifierDetailSettingsApp(
     var glassEffectTab by rememberSaveable { mutableIntStateOf(0) }
     val lightGlassScroll = rememberScrollState()
     val darkGlassScroll = rememberScrollState()
-    val selectedGlassScroll = if (glassEffectTab == 0) lightGlassScroll else darkGlassScroll
-    val glassMaterialScrollObserver = rememberTopBarMaterialScrollObserver(glassEffectTab)
+    val glassScope = if (destination == SettingsDestination.ShadeCardGlass ||
+        destination == SettingsDestination.ShadeCardGlassAdvanced) GlassParameterScope.ShadeCards else GlassParameterScope.HeadsUp
+    val isGlassAdvanced = destination == SettingsDestination.HeadsUpGlassAdvanced ||
+        destination == SettingsDestination.ShadeCardGlassAdvanced
+    val selectedGlassTab = if (glassScope == GlassParameterScope.ShadeCards) 0 else glassEffectTab
+    val selectedGlassScroll = if (selectedGlassTab == 0) lightGlassScroll else darkGlassScroll
+    val glassMaterialScrollObserver = rememberTopBarMaterialScrollObserver(selectedGlassTab)
     LaunchedEffect(glassMaterialScrollObserver, selectedGlassScroll) {
         snapshotFlow { selectedGlassScroll.value.toFloat() }
             .collect(glassMaterialScrollObserver::updateAbsoluteScrollDistance)
     }
-    val activeScrollProgress = if (destination == SettingsDestination.HeadsUpGlassAdvanced) {
+    val activeScrollProgress = if (isGlassAdvanced) {
         glassMaterialScrollObserver.progress
     } else {
         scrollProgress
@@ -403,6 +423,7 @@ internal fun MyHyperModifierDetailSettingsApp(
     var restartMiHome by remember { mutableStateOf(defaultScopes.miHome) }
     var restartAmap by remember { mutableStateOf(defaultScopes.amap) }
     var restartXiaomiCommunity by remember { mutableStateOf(defaultScopes.xiaomiCommunity) }
+    var restartBilibili by remember { mutableStateOf(defaultScopes.bilibili) }
     var restartSpotify by remember { mutableStateOf(defaultScopes.spotify) }
     var restartSystem by remember { mutableStateOf(false) }
     var editingHeadsUpGlassParameter by remember { mutableStateOf<HeadsUpGlassParameterTarget?>(null) }
@@ -442,13 +463,14 @@ internal fun MyHyperModifierDetailSettingsApp(
                                     restartMiHome = defaultScopes.miHome
                                     restartAmap = defaultScopes.amap
                                     restartXiaomiCommunity = defaultScopes.xiaomiCommunity
+                                    restartBilibili = defaultScopes.bilibili
                                     restartSpotify = defaultScopes.spotify
                                     restartSystem = false
                                     showRestartDialog = true
                                 }
                             },
                         )
-                        if (destination == SettingsDestination.HeadsUpGlassAdvanced) {
+                        if (isGlassAdvanced && glassScope == GlassParameterScope.HeadsUp) {
                             TabRow(
                                 tabs = listOf("亮色", "暗色"),
                                 selectedTabIndex = glassEffectTab,
@@ -473,6 +495,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                             restartMiHome = restartMiHome,
                             restartAmap = restartAmap,
                             restartXiaomiCommunity = restartXiaomiCommunity,
+                            restartBilibili = restartBilibili,
                             restartSpotify = restartSpotify,
                             restartSystem = restartSystem,
                             onSystemUiChange = { restartSystemUi = it },
@@ -486,6 +509,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                             onMiHomeChange = { restartMiHome = it },
                             onAmapChange = { restartAmap = it },
                             onXiaomiCommunityChange = { restartXiaomiCommunity = it },
+                            onBilibiliChange = { restartBilibili = it },
                             onSpotifyChange = { restartSpotify = it },
                             onSystemChange = { checked ->
                                 restartSystem = checked
@@ -498,13 +522,14 @@ internal fun MyHyperModifierDetailSettingsApp(
                                     restartMiHome = false
                                     restartAmap = false
                                     restartXiaomiCommunity = false
+                                    restartBilibili = false
                                     restartSpotify = false
                                 }
                             },
                             onDismiss = { showRestartDialog = false },
                             onConfirm = {
                                 restartState = ScopeRestartState.Restarting
-                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartSpotify, restartSystem) {
+                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem) {
                                     restartState = if (it) ScopeRestartState.Succeeded else ScopeRestartState.Failed
                                 }
                             },
@@ -518,6 +543,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                             update(it)
                             editingHeadsUpGlassParameter = null
                         },
+                        scope = glassScope,
                     )
                     HeadsUpGlassPresetDialog(
                         mode = headsUpGlassPresetDialog,
@@ -527,6 +553,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                             update(it)
                             headsUpGlassPresetDialog = null
                         },
+                        scope = glassScope,
                     )
                 },
             ) { padding ->
@@ -535,36 +562,47 @@ internal fun MyHyperModifierDetailSettingsApp(
                         padding = padding,
                         settings = settings,
                         update = ::update,
+                        onOpenCardGlassSettings = { context.openDetailSettings(SettingsDestination.ShadeCardGlass) },
+                        onOpenGlobalMaterialBlur = { context.openDetailSettings(SettingsDestination.GlobalMaterialBlur) },
                     ) { scrollProgress = it }
+                    SettingsDestination.GlobalMaterialBlur -> GlobalMaterialBlurSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.HeadsUpNotifications -> HeadsUpNotificationsSettingsPage(
                         padding = padding,
                         settings = settings,
                         update = ::update,
                         onOpenHeadsUpGlassSettings = { context.openDetailSettings(SettingsDestination.HeadsUpGlass) },
+                        onOpenGlobalMaterialBlur = { context.openDetailSettings(SettingsDestination.GlobalMaterialBlur) },
                     ) { scrollProgress = it }
-                    SettingsDestination.HeadsUpGlass -> HeadsUpGlassSettingsPage(
+                    SettingsDestination.HeadsUpGlass,
+                    SettingsDestination.ShadeCardGlass -> HeadsUpGlassSettingsPage(
                         padding = padding,
                         settings = settings,
                         update = ::update,
                         onOpenAdvanced = {
-                            context.openDetailSettings(SettingsDestination.HeadsUpGlassAdvanced)
+                            context.openDetailSettings(if (glassScope == GlassParameterScope.ShadeCards)
+                                SettingsDestination.ShadeCardGlassAdvanced else SettingsDestination.HeadsUpGlassAdvanced)
                         },
                         onOpenPresetDialog = { headsUpGlassPresetDialog = it },
+                        onOpenGlobalMaterialBlur = { context.openDetailSettings(SettingsDestination.GlobalMaterialBlur) },
+                        scope = glassScope,
                     ) { scrollProgress = it }
-                    SettingsDestination.HeadsUpGlassAdvanced -> HeadsUpGlassAdvancedSettingsPage(
+                    SettingsDestination.HeadsUpGlassAdvanced,
+                    SettingsDestination.ShadeCardGlassAdvanced -> HeadsUpGlassAdvancedSettingsPage(
                         padding = padding,
                         settings = settings,
                         update = ::update,
-                        selectedTab = glassEffectTab,
+                        selectedTab = selectedGlassTab,
                         scrollState = selectedGlassScroll,
                         onEditParameter = { dark, index ->
                             editingHeadsUpGlassParameter = HeadsUpGlassParameterTarget(dark, index)
                         },
+                        scope = glassScope,
                     )
                     SettingsDestination.XiaomiHealth -> XiaomiHealthSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Market -> MarketSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.MiHome -> MiHomeSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Amap -> AmapSettingsPage(padding, settings, ::update) { scrollProgress = it }
+                    SettingsDestination.Bilibili -> BilibiliSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.XiaomiCommunity -> XiaomiCommunitySettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Spotify -> SpotifySettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Media -> MediaSettingsPage(
@@ -576,6 +614,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                     SettingsDestination.MediaConstraintSet -> MediaConstraintSetSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Lockscreen -> LockscreenSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.StatusBar -> StatusBarSettingsPage(padding, settings, ::update) { scrollProgress = it }
+                    SettingsDestination.GestureHandle -> GestureHandleSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Volume -> VolumeSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Home, SettingsDestination.About -> Unit
                 }
@@ -726,17 +765,6 @@ private data class ScopeStatus(
     val isActive: Boolean,
 )
 
-private object ModuleScopePackage {
-    const val SYSTEM_UI = "com.android.systemui"
-    const val PLUGIN = "miui.systemui.plugin"
-    const val MILINK = "com.milink.service"
-    const val XIAOMI_HEALTH = "com.mi.health"
-    const val MARKET = "com.xiaomi.market"
-    const val MI_HOME = "com.xiaomi.smarthome"
-    const val AMAP = "com.autonavi.minimap"
-    const val XIAOMI_COMMUNITY = "com.xiaomi.vipaccount"
-}
-
 private fun scopeStatuses(
     settings: ModifierSettings,
     framework: ModuleFrameworkState.Snapshot,
@@ -745,10 +773,14 @@ private fun scopeStatuses(
         appName = "系统界面",
         packageName = ModuleScopePackage.SYSTEM_UI,
         hasModification = listOf(
+            settings.gestureHandleModulePreset || settings.gestureHandleAppModes.isNotEmpty(),
             settings.notificationsEnabled,
             settings.hideHeadsUpMiniBar,
             settings.headsUpBottomMarginEnabled,
             settings.headsUpGlassParametersEnabled,
+            settings.shadeCardGlassParametersEnabled,
+            settings.globalGlassBlurEnabled && (settings.shadeCardGlassBlurEnabled || settings.shadeCardBackgroundBlurPercent != 100f),
+            settings.globalBackgroundDimEnabled,
             settings.globalBackgroundBlurPercent != 100f,
             settings.mediaEnabled,
             settings.hideAodActions,
@@ -768,13 +800,15 @@ private fun scopeStatuses(
     ScopeStatus(
         appName = "系统界面插件",
         packageName = ModuleScopePackage.PLUGIN,
-        hasModification = settings.controlCenterEnabled || settings.globalBackgroundBlurPercent != 100f,
+        hasModification = settings.controlCenterEnabled || settings.globalBackgroundBlurPercent != 100f ||
+            settings.globalBackgroundDimEnabled || settings.shadeCardGlassParametersEnabled ||
+            (settings.globalGlassBlurEnabled && (settings.shadeCardGlassBlurEnabled || settings.shadeCardBackgroundBlurPercent != 100f)),
         isActive = framework.isActive(ModuleScopePackage.PLUGIN),
     ),
     ScopeStatus(
         appName = "小米互联服务",
         packageName = ModuleScopePackage.MILINK,
-        hasModification = settings.miLinkMainCardsEnabled || settings.globalBackgroundBlurPercent != 100f,
+        hasModification = settings.miLinkMainCardsEnabled || settings.globalBackgroundBlurPercent != 100f || settings.globalBackgroundDimEnabled,
         isActive = framework.isActive(ModuleScopePackage.MILINK),
     ),
     ScopeStatus(
@@ -800,6 +834,12 @@ private fun scopeStatuses(
         packageName = ModuleScopePackage.AMAP,
         hasModification = settings.amapFloatingNavigationEnabled,
         isActive = framework.isActive(ModuleScopePackage.AMAP),
+    ),
+    ScopeStatus(
+        appName = "哔哩哔哩",
+        packageName = ModuleScopePackage.BILIBILI,
+        hasModification = settings.bilibiliFloatingNavigationEnabled,
+        isActive = framework.isActive(ModuleScopePackage.BILIBILI),
     ),
     ScopeStatus(
         appName = "小米社区",
@@ -849,6 +889,7 @@ private fun HomeDashboardPage(
             NavigationSettingItem("应用商店", "", onClick = { onNavigate(SettingsDestination.Market) }, leadingContent = { HomeAppIcon(ModuleScopePackage.MARKET) })
             NavigationSettingItem("米家", "", onClick = { onNavigate(SettingsDestination.MiHome) }, leadingContent = { HomeAppIcon(ModuleScopePackage.MI_HOME) })
             NavigationSettingItem("高德地图", "实验功能", onClick = { onNavigate(SettingsDestination.Amap) }, leadingContent = { HomeAppIcon(ModuleScopePackage.AMAP) })
+            NavigationSettingItem("哔哩哔哩", "", onClick = { onNavigate(SettingsDestination.Bilibili) }, leadingContent = { HomeAppIcon(ModuleScopePackage.BILIBILI) })
             NavigationSettingItem("小米社区", "", onClick = { onNavigate(SettingsDestination.XiaomiCommunity) }, leadingContent = { HomeAppIcon(ModuleScopePackage.XIAOMI_COMMUNITY) })
         }
     } else {
@@ -865,9 +906,11 @@ private fun HomeDashboardPage(
                 onClick = { onNavigate(SettingsDestination.HeadsUpNotifications) },
                 leadingContent = { HomeSystemIcon(R.drawable.ic_home_notifications_active, Color(0xFFC94E08)) },
             )
+            NavigationSettingItem("全局材质模糊", "", onClick = { onNavigate(SettingsDestination.GlobalMaterialBlur) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_apps, Color(0xFF5276C7)) })
             NavigationSettingItem("媒体组件", "", onClick = { onNavigate(SettingsDestination.Media) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_music_note, Color(0xFF843AD4)) })
             NavigationSettingItem("锁屏", "", onClick = { onNavigate(SettingsDestination.Lockscreen) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_lock, Color(0xFF008F7D)) })
             NavigationSettingItem("状态栏", "", onClick = { onNavigate(SettingsDestination.StatusBar) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_signal_cellular_alt, Color(0xFF087EBA)) })
+            NavigationSettingItem("小横条", "", onClick = { onNavigate(SettingsDestination.GestureHandle) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_gesture_handle, Color(0xFF5276C7)) })
             NavigationSettingItem("音量面板", "", onClick = { onNavigate(SettingsDestination.Volume) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_volume_up, Color(0xFFC52C79)) })
         }
     }

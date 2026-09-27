@@ -192,6 +192,7 @@ final class SystemUiRuntimeHooks {
             installHeadsUpGlassEffectHooks(classLoader);
             installGlobalBackgroundBlurHook();
             installControlCenterMiLinkBackgroundMaterialHook(classLoader);
+            BackgroundDimHooks.installSystemUi(module, classLoader);
             new LockscreenHooks(module).installLockscreenNotificationHooks(classLoader);
             new LockscreenHooks(module).installLockscreenFingerprintHooks(classLoader);
             new LockscreenHooks(module).installLockscreenCredentialHooks(classLoader);
@@ -422,6 +423,8 @@ final class SystemUiRuntimeHooks {
     }
 
     private static boolean isGlobalBackgroundBlurTarget(View view) {
+        // Card blur has its own control. Never multiply it again by the whole-page slider.
+        if (ShadeCardGlassHooks.isCardBackgroundTarget(view)) return false;
         String className = view.getClass().getName();
         // The global control is deliberately limited to shade/Control Center. Keyguard owns
         // several independent blur effects (including the two bottom shortcuts), which must not
@@ -571,6 +574,7 @@ final class SystemUiRuntimeHooks {
                                 }
                             }
                         }
+                        BackgroundDimHooks.applyMiLink((View) target, original);
                         if (percent != 100
                                 && MILINK_FUSION_BACKGROUND_BLUR_LOGGED.compareAndSet(false, true)) {
                             Log.i(TAG, "Fusion Device Center blur " + original + " -> " + adjusted

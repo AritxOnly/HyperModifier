@@ -25,6 +25,8 @@ final class ModuleSettings {
     private static final AtomicLong NEXT_LOAD_UPTIME_MS = new AtomicLong();
     private static final CopyOnWriteArrayList<Runnable> LOAD_LISTENERS =
             new CopyOnWriteArrayList<>();
+    private static final CopyOnWriteArrayList<Runnable> CHANGE_LISTENERS =
+            new CopyOnWriteArrayList<>();
     private static final ExecutorService SETTINGS_EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "MyHyperModifier-settings");
         thread.setDaemon(true);
@@ -37,9 +39,17 @@ final class ModuleSettings {
     static volatile boolean headsUpBottomMarginEnabled = false;
     static volatile float headsUpBottomMarginDp = 13f;
     static volatile boolean headsUpGlassParametersEnabled = false;
+    static volatile boolean shadeCardGlassParametersEnabled = false;
+    static volatile boolean globalGlassBlurEnabled = false;
+    private static volatile float[] shadeCardGlassParameters = ShadeCardGlassPolicy.defaults();
+    static volatile int shadeCardBackgroundBlurPercent = 100;
+    static volatile boolean shadeCardGlassBlurEnabled = false;
+    static volatile int shadeCardGlassBlurRadius = 20;
     static volatile boolean headsUpBackgroundBlurRadiusEnabled = false;
     static volatile int headsUpBackgroundBlurRadius = 60;
     static volatile int globalBackgroundBlurPercent = 100;
+    static volatile boolean globalBackgroundDimEnabled = false;
+    static volatile float globalBackgroundDimPercent = 20f;
     static volatile boolean controlCenterFollowMiLinkBackgroundMaterial = true;
     private static final float[] DEFAULT_HEADS_UP_GLASS_PARAMETERS =
             HeadsUpGlassDefaults.regular();
@@ -111,6 +121,14 @@ final class ModuleSettings {
     static volatile boolean xiaomiCommunityMiuixIconsEnabled = false;
     static volatile boolean xiaomiCommunityMonochromeIconsEnabled = true;
     static volatile boolean xiaomiCommunityNavigationBadgesEnabled = true;
+    static volatile boolean bilibiliFloatingNavigationEnabled = true;
+    static volatile boolean bilibiliNavigationBadgesEnabled = true;
+    static volatile boolean bilibiliHomeTabVisible = true;
+    static volatile boolean bilibiliFollowTabVisible = true;
+    static volatile boolean bilibiliDynamicTabVisible = true;
+    static volatile boolean bilibiliMallTabVisible = true;
+    static volatile boolean bilibiliMineTabVisible = true;
+    static volatile boolean bilibiliPublishButtonVisible = true;
     static volatile boolean spotifyFloatingNavigationEnabled = false;
     static volatile boolean spotifyFavoriteButtonEnabled = false;
     static volatile boolean spotifyShuffleButtonEnabled = false;
@@ -121,6 +139,10 @@ final class ModuleSettings {
     // Supplied by XposedInterface#getRemotePreferences. It is specifically designed for module
     // state and stays available even when Android hides this module package from the target app.
     private static volatile SharedPreferences remotePreferences;
+
+    static volatile Map<String, String> gestureHandleAppModes = java.util.Collections.emptyMap();
+    static volatile boolean gestureHandleModulePreset = true;
+    static volatile java.util.Set<String> gestureHandleScopePackages = java.util.Collections.emptySet();
 
     private ModuleSettings() {
     }
@@ -224,6 +246,12 @@ final class ModuleSettings {
         }
     }
 
+    /** Persistent observer for surfaces that must replay after every remote settings snapshot. */
+    static void onChanged(Runnable listener) {
+        CHANGE_LISTENERS.addIfAbsent(listener);
+        if (SETTINGS_LOADED.get()) listener.run();
+    }
+
     private static void notifyLoaded() {
         for (Runnable listener : LOAD_LISTENERS) {
             if (LOAD_LISTENERS.remove(listener)) {
@@ -287,6 +315,10 @@ final class ModuleSettings {
     private static void publishLoadedSettings() {
         SETTINGS_LOADED.set(true);
         notifyLoaded();
+        for (Runnable listener : CHANGE_LISTENERS) {
+            try { listener.run(); }
+            catch (Throwable throwable) { Log.w(TAG, "Settings change listener failed", throwable); }
+        }
         LOAD_FAILURES.set(0);
         NEXT_LOAD_UPTIME_MS.set(0L);
         LOAD_FAILURE_LOGGED.set(false);
@@ -307,6 +339,13 @@ final class ModuleSettings {
             }
             lastLoadStatus = "remote-preferences";
             Bundle values = preferencesToBundle(preferences);
+            gestureHandleAppModes = GestureHandleRules.decode(values.getString("gesture_handle_app_modes", ""));
+            gestureHandleModulePreset = values.getBoolean("gesture_handle_module_preset", true);
+            java.util.Set<String> scope = new java.util.HashSet<>();
+            for (String name : values.getString("gesture_handle_scope_packages", "").split("\n")) {
+                if (!name.isEmpty()) scope.add(name);
+            }
+            gestureHandleScopePackages = java.util.Collections.unmodifiableSet(scope);
             notificationsEnabled = values.getBoolean("notifications_enabled", false);
             notificationRadius = values.getFloat("notification_radius", 28f);
             hideHeadsUpMiniBar = values.getBoolean("hide_heads_up_mini_bar", false);
@@ -318,6 +357,15 @@ final class ModuleSettings {
                     : Math.max(0f, Math.min(32f, requestedBottomMargin));
             headsUpGlassParametersEnabled = values.getBoolean(
                     "heads_up_glass_parameters_enabled", false);
+            shadeCardGlassParametersEnabled = values.getBoolean("shade_card_glass_parameters_enabled", false);
+            globalGlassBlurEnabled = values.getBoolean("global_glass_blur_enabled", shadeCardGlassParametersEnabled);
+            shadeCardGlassParameters = parseHeadsUpGlassParameters(values.getString(
+                    "shade_card_glass_parameters", ""), ShadeCardGlassPolicy.defaults());
+            shadeCardBackgroundBlurPercent = Math.round(ShadeCardGlassPolicy.normalize(values.getFloat(
+                    "shade_card_background_blur_percent", 100f), 200f, 100f));
+            shadeCardGlassBlurEnabled = values.getBoolean("shade_card_glass_blur_enabled", false);
+            shadeCardGlassBlurRadius = Math.round(ShadeCardGlassPolicy.normalize(values.getFloat(
+                    "shade_card_glass_blur_radius", 20f), ShadeCardGlassPolicy.MAX_GLASS_BLUR_RADIUS, 20f));
             headsUpGlassParameters = parseHeadsUpGlassParameters(values.getString(
                     "heads_up_glass_parameters", ""), DEFAULT_HEADS_UP_GLASS_PARAMETERS);
             headsUpGlassDarkParameters = parseHeadsUpGlassParameters(values.getString(
@@ -330,10 +378,13 @@ final class ModuleSettings {
             }
             headsUpBackgroundBlurRadiusEnabled = values.getBoolean(
                     "heads_up_background_blur_radius_enabled", false);
-            headsUpBackgroundBlurRadius = Math.max(0, Math.min(200, Math.round(values.getFloat(
-                    "heads_up_background_blur_radius", 60f))));
+            headsUpBackgroundBlurRadius = Math.round(ShadeCardGlassPolicy.normalize(values.getFloat(
+                    "heads_up_background_blur_radius", 60f), ShadeCardGlassPolicy.MAX_GLASS_BLUR_RADIUS, 60f));
             globalBackgroundBlurPercent = Math.max(0, Math.min(200, Math.round(values.getFloat(
                     "global_background_blur_percent", 100f))));
+            globalBackgroundDimEnabled = values.getBoolean("global_background_dim_enabled", false);
+            globalBackgroundDimPercent = BackgroundDimPolicy.normalizePercent(values.getFloat(
+                    "global_background_dim_percent", 20f));
             // The new key ignores the earlier visible switch's saved false state.
             controlCenterFollowMiLinkBackgroundMaterial = values.getBoolean(
                     "control_center_follow_milink_background_material_default_on", true);
@@ -428,6 +479,14 @@ final class ModuleSettings {
                     "xiaomi_community_monochrome_icons_enabled", true);
             xiaomiCommunityNavigationBadgesEnabled = values.getBoolean(
                     "xiaomi_community_navigation_badges_enabled", true);
+            bilibiliFloatingNavigationEnabled = values.getBoolean("bilibili_floating_navigation_enabled", true);
+            bilibiliNavigationBadgesEnabled = values.getBoolean("bilibili_navigation_badges_enabled", true);
+            bilibiliHomeTabVisible = values.getBoolean("bilibili_home_tab_visible", true);
+            bilibiliFollowTabVisible = values.getBoolean("bilibili_follow_tab_visible", true);
+            bilibiliDynamicTabVisible = values.getBoolean("bilibili_dynamic_tab_visible", true);
+            bilibiliMallTabVisible = values.getBoolean("bilibili_mall_tab_visible", true);
+            bilibiliMineTabVisible = values.getBoolean("bilibili_mine_tab_visible", true);
+            bilibiliPublishButtonVisible = values.getBoolean("bilibili_publish_button_visible", true);
             spotifyFloatingNavigationEnabled = values.getBoolean(
                     "spotify_floating_navigation_enabled", false);
             spotifyFavoriteButtonEnabled = values.getBoolean(
@@ -462,6 +521,10 @@ final class ModuleSettings {
             else if (value instanceof String) values.putString(key, (String) value);
         }
         return values;
+    }
+
+    static float[] tuneShadeCardGlass(float[] original) {
+        return ShadeCardGlassPolicy.tune(original, shadeCardGlassParameters);
     }
 
     private static float[] parseHeadsUpGlassParameters(String serialized, float[] fallback) {

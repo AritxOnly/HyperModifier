@@ -93,6 +93,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Suppress("DEPRECATION")
 internal class InjectedBottomNavigationImmersion(
     private val activity: Activity,
+    private val requestImmersiveInsets: Boolean = false,
 ) {
     private val window = activity.window
     private val decorView = window.decorView
@@ -108,6 +109,7 @@ internal class InjectedBottomNavigationImmersion(
         if (applied) return
         applied = true
         ensureApplied()
+        if (requestImmersiveInsets) decorView.requestApplyInsets()
     }
 
     fun ensureApplied() {
@@ -127,7 +129,9 @@ internal class InjectedBottomNavigationImmersion(
         }
         val dark = (activity.resources.configuration.uiMode and
             Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        insetsController.isAppearanceLightNavigationBars = !dark
+        if (insetsController.isAppearanceLightNavigationBars != !dark) {
+            insetsController.isAppearanceLightNavigationBars = !dark
+        }
     }
 
     fun dispose() {
@@ -139,6 +143,7 @@ internal class InjectedBottomNavigationImmersion(
         window.navigationBarDividerColor = originalNavigationBarDividerColor
         window.isNavigationBarContrastEnforced = originalNavigationBarContrastEnforced
         insetsController.isAppearanceLightNavigationBars = originalLightNavigationBars
+        if (requestImmersiveInsets) decorView.requestApplyInsets()
     }
 
     private companion object {

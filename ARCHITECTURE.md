@@ -24,6 +24,7 @@ app/src/main/java/com/aritxonly/
             ├── mihome/                 Mi Home adapter
             ├── amap/                   Amap LiteTabBar / SurfaceView adapter
             ├── community/              Xiaomi Community BottomNavView adapter
+            ├── bilibili/               Official Bilibili TabHost / publish-touch adapter
             └── spotify/                Dormant Spotify experiment (not shipped in 1.3.8 scope)
 ```
 

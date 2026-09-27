@@ -171,6 +171,7 @@ final class RuntimeRefreshRegistry {
      * main queues. This changes no process-start or class-loader timing.
      */
     static void refreshViewsAfterSettingsLoad() {
+        GestureHandleHooks.refresh();
         List<Map.Entry<View, List<Method>>> setters;
         synchronized (CONTROL_CENTER_REFRESH_METHODS) {
             setters = new ArrayList<>(CONTROL_CENTER_REFRESH_METHODS.entrySet());

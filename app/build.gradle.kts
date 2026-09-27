@@ -40,8 +40,8 @@ android {
         applicationId = "com.aritxonly.myhypermodifier"
         minSdk = 33
         targetSdk = 35
-        versionCode = 34
-        versionName = "1.4.0"
+        versionCode = 35
+        versionName = "1.4.1"
     }
 
     signingConfigs {
@@ -93,4 +93,6 @@ dependencies {
     implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4-rc01")
     implementation("io.github.kyant0:shapes:1.2.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20180813")
 }

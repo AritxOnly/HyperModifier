@@ -62,6 +62,7 @@ public final class MyHyperModifier extends XposedModule {
     private static final String MARKET = "com.xiaomi.market";
     private static final String MI_HOME = "com.xiaomi.smarthome";
     private static final String AMAP = "com.autonavi.minimap";
+    private static final String BILIBILI = "tv.danmaku.bili";
     private static final String XIAOMI_COMMUNITY = "com.xiaomi.vipaccount";
 
     // Entry-point lifecycle state; domain-specific state belongs to the extracted collaborators.
@@ -89,7 +90,11 @@ public final class MyHyperModifier extends XposedModule {
                     || SYSTEM_UI_PLUGIN.equals(packageName) || MILINK.equals(packageName));
             installSettingsLoader();
             ClassLoader classLoader = param.getDefaultClassLoader();
+            if (SYSTEM_UI.equals(packageName) || SYSTEM_UI_PLUGIN.equals(packageName)) {
+                ShadeCardGlassHooks.install(this);
+            }
             if (SYSTEM_UI.equals(packageName)) {
+                GestureHandleHooks.install(this, classLoader);
                 HeadsUpMiniBarHooks.install(this, classLoader);
                 HeadsUpBottomMarginHooks.install(this, classLoader);
                 AodClockWeightHooks.install(this, classLoader);
@@ -120,7 +125,8 @@ public final class MyHyperModifier extends XposedModule {
         if (!SYSTEM_UI.equals(packageName) && !SYSTEM_UI_PLUGIN.equals(packageName)
                 && !MILINK.equals(packageName) && !XIAOMI_HEALTH.equals(packageName)
                 && !MARKET.equals(packageName) && !MI_HOME.equals(packageName)
-                && !AMAP.equals(packageName) && !XIAOMI_COMMUNITY.equals(packageName)) {
+                && !AMAP.equals(packageName) && !XIAOMI_COMMUNITY.equals(packageName)
+                && !BILIBILI.equals(packageName)) {
             return;
         }
 
@@ -159,13 +165,22 @@ public final class MyHyperModifier extends XposedModule {
                 log(Log.INFO, TAG, "Installed for " + packageName);
                 return;
             }
+            if (BILIBILI.equals(packageName)) {
+                BilibiliHooks.install(this, param.getClassLoader());
+                log(Log.INFO, TAG, "Installed for " + packageName);
+                return;
+            }
             if (XIAOMI_COMMUNITY.equals(packageName)) {
                 XiaomiCommunityHooks.install(this, param.getClassLoader());
                 log(Log.INFO, TAG, "Installed for " + packageName);
                 return;
             }
             installResourceValueHooks();
+            if (SYSTEM_UI.equals(packageName) || SYSTEM_UI_PLUGIN.equals(packageName)) {
+                ShadeCardGlassHooks.install(this);
+            }
             if (SYSTEM_UI.equals(packageName)) {
+                GestureHandleHooks.install(this, param.getClassLoader());
                 HeadsUpMiniBarHooks.install(this, param.getClassLoader());
                 HeadsUpBottomMarginHooks.install(this, param.getClassLoader());
                 AodClockWeightHooks.install(this, param.getClassLoader());

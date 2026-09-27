@@ -89,7 +89,7 @@ fun DeadlinerMiuixScaffold(
 fun DeadlinerMiuixDialog(
     show: Boolean,
     title: String,
-    summary: String,
+    summary: String?,
     onDismissRequest: () -> Unit,
     content: @Composable () -> Unit,
 ) {

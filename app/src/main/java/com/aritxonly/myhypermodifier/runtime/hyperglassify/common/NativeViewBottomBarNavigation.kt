@@ -16,10 +16,15 @@ import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -47,6 +52,7 @@ import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBar
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarDefaults
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabItem
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabLayout
+import com.aritxonly.deadliner.ui.material.glass.SoftGlassFloatingActionButton
 import com.aritxonly.deadliner.ui.theme.AdvancedMaterialSpec
 import com.aritxonly.deadliner.ui.theme.LocalAdvancedMaterialSpec
 import java.lang.reflect.Method
@@ -73,6 +79,22 @@ internal data class NativeViewBottomBarTarget(
     val contentHostMethodName: String? = null,
     val reservationViewMethodNames: Set<String> = emptySet(),
     val trimNativeIconTransparentPadding: Boolean = false,
+    val resolveTabViews: ((View) -> List<View>)? = null,
+    val resolveTabLabel: ((View, Int) -> String?)? = null,
+    val selectedIndexMethodName: String? = null,
+    val tabVisible: (String, Int) -> Boolean = { _, _ -> true },
+    val isDetachedAction: (View, Int) -> Boolean = { _, _ -> false },
+    val onNativeTabClick: (View) -> Unit = { it.performClick() },
+    val tabIconScale: ((String, Int) -> Float)? = null,
+    val contentHostResourceName: String? = null,
+    val overlayAllowed: (Activity) -> Boolean = { true },
+    val nativeRefreshIntervalMs: Long = 0L,
+    val useHardwareBackdrop: Boolean = false,
+    val minimumCaptureIntervalMs: Long = 0L,
+    val allowSoftwareBackdrop: Boolean = true,
+    val requestImmersiveInsets: Boolean = false,
+    val onChromeReplacement: (Activity, Boolean) -> Unit = { _, _ -> },
+    val retainNativeSuppressionDuringCover: Boolean = false,
 )
 
 /**
@@ -163,6 +185,16 @@ internal class NativeViewBottomBarNavigation(
         hosts[activity]?.onTouchEvent(event)
     }
 
+    fun isReplacingBottomBar(view: View): Boolean = hosts.values.any { it.isReplacing(view) }
+
+    fun setForeground(activity: Activity, foreground: Boolean) {
+        hosts[activity]?.setForeground(foreground)
+    }
+
+    fun refresh(activity: Activity) {
+        hosts[activity]?.refresh()
+    }
+
     private companion object {
         const val SETTINGS_RETRY_MS = 32L
         const val SETTINGS_WAIT_TIMEOUT_MS = 1_500L
@@ -173,6 +205,7 @@ internal class NativeViewBottomBarNavigation(
 }
 
 private data class NativeViewTabState(
+    val nativeIndex: Int,
     val label: String,
     val badge: Boolean,
     val icons: NativeTabIconPair?,
@@ -182,6 +215,7 @@ private data class NativeViewNavigationState(
     val tabs: List<NativeViewTabState> = emptyList(),
     val selectedIndex: Int = 0,
     val visible: Boolean = false,
+    val detachedAction: NativeViewTabState? = null,
 )
 
 private class NativeViewBottomBarHost private constructor(
@@ -195,15 +229,20 @@ private class NativeViewBottomBarHost private constructor(
     private var state by mutableStateOf(NativeViewNavigationState())
     private var backdropSnapshot by mutableStateOf<ViewBackdropSnapshot?>(null)
     private val owner = InjectedViewTreeOwner()
-    private val windowImmersion = InjectedBottomNavigationImmersion(activity)
+    private val windowImmersion = InjectedBottomNavigationImmersion(activity, target.requestImmersiveInsets)
     private val windowManager = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val composeView = ComposeView(activity)
     private var composeWindowAttached = false
     private val sampler = ViewBackdropSampler(
         source = overlayParent,
         excludedView = composeView,
-        usePixelCopySampling = { false },
+        pixelCopyWindow = activity.window.takeIf { target.useHardwareBackdrop },
+        usePixelCopySampling = { target.useHardwareBackdrop },
+        minimumCaptureIntervalMs = target.minimumCaptureIntervalMs,
+        allowSoftwareFallback = target.allowSoftwareBackdrop,
     ) { backdropSnapshot = it }
+    private val refreshPolicy = NavigationRefreshPolicy(target.nativeRefreshIntervalMs)
+    private var foreground = true
     private val iconSnapshotter = NativeTabIconSnapshotter(activity.resources, activity.theme)
     private val trimmedIconCache = WeakHashMap<View, TrimmedNativeIconEntry>()
     private val contentBottomPadding = contentHost?.let(::InjectedScrollableContentBottomPadding)
@@ -215,6 +254,7 @@ private class NativeViewBottomBarHost private constructor(
     private val originalBottomAlpha = nativeBottomBar.alpha
     private val originalBottomAccessibility = nativeBottomBar.importantForAccessibility
     private var replacingNativeChrome = false
+    private var nativeBarSuppressed = false
     private val composeLayoutListener = View.OnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
         val contentInset = view.injectedNavigationContentInsetPx()
         if (replacingNativeChrome && contentInset > 0 &&
@@ -224,10 +264,6 @@ private class NativeViewBottomBarHost private constructor(
         }
     }
     private val preDrawListener = ViewTreeObserver.OnPreDrawListener {
-        if (replacingNativeChrome) {
-            ensureContentReservationRemoved()
-            if (contentBottomPadding?.ensureApplied() == true) sampler.requestCaptureBurst()
-        }
         syncNativeState()
         sampler.onFrame()
         true
@@ -272,9 +308,21 @@ private class NativeViewBottomBarHost private constructor(
         composeView.post { sampler.requestCaptureBurst(900L) }
     }
 
-    fun onTouchEvent(event: MotionEvent) = sampler.onTouchEvent(event)
+    fun onTouchEvent(event: MotionEvent) {
+        if (state.visible) sampler.onTouchEvent(event)
+    }
+
+    fun setForeground(value: Boolean) {
+        foreground = value
+        refresh()
+    }
+
+    fun refresh() = syncNativeState(force = true)
+
+    fun isReplacing(view: View): Boolean = view === nativeBottomBar && nativeBarSuppressed
 
     fun dispose() {
+        target.onChromeReplacement(activity, false)
         sampler.dispose()
         composeView.removeOnLayoutChangeListener(composeLayoutListener)
         contentBottomPadding?.dispose()
@@ -292,16 +340,46 @@ private class NativeViewBottomBarHost private constructor(
         owner.dispose()
     }
 
-    private fun syncNativeState() {
+    private fun syncNativeState(force: Boolean = false) {
+        // Cheap visibility checks run on every frame even when native-tab synchronization is capped.
+        // This prevents a low-frequency state refresh from covering an ad's skip target for a frame.
+        if (!foreground || !target.enabled() || !nativeBottomBar.isVisibleIgnoringAlpha() ||
+            !target.overlayAllowed(activity)
+        ) {
+            if (state.visible) state = state.copy(visible = false)
+            sampler.setActive(false)
+            composeView.visibility = View.GONE
+            updateNativeChromeReplacement(false)
+            return
+        }
+        if (!refreshPolicy.shouldRefresh(SystemClock.uptimeMillis(), force || !state.visible)) {
+            // App animations may restore the native alpha between state refreshes.
+            updateNativeBarSuppression(true)
+            return
+        }
         val nativeTabs = nativeTabViews()
-        val selected = nativeTabs.indexOfFirst { it.isSelected || it.invokeBoolean("getStatus") }
+        val selected = target.selectedIndexMethodName?.let(nativeBottomBar::invokeInt)
+            ?.takeIf { it in nativeTabs.indices }
+            ?: nativeTabs.indexOfFirst { it.isSelected || it.invokeBoolean("getStatus") }
             .takeIf { it >= 0 }
             ?: nativeBottomBar.invokeInt("getSelectPosition")?.takeIf { it in nativeTabs.indices }
             ?: state.selectedIndex.coerceIn(0, (nativeTabs.size - 1).coerceAtLeast(0))
+        val actionIndex = nativeTabs.indices.firstOrNull {
+            target.isDetachedAction(nativeTabs[it], it)
+        } ?: -1
+        val allTabs = nativeTabs.mapIndexed { index, tab -> tab.readTabState(index, index == selected) }
+        // A preset from an older or hand-edited configuration must never leave an empty dock.
+        val displayedTabs = NativeBottomBarPolicy.visibleNavigationIndices(
+            allTabs.map { it.label }, actionIndex,
+        ) { label, index -> target.tabVisible(label, index) }.map { allTabs[it] }
         val next = NativeViewNavigationState(
-            tabs = nativeTabs.mapIndexed { index, tab -> tab.readTabState(index, index == selected) },
+            tabs = displayedTabs,
             selectedIndex = selected.coerceIn(0, (nativeTabs.size - 1).coerceAtLeast(0)),
-            visible = nativeTabs.size > 1 && nativeBottomBar.isVisibleIgnoringAlpha(),
+            visible = target.enabled() && nativeTabs.size > 1 && displayedTabs.isNotEmpty() &&
+                nativeBottomBar.isVisibleIgnoringAlpha(),
+            detachedAction = allTabs.getOrNull(actionIndex)?.takeIf {
+                target.tabVisible(it.label, it.nativeIndex)
+            },
         )
         val selectionChanged = next.selectedIndex != state.selectedIndex
         val becameVisible = next.visible && !state.visible
@@ -309,17 +387,22 @@ private class NativeViewBottomBarHost private constructor(
         if (selectionChanged) sampler.invalidateSamplingContext()
         updateNativeChromeReplacement(next.visible)
         composeView.visibility = if (next.visible) View.VISIBLE else View.GONE
+        sampler.setActive(next.visible)
         if (selectionChanged || becameVisible) sampler.requestCaptureBurst()
     }
 
     private fun View.readTabState(index: Int, selected: Boolean): NativeViewTabState {
-        val textViews = descendantsAndSelf().filterIsInstance<TextView>()
-            .filter { it.visibility == View.VISIBLE && !it.text.isNullOrBlank() }
-        val label = textViews.firstOrNull()?.text?.toString()?.trim().orEmpty()
-            .ifBlank { target.fallbackLabels.getOrElse(index) { "入口 ${index + 1}" } }
-        val reflectedIcon = invokeNoArg("getIcon") as? ImageView
-        val icon = reflectedIcon ?: findNativeTabIconView(this, 0, badgeViewIds())
-        val rawIcons = iconSnapshotter.snapshot(this, icon, selected)
+        val resolvedLabel = target.resolveTabLabel?.invoke(this, index)?.takeIf { it.isNotBlank() }
+            ?: descendantsAndSelf().filterIsInstance<TextView>()
+                .firstOrNull { it.visibility == View.VISIBLE && !it.text.isNullOrBlank() }
+                ?.text?.toString()?.trim()?.takeIf { it.isNotBlank() }
+            ?: target.fallbackLabels.getOrElse(index) { "入口 ${index + 1}" }
+        // MIUIX vectors do not need a native bitmap, icon reflection or whole-bar badge-id scan.
+        val icon = if (target.useMiuixIcons()) null else {
+            (invokeNoArg("getIcon") as? ImageView)
+                ?: findNativeTabIconView(this, 0, badgeViewIds())
+        }
+        val rawIcons = if (target.useMiuixIcons()) null else iconSnapshotter.snapshot(this, icon, selected)
         val icons = if (target.trimNativeIconTransparentPadding && rawIcons != null) {
             trimmedIconCache[this]?.takeIf { it.source == rawIcons }?.trimmed
                 ?: rawIcons.trimTransparentPadding().also { trimmed ->
@@ -329,7 +412,8 @@ private class NativeViewBottomBarHost private constructor(
             rawIcons
         }
         return NativeViewTabState(
-            label = label,
+            nativeIndex = index,
+            label = resolvedLabel,
             badge = target.showBadges() && hasVisibleBadge(icon),
             icons = icons,
         )
@@ -351,15 +435,14 @@ private class NativeViewBottomBarHost private constructor(
     }
 
     private fun updateNativeChromeReplacement(enabled: Boolean) {
+        updateNativeBarSuppression(enabled)
         if (enabled) {
             if (!replacingNativeChrome) {
                 replacingNativeChrome = true
                 windowImmersion.apply()
             }
             windowImmersion.ensureApplied()
-            if (nativeBottomBar.alpha != 0f) nativeBottomBar.alpha = 0f
-            nativeBottomBar.importantForAccessibility =
-                View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            target.onChromeReplacement(activity, true)
             ensureContentReservationRemoved()
             val contentInset = composeView.injectedNavigationContentInsetPx()
             if (contentInset > 0 && contentBottomPadding?.apply(contentInset) == true) {
@@ -367,11 +450,30 @@ private class NativeViewBottomBarHost private constructor(
             }
         } else if (replacingNativeChrome) {
             replacingNativeChrome = false
-            nativeBottomBar.alpha = originalBottomAlpha
-            nativeBottomBar.importantForAccessibility = originalBottomAccessibility
             contentBottomPadding?.dispose()
             restoreContentReservation()
             windowImmersion.dispose()
+            target.onChromeReplacement(activity, false)
+        }
+    }
+
+    private fun updateNativeBarSuppression(overlayVisible: Boolean) {
+        val suppress = NativeBottomBarPolicy.shouldSuppressNative(
+            target.enabled(), overlayVisible, target.retainNativeSuppressionDuringCover,
+        )
+        if (suppress) {
+            nativeBarSuppressed = true
+            if (nativeBottomBar.alpha != 0f) nativeBottomBar.alpha = 0f
+            if (nativeBottomBar.importantForAccessibility !=
+                View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            ) {
+                nativeBottomBar.importantForAccessibility =
+                    View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            }
+        } else if (nativeBarSuppressed) {
+            nativeBarSuppressed = false
+            nativeBottomBar.alpha = originalBottomAlpha
+            nativeBottomBar.importantForAccessibility = originalBottomAccessibility
         }
     }
 
@@ -398,13 +500,14 @@ private class NativeViewBottomBarHost private constructor(
     private fun selectDestination(index: Int) {
         val tab = nativeTabViews().getOrNull(index) ?: return
         if (index != state.selectedIndex) sampler.invalidateSamplingContext()
-        state = state.copy(selectedIndex = index)
-        tab.performClick()
-        tab.post(::syncNativeState)
+        if (!target.isDetachedAction(tab, index)) state = state.copy(selectedIndex = index)
+        target.onNativeTabClick(tab)
+        tab.post { syncNativeState(force = true) }
         sampler.requestCaptureBurst()
     }
 
-    private fun nativeTabViews(): List<View> = buildList {
+    private fun nativeTabViews(): List<View> = target.resolveTabViews?.invoke(nativeBottomBar)
+        ?.take(MAX_TABS) ?: buildList {
         fun collect(view: View) {
             if (view !== nativeBottomBar && view.hasClassInHierarchy(target.tabClassNames)) {
                 add(view)
@@ -437,6 +540,10 @@ private class NativeViewBottomBarHost private constructor(
                 val bar = overlayParent.findDescendantByClassNames(target.bottomBarClassNames)
                     ?: return null
                 val contentHost = target.contentHostMethodName?.let(activity::invokeNoArg) as? View
+                    ?: target.contentHostResourceName?.let { name ->
+                        val id = activity.resources.getIdentifier(name, "id", activity.packageName)
+                        (bar.parent as? View)?.findViewById<View>(id)
+                    }
                 val reservationViews = target.reservationViewMethodNames.mapNotNull { methodName ->
                     activity.invokeNoArg(methodName) as? View
                 }.distinct()
@@ -469,26 +576,27 @@ private fun NativeViewBottomBarContent(
     val miuixColors = remember(dark, materialColors) { MhmPresetColors.miuix(materialColors, dark) }
     val backdrop = rememberLayerBackdrop()
     val hiddenNavigationLift = hyperGlassifyHiddenNavigationLift()
-    val items = state.tabs.mapIndexed { index, tab ->
+    val items = state.tabs.map { tab ->
         val nativeIcons = tab.icons?.takeUnless { target.useMiuixIcons() }
         val monochrome = nativeIcons != null && target.useMonochromeIcons()
         val selectedPainter = nativeIcons?.let {
             remember(if (monochrome) it.selectedMonochrome else it.selected) {
                 BitmapPainter(if (monochrome) it.selectedMonochrome else it.selected)
             }
-        } ?: rememberVectorPainter(target.fallbackIcon(tab.label, index))
+        } ?: rememberVectorPainter(target.fallbackIcon(tab.label, tab.nativeIndex))
         val unselectedPainter = nativeIcons?.let {
             remember(if (monochrome) it.unselectedMonochrome else it.unselected) {
                 BitmapPainter(if (monochrome) it.unselectedMonochrome else it.unselected)
             }
-        } ?: rememberVectorPainter(target.fallbackIcon(tab.label, index))
+        } ?: rememberVectorPainter(target.fallbackIcon(tab.label, tab.nativeIndex))
         MiuixFloatingTabItem(
-            key = index.toString(),
+            key = tab.nativeIndex.toString(),
             label = tab.label,
             selectedIcon = selectedPainter,
             unselectedIcon = unselectedPainter,
             preserveOriginalIconColors = nativeIcons != null && !monochrome,
-            iconScale = target.iconScale().coerceIn(0.75f, 1.25f),
+            iconScale = (target.tabIconScale?.invoke(tab.label, tab.nativeIndex)
+                ?: target.iconScale()).coerceIn(0.75f, 1.25f),
             badge = if (tab.badge) "" else null,
         )
     }
@@ -512,24 +620,60 @@ private fun NativeViewBottomBarContent(
                     contentAlignment = Alignment.Center,
                 ) {
                     ViewBackdropLayer(backdropSnapshot, backdrop)
-                    MiuixFloatingTabBar(
-                        items = items,
-                        selectedKey = state.selectedIndex.toString(),
-                        onItemSelected = { onDestinationSelected(it.key.toInt()) },
-                        modifier = Modifier.onGloballyPositioned { coordinates ->
-                            val position = coordinates.positionOnScreen()
-                            onBackdropBoundsChanged(
-                                ViewBackdropBounds(
-                                    left = position.x.roundToInt(),
-                                    top = position.y.roundToInt(),
-                                    width = coordinates.size.width,
-                                    height = coordinates.size.height,
-                                ),
+                    val boundsModifier = Modifier.onGloballyPositioned { coordinates ->
+                        val position = coordinates.positionOnScreen()
+                        onBackdropBoundsChanged(
+                            ViewBackdropBounds(
+                                left = position.x.roundToInt(),
+                                top = position.y.roundToInt(),
+                                width = coordinates.size.width,
+                                height = coordinates.size.height,
+                            ),
+                        )
+                    }
+                    val action = state.detachedAction
+                    if (action == null) {
+                        MiuixFloatingTabBar(
+                            items = items,
+                            selectedKey = state.selectedIndex.toString(),
+                            onItemSelected = { onDestinationSelected(it.key.toInt()) },
+                            modifier = boundsModifier,
+                            layout = MiuixFloatingTabLayout.Stacked,
+                            selectionVisible = items.any { it.key == state.selectedIndex.toString() },
+                            backdrop = backdropSnapshot?.let { backdrop },
+                        )
+                    } else {
+                        // Deadliner 4d1b755 MiuixFloatingNavigationDock geometry; native Views own routing.
+                        Row(
+                            modifier = boundsModifier.widthIn(max = 442.dp).fillMaxWidth()
+                                .height(MiuixFloatingTabBarDefaults.Height).padding(horizontal = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            MiuixFloatingTabBar(
+                                items = items,
+                                selectedKey = state.selectedIndex.toString(),
+                                onItemSelected = { onDestinationSelected(it.key.toInt()) },
+                                modifier = Modifier.weight(1f),
+                                layout = MiuixFloatingTabLayout.Stacked,
+                                selectionVisible = items.any { it.key == state.selectedIndex.toString() },
+                                backdrop = backdropSnapshot?.let { backdrop },
                             )
-                        },
-                        layout = MiuixFloatingTabLayout.Stacked,
-                        backdrop = backdropSnapshot?.let { backdrop },
-                    )
+                            SoftGlassFloatingActionButton(
+                                onClick = { onDestinationSelected(action.nativeIndex) },
+                                containerColor = MiuixTheme.colorScheme.primary,
+                                contentColor = MiuixTheme.colorScheme.onPrimary,
+                                size = MiuixFloatingTabBarDefaults.Height,
+                                backdrop = backdropSnapshot?.let { backdrop },
+                            ) {
+                                Icon(
+                                    imageVector = target.fallbackIcon(action.label, action.nativeIndex),
+                                    contentDescription = action.label,
+                                    modifier = Modifier.size(MiuixFloatingTabBarDefaults.DetachedIconSize),
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

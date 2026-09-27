@@ -132,6 +132,8 @@ internal class ViewBackdropSampler(
     private val revealMiHomeMaterialCardFallbacks: Boolean = false,
     private val pixelCopyWindow: Window? = null,
     private val usePixelCopySampling: () -> Boolean = { false },
+    private val minimumCaptureIntervalMs: Long = 0L,
+    private val allowSoftwareFallback: Boolean = true,
     private val onSnapshotChanged: (ViewBackdropSnapshot?) -> Unit,
 ) {
     private val handler = Handler(Looper.getMainLooper())
@@ -148,10 +150,12 @@ internal class ViewBackdropSampler(
     private var pixelCopyFallbackUntil = Long.MIN_VALUE
     private var samplingContextGeneration = 0L
     private var disposed = false
+    private var active = true
     private val hyperCardClassCache = mutableMapOf<Class<*>, Boolean>()
     private val miHomeMaterialCardClassCache = mutableMapOf<Class<*>, Boolean>()
     private val miHomeMaterialPaintCache = mutableMapOf<Class<*>, MiHomeMaterialPaintAccessor?>()
     private val scrollChangedListener = ViewTreeObserver.OnScrollChangedListener {
+        if (!active) return@OnScrollChangedListener
         if (usePixelCopySampling()) {
             keepCapturingUntil = maxOf(
                 keepCapturingUntil,
@@ -178,6 +182,7 @@ internal class ViewBackdropSampler(
     }
 
     fun onTouchEvent(event: MotionEvent) {
+        if (!active) return
         val now = SystemClock.uptimeMillis()
         keepCapturingUntil = when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> now + ACTIVE_CAPTURE_GRACE_MS
@@ -188,11 +193,26 @@ internal class ViewBackdropSampler(
     }
 
     fun onFrame() {
-        if (SystemClock.uptimeMillis() < keepCapturingUntil) requestCapture()
+        if (active && SystemClock.uptimeMillis() < keepCapturingUntil) requestCapture()
+    }
+
+    /** Hidden chrome must not keep copying frames underneath an ad, dialog or another Activity. */
+    fun setActive(value: Boolean) {
+        if (active == value || disposed) return
+        active = value
+        samplingContextGeneration += 1
+        if (value) {
+            requestCaptureBurst()
+        } else {
+            handler.removeCallbacks(captureRunnable)
+            captureScheduled = false
+            pixelCopyRefreshPending = false
+            keepCapturingUntil = Long.MIN_VALUE
+        }
     }
 
     fun requestCapture() {
-        if (disposed || bounds == null || !source.isAttachedToWindow) return
+        if (disposed || !active || bounds == null || !source.isAttachedToWindow) return
         if (pixelCopyInFlight) {
             // PixelCopy cannot be cancelled. Remember that the visible content advanced while
             // this request was in flight, then capture the latest frame as soon as it completes.
@@ -202,16 +222,17 @@ internal class ViewBackdropSampler(
         if (captureScheduled) return
         val elapsed = if (lastCaptureAt == Long.MIN_VALUE) Long.MAX_VALUE
         else SystemClock.uptimeMillis() - lastCaptureAt
-        val captureInterval = if (usePixelCopySampling()) {
+        val captureInterval = maxOf(minimumCaptureIntervalMs, if (usePixelCopySampling()) {
             PIXEL_COPY_CAPTURE_INTERVAL_MS
         } else {
             CAPTURE_INTERVAL_MS
-        }
+        })
         captureScheduled = true
         handler.postDelayed(captureRunnable, (captureInterval - elapsed).coerceAtLeast(0L))
     }
 
     fun requestCaptureBurst(durationMs: Long = PAGE_CHANGE_CAPTURE_BURST_MS) {
+        if (disposed || !active) return
         keepCapturingUntil = maxOf(
             keepCapturingUntil,
             SystemClock.uptimeMillis() + durationMs.coerceAtLeast(0L),
@@ -239,6 +260,7 @@ internal class ViewBackdropSampler(
     }
 
     private fun capture() {
+        if (disposed || !active) return
         val target = bounds ?: return
         if (!source.isAttachedToWindow || source.width <= 0 || source.height <= 0) {
             retryInitialCapture()
@@ -281,6 +303,14 @@ internal class ViewBackdropSampler(
                 alignmentOffsetYPx = alignmentOffsetY,
             )
         ) return
+
+        if (!allowSoftwareFallback) {
+            // Keep the last sample (or the glass recipe's tint fallback), rather than synchronously
+            // redrawing a complex app on the UI thread after a transient PixelCopy failure.
+            lastCaptureAt = now
+            if (now < keepCapturingUntil) requestCapture()
+            return
+        }
 
         val bitmap = obtainBuffer(
             max(1, (sourceRect.width() * SAMPLE_SCALE).roundToInt()),
@@ -363,6 +393,7 @@ internal class ViewBackdropSampler(
                     bitmap.recycle()
                     return@request
                 }
+                if (!active) return@request
                 if (requestGeneration != samplingContextGeneration || !usePixelCopySampling()) {
                     requestCapture()
                     return@request
@@ -422,9 +453,9 @@ internal class ViewBackdropSampler(
     }
 
     private fun retryInitialCapture() {
-        if (generation != 0L || captureScheduled) return
+        if (disposed || !active || generation != 0L || captureScheduled) return
         captureScheduled = true
-        handler.postDelayed(captureRunnable, CAPTURE_INTERVAL_MS)
+        handler.postDelayed(captureRunnable, maxOf(CAPTURE_INTERVAL_MS, minimumCaptureIntervalMs))
     }
 
     private fun revealHyperCardFallbacks(
