@@ -172,6 +172,9 @@ final class RuntimeRefreshRegistry {
      */
     static void refreshViewsAfterSettingsLoad() {
         GestureHandleHooks.refresh();
+        // Player Island is constructed before remote preferences are often available. Its main
+        // and dummy backgrounds must both be remeasured after the actual height arrives.
+        refreshMediaIslandRoots();
         List<Map.Entry<View, List<Method>>> setters;
         synchronized (CONTROL_CENTER_REFRESH_METHODS) {
             setters = new ArrayList<>(CONTROL_CENTER_REFRESH_METHODS.entrySet());
@@ -275,7 +278,13 @@ final class RuntimeRefreshRegistry {
                 target.post(() -> {
                     if (!target.isAttachedToWindow()) return;
                     try {
-                        patchMediaConstraintSet(context, constraintSet, island);
+                        // Rebuild from the stock XML before applying a different preset. A
+                        // previously selected compact preset marks several views GONE; merely
+                        // patching the same ConstraintSet cannot restore omitted attributes.
+                        Method load = constraintSet.getClass().getMethod(
+                                "load", Context.class, int.class);
+                        load.invoke(constraintSet, context,
+                                island ? XML_MEDIA_ISLAND_NORMAL : XML_MEDIA_NORMAL);
                         applyMethod.invoke(constraintSet, target);
                         target.requestLayout();
                     } catch (ReflectiveOperationException | RuntimeException ignored) {

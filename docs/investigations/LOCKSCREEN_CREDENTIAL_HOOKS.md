@@ -1,4 +1,4 @@
-# 反编译 SystemUI 实现密码／指纹双向切换
+# 反编译 SystemUI 实现密码/指纹双向切换
 
 整理日期：2026-09-27。本文说明如何直接修改反编译后的 SystemUI，实现“密码键盘退场 → 显示指纹 → 可返回密码输入”。参考包为 `reference/MiuiSystemUINew.apk`。
 
@@ -6,7 +6,7 @@
 
 ## 1. 反编译与定位
 
-使用 JADX 阅读调用关系，用 apktool／baksmali 修改资源和 smali。以设备实际使用的 APK 为基础，确认框架资源、目标类、方法签名和布局资源与参考包一致。
+使用 JADX 阅读调用关系，用 apktool/baksmali 修改资源和 smali。以设备实际使用的 APK 为基础，确认框架资源、目标类、方法签名和布局资源与参考包一致。
 
 | 目标类 | smali 方法签名 | 修改用途 |
 | --- | --- | --- |
@@ -49,7 +49,7 @@
 核心行为如下：
 
 ```text
-密码模式且处于 PIN／Password bouncer：
+密码模式且处于 PIN/Password bouncer：
     showGxzwView() 入口直接返回
     已有窗口则调用 dismissGxzwView()
 
@@ -87,7 +87,7 @@
 
 ## 6. 接入手势并保留原事件分发
 
-在 `KeyguardSecurityContainer.dispatchTouchEvent()` 的原始分发前，通过 `mSecurityViewFlipper.getSecurityView()` 读取当前安全 View，只处理已安装切换控制器的 PIN／文字密码页。
+在 `KeyguardSecurityContainer.dispatchTouchEvent()` 的原始分发前，通过 `mSecurityViewFlipper.getSecurityView()` 读取当前安全 View，只处理已安装切换控制器的 PIN/文字密码页。
 
 手势判定可沿用当前模块参数：
 
@@ -124,7 +124,7 @@
 3. 接入按钮双向切换，确认原生认证状态仍被遵守。
 4. 加入动画，再验证快速反复切换。
 5. 最后加入手势，检查数字键取消事件与系统原手势是否冲突。
-6. 完整检查息屏唤醒、认证锁定、布局重建、PIN／文字密码，以及返回按钮与 FOD 的触摸区域。
+6. 完整检查息屏唤醒、认证锁定、布局重建、PIN/文字密码，以及返回按钮与 FOD 的触摸区域。
 
 这些修改只调整显示与触摸入口；密码校验、认证结果和系统强认证策略继续由原生流程处理。
 

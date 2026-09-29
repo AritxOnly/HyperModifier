@@ -180,6 +180,7 @@ private class MarketNavigationHost private constructor(
     private val originalNavigationPlaceholderVisibility = navigationBarPlaceholder?.visibility
     private var replacingNativeChrome = false
     private val composeView = ComposeView(activity)
+    private val visibility = FloatingNavigationVisibility(composeView)
     private val preDrawListener = ViewTreeObserver.OnPreDrawListener {
         syncNativeState()
         sampler.onFrame()
@@ -219,6 +220,7 @@ private class MarketNavigationHost private constructor(
     fun onTouchEvent(event: MotionEvent) = sampler.onTouchEvent(event)
 
     fun dispose() {
+        visibility.dispose()
         sampler.dispose()
         if (overlayParent.viewTreeObserver.isAlive) {
             overlayParent.viewTreeObserver.removeOnPreDrawListener(preDrawListener)
@@ -303,7 +305,7 @@ private class MarketNavigationHost private constructor(
         val becameVisible = next.visible && !state.visible
         if (next != state) state = next
         updateNativeChromeReplacement(next.visible)
-        composeView.visibility = if (next.visible) View.VISIBLE else View.GONE
+        visibility.setVisible(next.visible)
         if (selectionChanged || becameVisible) sampler.requestCaptureBurst()
     }
 

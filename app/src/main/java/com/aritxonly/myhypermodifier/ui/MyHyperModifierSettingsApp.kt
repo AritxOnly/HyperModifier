@@ -44,6 +44,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -88,8 +89,6 @@ import com.aritxonly.deadliner.ui.theme.LocalAdvancedMaterialSpec
 import com.kyant.shapes.Capsule
 import java.util.concurrent.TimeUnit
 import java.util.Locale
-import top.yukonga.miuix.kmp.basic.Button
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
@@ -97,16 +96,17 @@ import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.Contacts
 import top.yukonga.miuix.kmp.icon.extended.Refresh
-import top.yukonga.miuix.kmp.icon.extended.Reset
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.core.graphics.ColorUtils
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 internal enum class SettingsDestination(val key: String, val label: String) {
     Home("home", "主页"),
@@ -115,7 +115,7 @@ internal enum class SettingsDestination(val key: String, val label: String) {
     HeadsUpNotifications("heads-up-notifications", "悬浮通知"),
     HeadsUpGlass("heads-up-glass", "悬浮通知柔光玻璃"),
     HeadsUpGlassAdvanced("heads-up-glass-advanced", "高级参数调整"),
-    ShadeCardGlass("shade-card-glass", "通知／控制中心卡片柔光玻璃"),
+    ShadeCardGlass("shade-card-glass", "通知/控制中心卡片柔光玻璃"),
     ShadeCardGlassAdvanced("shade-card-glass-advanced", "高级参数调整"),
     XiaomiHealth("xiaomi-health", "小米运动健康"),
     Market("market", "应用商店"),
@@ -129,7 +129,7 @@ internal enum class SettingsDestination(val key: String, val label: String) {
     Lockscreen("lockscreen", "锁屏"),
     StatusBar("status-bar", "状态栏"),
     Volume("volume", "音量面板"),
-    GestureHandle("gesture-handle", "小横条"),
+    GestureHandle("gesture-handle", "手势提示线"),
     About("about", "关于"),
     ;
 
@@ -230,7 +230,6 @@ fun MyHyperModifierSettingsApp() {
     var restartBilibili by remember { mutableStateOf(false) }
     var restartSpotify by remember { mutableStateOf(false) }
     var restartSystem by remember { mutableStateOf(false) }
-    var showRestoreDialog by remember { mutableStateOf(false) }
     val topBarButtonMaterialTarget = resolveTopBarButtonMaterialProgress(
         collapsedFraction = null,
         scrollProgress = activeScrollProgress,
@@ -260,7 +259,6 @@ fun MyHyperModifierSettingsApp() {
                                     titleColor = MiuixTheme.colorScheme.onSurface,
                                     largeTitleColor = MiuixTheme.colorScheme.onSurface,
                                     scrollBehavior = scrollBehavior,
-                                    actions = { RestoreDefaultsIconButton { showRestoreDialog = true } },
                                 )
                                 TabRow(
                                     tabs = listOf("柔光玻璃", "系统界面"),
@@ -355,12 +353,6 @@ fun MyHyperModifierSettingsApp() {
                             },
                         )
                     }
-                    RestoreDefaultsDialog(
-                        show = showRestoreDialog,
-                        onDismissRequest = { showRestoreDialog = false },
-                        onRestoreSystemDefault = { update(ModifierSettingsPresets.systemDefault()); showRestoreDialog = false },
-                        onRestoreModuleDefault = { update(ModifierSettingsPresets.moduleDefault()); showRestoreDialog = false },
-                    )
                 },
             ) { padding ->
                 when (destination) {
@@ -392,6 +384,18 @@ internal fun MyHyperModifierDetailSettingsApp(
     val materialColors = remember(dark) { MhmPresetColors.material(dark) }
     val miuixColors = remember(dark, materialColors) { MhmPresetColors.miuix(materialColors, dark) }
     var settings by remember { mutableStateOf(ModifierSettingsStore.load(context)) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                // The XML editor opens as another Activity. Refresh its parent before a preset
+                // switch can overwrite XML saved while the parent was paused.
+                settings = ModifierSettingsStore.load(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     var scrollProgress by remember { mutableFloatStateOf(0f) }
     var glassEffectTab by rememberSaveable { mutableIntStateOf(0) }
     val lightGlassScroll = rememberScrollState()
@@ -609,7 +613,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                         padding,
                         settings,
                         ::update,
-                        { context.openDetailSettings(SettingsDestination.MediaConstraintSet) },
+                        { preset -> context.openDetailSettings(SettingsDestination.MediaConstraintSet, preset) },
                     ) { scrollProgress = it }
                     SettingsDestination.MediaConstraintSet -> MediaConstraintSetSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Lockscreen -> LockscreenSettingsPage(padding, settings, ::update) { scrollProgress = it }
@@ -651,16 +655,6 @@ internal fun NavigationSettingItem(
         )
     },
 )
-
-@Composable
-private fun RestoreDefaultsIconButton(onClick: () -> Unit) = AdvancedTopBarIconButton(onClick = onClick) {
-    Icon(
-        painter = rememberVectorPainter(MiuixIcons.Reset),
-        contentDescription = "恢复预设（Reset）",
-        tint = MiuixTheme.colorScheme.onSurface,
-        modifier = Modifier.size(22.dp),
-    )
-}
 
 @Composable
 private fun RestartScopeTopBarButton(onClick: () -> Unit) = AdvancedTopBarIconButton(onClick = onClick) {
@@ -729,35 +723,6 @@ private fun RestartScopeGlassButton(onClick: () -> Unit) {
     }
 }
 
-@Composable
-private fun RestoreDefaultsDialog(
-    show: Boolean,
-    onDismissRequest: () -> Unit,
-    onRestoreSystemDefault: () -> Unit,
-    onRestoreModuleDefault: () -> Unit,
-) = DeadlinerMiuixDialog(
-    show = show,
-    title = "恢复预设",
-    summary = "系统默认会停用全部修改；模块默认会恢复 HyperModifier 的推荐预设。保存后请重启相关作用域。",
-    onDismissRequest = onDismissRequest,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        TextButton(
-            "恢复系统默认",
-            onRestoreSystemDefault,
-            modifier = Modifier.weight(1f),
-        )
-        Button(
-            onRestoreModuleDefault,
-            modifier = Modifier.weight(1f),
-            colors = ButtonDefaults.buttonColorsPrimary(),
-        ) { Text("恢复模块默认") }
-    }
-}
-
 private data class ScopeStatus(
     val appName: String,
     val packageName: String,
@@ -773,16 +738,18 @@ private fun scopeStatuses(
         appName = "系统界面",
         packageName = ModuleScopePackage.SYSTEM_UI,
         hasModification = listOf(
-            settings.gestureHandleModulePreset || settings.gestureHandleAppModes.isNotEmpty(),
+            settings.gestureHandlePreset != GestureHandlePresets.STOCK || settings.gestureHandleAppModes.isNotEmpty() ||
+                settings.gestureHandleTouchReveal || settings.gestureHandleSwipeMotion,
             settings.notificationsEnabled,
             settings.hideHeadsUpMiniBar,
             settings.headsUpBottomMarginEnabled,
             settings.headsUpGlassParametersEnabled,
-            settings.shadeCardGlassParametersEnabled,
-            settings.globalGlassBlurEnabled && (settings.shadeCardGlassBlurEnabled || settings.shadeCardBackgroundBlurPercent != 100f),
+            GlassParameterScope.ShadeCards.enabled(settings),
+            !settings.disableShadeGlassHooks && settings.globalGlassBlurEnabled && (settings.shadeCardGlassBlurEnabled || settings.shadeCardBackgroundBlurPercent != 100f),
             settings.globalBackgroundDimEnabled,
             settings.globalBackgroundBlurPercent != 100f,
             settings.mediaEnabled,
+            settings.mediaLayoutPreset.isNotBlank(),
             settings.hideAodActions,
             settings.hideAodSeamless,
             settings.sinkLockscreenNotificationsForFingerprint,
@@ -801,8 +768,8 @@ private fun scopeStatuses(
         appName = "系统界面插件",
         packageName = ModuleScopePackage.PLUGIN,
         hasModification = settings.controlCenterEnabled || settings.globalBackgroundBlurPercent != 100f ||
-            settings.globalBackgroundDimEnabled || settings.shadeCardGlassParametersEnabled ||
-            (settings.globalGlassBlurEnabled && (settings.shadeCardGlassBlurEnabled || settings.shadeCardBackgroundBlurPercent != 100f)),
+            settings.globalBackgroundDimEnabled || GlassParameterScope.ShadeCards.enabled(settings) ||
+            (!settings.disableShadeGlassHooks && settings.globalGlassBlurEnabled && (settings.shadeCardGlassBlurEnabled || settings.shadeCardBackgroundBlurPercent != 100f)),
         isActive = framework.isActive(ModuleScopePackage.PLUGIN),
     ),
     ScopeStatus(
@@ -910,7 +877,7 @@ private fun HomeDashboardPage(
             NavigationSettingItem("媒体组件", "", onClick = { onNavigate(SettingsDestination.Media) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_music_note, Color(0xFF843AD4)) })
             NavigationSettingItem("锁屏", "", onClick = { onNavigate(SettingsDestination.Lockscreen) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_lock, Color(0xFF008F7D)) })
             NavigationSettingItem("状态栏", "", onClick = { onNavigate(SettingsDestination.StatusBar) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_signal_cellular_alt, Color(0xFF087EBA)) })
-            NavigationSettingItem("小横条", "", onClick = { onNavigate(SettingsDestination.GestureHandle) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_gesture_handle, Color(0xFF5276C7)) })
+            NavigationSettingItem("手势提示线", "", onClick = { onNavigate(SettingsDestination.GestureHandle) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_gesture_handle, Color(0xFF5276C7)) })
             NavigationSettingItem("音量面板", "", onClick = { onNavigate(SettingsDestination.Volume) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_volume_up, Color(0xFFC52C79)) })
         }
     }

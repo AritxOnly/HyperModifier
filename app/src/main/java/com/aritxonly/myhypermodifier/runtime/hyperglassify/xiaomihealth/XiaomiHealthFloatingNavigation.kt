@@ -1,11 +1,13 @@
 package com.aritxonly.myhypermodifier
 
 import android.app.Activity
+import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Color as AndroidColor
 import android.graphics.Paint
+import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.drawable.Drawable
 import android.os.Handler
@@ -19,7 +21,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.Window
-import android.widget.FrameLayout
+import android.view.WindowManager
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,7 +46,7 @@ import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -55,14 +57,11 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
-import androidx.lifecycle.findViewTreeLifecycleOwner
-import androidx.lifecycle.findViewTreeViewModelStoreOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
-import androidx.savedstate.findViewTreeSavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import androidx.core.view.WindowCompat
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBar
@@ -186,16 +185,22 @@ private class XiaomiHealthNavigationHost private constructor(
     private var state by mutableStateOf(XiaomiHealthNavigationState())
     private var backdropSnapshot by mutableStateOf<ViewBackdropSnapshot?>(null)
     private val owner = InjectedViewTreeOwner()
-    private val previousLifecycleOwner = overlayParent.findViewTreeLifecycleOwner()
-    private val previousViewModelStoreOwner = overlayParent.findViewTreeViewModelStoreOwner()
-    private val previousSavedStateRegistryOwner = overlayParent.findViewTreeSavedStateRegistryOwner()
     private val windowImmersion = InjectedBottomNavigationImmersion(activity)
-    private val sampler = ViewBackdropSampler(samplingView) { backdropSnapshot = it }
+    private val sampler = ViewBackdropSampler(
+        source = samplingView,
+        pixelCopyWindow = activity.window,
+        usePixelCopySampling = { true },
+        allowSoftwareFallback = false,
+        matchDisplayRefreshRate = true,
+        sampleOnSourceFrame = true,
+        pixelCopyRetryDelayMs = 32L,
+    ) { backdropSnapshot = it }
     private val contentBottomPadding = InjectedScrollableContentBottomPadding(contentView)
     private val iconSnapshotter = NativeTabIconSnapshotter(activity.resources, activity.theme)
     private val originalBottomVisibility = originalBottomContainer.visibility
     private val originalDividerVisibility = originalDivider?.visibility
     private val composeView = ComposeView(activity)
+    private val windowManager = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val composeLayoutListener = View.OnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
         val contentInset = view.injectedNavigationContentInsetPx()
         if (contentInset > 0 && contentBottomPadding.apply(contentInset)) {
@@ -213,11 +218,6 @@ private class XiaomiHealthNavigationHost private constructor(
     init {
         windowImmersion.apply()
         syncNativeState()
-        // A ComposeView attached directly to DecorView creates a window-level Recomposer. It
-        // resolves owners from that window root, not only from the ComposeView itself.
-        overlayParent.setViewTreeLifecycleOwner(owner)
-        overlayParent.setViewTreeViewModelStoreOwner(owner)
-        overlayParent.setViewTreeSavedStateRegistryOwner(owner)
         composeView.apply {
             setViewTreeLifecycleOwner(owner)
             setViewTreeViewModelStoreOwner(owner)
@@ -227,20 +227,30 @@ private class XiaomiHealthNavigationHost private constructor(
                 XiaomiHealthNavigationContent(
                     state = state,
                     backdropSnapshot = backdropSnapshot,
-                    onBackdropBoundsChanged = sampler::setNavigationBounds,
+                    onBackdropBoundsChanged = ::setBackdropScreenBounds,
                     onDestinationSelected = ::selectDestination,
                 )
             }
         }
         originalBottomContainer.visibility = View.GONE
         originalDivider?.visibility = View.GONE
-        overlayParent.addView(
+        windowManager.addView(
             composeView,
-            FrameLayout.LayoutParams(
+            WindowManager.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM,
-            ),
+                WindowManager.LayoutParams.TYPE_APPLICATION_PANEL,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT,
+            ).apply {
+                gravity = Gravity.BOTTOM
+                token = activity.window.decorView.windowToken
+                title = "MyHyperModifier Xiaomi Health navigation"
+                setFitInsetsTypes(0)
+            },
         )
         composeView.addOnLayoutChangeListener(composeLayoutListener)
         overlayParent.viewTreeObserver.addOnPreDrawListener(preDrawListener)
@@ -255,14 +265,22 @@ private class XiaomiHealthNavigationHost private constructor(
         if (overlayParent.viewTreeObserver.isAlive) {
             overlayParent.viewTreeObserver.removeOnPreDrawListener(preDrawListener)
         }
-        (composeView.parent as? ViewGroup)?.removeView(composeView)
+        runCatching { windowManager.removeViewImmediate(composeView) }
         originalBottomContainer.visibility = originalBottomVisibility
         originalDividerVisibility?.let { originalDivider?.visibility = it }
         windowImmersion.dispose()
-        overlayParent.setViewTreeLifecycleOwner(previousLifecycleOwner)
-        overlayParent.setViewTreeViewModelStoreOwner(previousViewModelStoreOwner)
-        overlayParent.setViewTreeSavedStateRegistryOwner(previousSavedStateRegistryOwner)
         owner.dispose()
+    }
+
+    private fun setBackdropScreenBounds(screenBounds: ViewBackdropBounds) {
+        val decorLocation = IntArray(2)
+        activity.window.decorView.getLocationOnScreen(decorLocation)
+        sampler.setNavigationBounds(
+            screenBounds.copy(
+                left = screenBounds.left - decorLocation[0],
+                top = screenBounds.top - decorLocation[1],
+            ),
+        )
     }
 
     private fun syncNativeState() {
@@ -330,7 +348,6 @@ private class XiaomiHealthNavigationHost private constructor(
             val bottom = activity.findViewById<View>(id("main_fl_bottom_container")) ?: return null
             val tabLayout = activity.findViewById<ViewGroup>(id("main_tl_bottom")) ?: return null
             val content = activity.findViewById<View>(id("main_fl_content")) ?: return null
-            val samplingView = activity.findViewById<View>(android.R.id.content) ?: content
             val overlayParent = activity.window.decorView as? ViewGroup ?: return null
             val root = bottom.parent as? ViewGroup ?: return null
             val bottomIndex = root.indexOfChild(bottom)
@@ -342,7 +359,7 @@ private class XiaomiHealthNavigationHost private constructor(
                 originalDivider = divider,
                 nativeTabLayout = tabLayout,
                 contentView = content,
-                samplingView = samplingView,
+                samplingView = overlayParent,
             )
         }.onFailure {
             Log.e("MyHyperModifier", "Could not attach Xiaomi Health navigation overlay", it)
@@ -418,7 +435,7 @@ private fun XiaomiHealthNavigationContent(
                         selectedKey = state.selectedIndex.toString(),
                         onItemSelected = { onDestinationSelected(it.key.toInt()) },
                         modifier = Modifier.onGloballyPositioned { coordinates ->
-                            val position = coordinates.positionInWindow()
+                            val position = coordinates.positionOnScreen()
                             onBackdropBoundsChanged(
                                 ViewBackdropBounds(
                                     left = position.x.roundToInt(),

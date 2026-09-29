@@ -9,9 +9,9 @@ import android.view.View
 import android.view.WindowInsets
 import android.widget.TextView
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.Color
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
-import top.yukonga.miuix.kmp.icon.extended.Album
 import top.yukonga.miuix.kmp.icon.extended.Carrier
 import top.yukonga.miuix.kmp.icon.extended.ContactsCircle
 import top.yukonga.miuix.kmp.icon.extended.Home
@@ -59,14 +59,20 @@ internal object BilibiliFloatingNavigation {
             isDetachedAction = { tab, _ -> publishView(tab) != null },
             onNativeTabClick = ::clickNativeTab,
             tabIconScale = { label, _ -> BilibiliNavigationPolicy.iconScale(label) },
+            displayTabLabel = { label, _ -> BilibiliNavigationPolicy.displayLabel(label) },
             contentHostResourceName = "content",
             overlayAllowed = ::homeAllowsOverlay,
             nativeRefreshIntervalMs = 100L,
             useHardwareBackdrop = true,
-            minimumCaptureIntervalMs = 64L,
+            minimumCaptureIntervalMs = 0L,
             allowSoftwareBackdrop = false,
+            matchDisplayBackdropRefreshRate = true,
+            sampleBackdropOnSourceFrame = true,
+            pixelCopyRetryDelayMs = 32L,
             requestImmersiveInsets = true,
+            stableNavigationInset = true,
             retainNativeSuppressionDuringCover = true,
+            detachedActionContainerColor = Color(0xFFFF6698),
             onChromeReplacement = { activity, replacing ->
                 homeStates.getOrPut(activity) { HomeState(activity) }.immersion.setEnabled(replacing)
             },
@@ -151,7 +157,6 @@ internal object BilibiliFloatingNavigation {
         val home = homeStates.getOrPut(activity) { HomeState(activity) }
         return BilibiliNavigationPolicy.overlayAllowed(
             !activity.isFinishing && !activity.isDestroyed,
-            activity.hasWindowFocus(),
             home.splashShowing(activity),
             home.startupShowing(activity),
             activity.window.decorView.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) == true,
@@ -202,7 +207,7 @@ private fun bilibiliMiuixIcon(label: String, index: Int): ImageVector =
     when (BilibiliNavigationPolicy.role(label)) {
         BilibiliNavigationPolicy.Role.HOME -> MiuixIcons.Home
         BilibiliNavigationPolicy.Role.DYNAMIC -> MiuixIcons.Messages
-        BilibiliNavigationPolicy.Role.FOLLOW -> MiuixIcons.Album
+        BilibiliNavigationPolicy.Role.FOLLOW -> MiuixIcons.Messages
         BilibiliNavigationPolicy.Role.MALL -> MiuixIcons.Carrier
         BilibiliNavigationPolicy.Role.MINE -> MiuixIcons.ContactsCircle
         BilibiliNavigationPolicy.Role.PUBLISH -> MiuixIcons.Add

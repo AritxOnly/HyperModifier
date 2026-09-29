@@ -183,6 +183,7 @@ private class AmapNavigationHost private constructor(
     private val windowImmersion = InjectedBottomNavigationImmersion(activity)
     private val windowManager = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val composeView = ComposeView(activity)
+    private val visibility = FloatingNavigationVisibility(composeView, windowManager)
     private var composeWindowAttached = false
     private var lastNavigationDiagnostic: String? = null
     private val settingsRefreshRunnable = object : Runnable {
@@ -199,6 +200,10 @@ private class AmapNavigationHost private constructor(
         excludedView = composeView,
         pixelCopyWindow = activity.window,
         usePixelCopySampling = { state.visible },
+        allowSoftwareFallback = false,
+        matchDisplayRefreshRate = true,
+        sampleOnSourceFrame = true,
+        pixelCopyRetryDelayMs = 32L,
     ) { backdropSnapshot = it }
     private val iconSnapshotter = NativeTabIconSnapshotter(activity.resources, activity.theme)
     private val officialIconCache = mutableMapOf<String, NativeTabIconPair>()
@@ -250,6 +255,7 @@ private class AmapNavigationHost private constructor(
         }
         windowManager.addView(composeView, overlayLayoutParams)
         composeWindowAttached = true
+        visibility.onAttached()
         ModuleSettings.onLoaded {
             composeView.post {
                 if (composeWindowAttached) syncNativeState()
@@ -263,6 +269,7 @@ private class AmapNavigationHost private constructor(
     fun onTouchEvent(event: MotionEvent) = sampler.onTouchEvent(event)
 
     fun dispose() {
+        visibility.dispose()
         sampler.dispose()
         composeView.removeCallbacks(settingsRefreshRunnable)
         if (overlayParent.viewTreeObserver.isAlive) {
@@ -326,7 +333,8 @@ private class AmapNavigationHost private constructor(
         if (next != state) state = next
         if (selectionChanged) sampler.invalidateSamplingContext()
         updateNativeChromeReplacement(next.visible)
-        composeView.visibility = if (next.visible) View.VISIBLE else View.GONE
+        visibility.setVisible(next.visible)
+        sampler.setActive(next.visible)
         if (selectionChanged || becameVisible) sampler.requestCaptureBurst()
     }
 

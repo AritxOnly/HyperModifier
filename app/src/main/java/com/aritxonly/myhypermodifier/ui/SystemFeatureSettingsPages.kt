@@ -1,6 +1,7 @@
 package com.aritxonly.myhypermodifier
 
 import android.content.Context
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
@@ -102,25 +103,84 @@ import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.core.graphics.ColorUtils
 
-@Composable internal fun MediaSettingsPage(padding: PaddingValues, settings: ModifierSettings, update: (ModifierSettings) -> Unit, onOpenConstraintEditor: () -> Unit, onScroll: (Float) -> Unit) = SettingsScrollPage(padding, onScroll) {
+@Composable internal fun MediaSettingsPage(padding: PaddingValues, settings: ModifierSettings, update: (ModifierSettings) -> Unit, onOpenConstraintEditor: (String) -> Unit, onScroll: (Float) -> Unit) = SettingsScrollPage(padding, onScroll) {
+    val context = LocalContext.current
+    val selectedPreset = MediaLayoutPresets.selected(settings)
+    SettingsSection(topLabel = "媒体布局预设") {
+        if (settings.mediaLayoutPreset.isBlank()) {
+            Text(
+                "当前沿用旧版媒体设置。首次勾选预设或调整下方高度后，普通媒体与超级岛会切换到新预设。",
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+            )
+        }
+        Text(
+            "锁屏普通媒体与展开的超级岛媒体共用预设。勾选一个预设；点击名称可编辑该预设的两份 XML。",
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+        )
+        MediaLayoutPresets.all.forEach { preset ->
+            NavigationSettingItem(
+                title = MediaLayoutPresets.label(preset),
+                summary = "${settingNumber(MediaLayoutPresets.height(settings, preset))} dp · 点击编辑布局",
+                onClick = { onOpenConstraintEditor(preset) },
+                leadingContent = {
+                    DeadlinerCheckbox(
+                        checked = selectedPreset == preset,
+                        onCheckedChange = { update(MediaLayoutPresets.select(settings, preset, context)) },
+                    )
+                },
+            )
+        }
+        SettingsSliderItemWithLabel(
+            "${MediaLayoutPresets.label(selectedPreset)}高度",
+            MediaLayoutPresets.height(settings, selectedPreset),
+            84f..240f,
+            {
+                update(MediaLayoutPresets.withHeight(
+                    MediaLayoutPresets.select(settings, selectedPreset, context), selectedPreset, it))
+            },
+            steps = 155,
+        )
+    }
     SettingsSection(topLabel = "锁屏媒体") {
-        SettingsSwitchItem("自定义媒体组件大小", "", settings.mediaEnabled, { update(settings.copy(mediaEnabled = it)) })
-        SettingsSliderItemWithLabel("展开高度", settings.expandedHeight, 120f..200f, { update(settings.copy(expandedHeight = it)) }, steps = 19, enabled = settings.mediaEnabled)
         SettingsSliderItemWithLabel("息屏收起高度", settings.collapsedHeight, 80f..160f, { update(settings.copy(collapsedHeight = it)) }, steps = 19, enabled = settings.mediaEnabled)
         SettingsSliderItemWithLabel("息屏常显高度", settings.fullAodHeight, 56f..120f, { update(settings.copy(fullAodHeight = it)) }, steps = 15, enabled = settings.mediaEnabled)
-        NavigationSettingItem("高级布局编辑", "", enabled = settings.mediaEnabled, onClick = onOpenConstraintEditor)
         SettingsSwitchItem("息屏时隐藏操作按钮", "", settings.hideAodActions, { update(settings.copy(hideAodActions = it)) })
         SettingsSwitchItem("息屏时隐藏设备切换", "", settings.hideAodSeamless, { update(settings.copy(hideAodSeamless = it)) })
     }
     SettingsSection(topLabel = "超级岛媒体") {
-        SettingsSwitchItem("自定义超级岛高度", "", settings.islandEnabled, { update(settings.copy(islandEnabled = it)) })
-        SettingsSliderItemWithLabel("超级岛高度", settings.islandHeight, 96f..200f, { update(settings.copy(islandHeight = it)) }, steps = 25, enabled = settings.islandEnabled)
         SettingsSwitchItem(
             "进度条光效",
             "普通媒体组件也使用超级岛的进度条样式",
             settings.islandProgressBar,
             { update(settings.copy(islandProgressBar = it)) },
             enabled = settings.islandEnabled,
+        )
+    }
+    SettingsSection(topLabel = "超级岛交互") {
+        SettingsSwitchItem(
+            "隐藏下拉横条",
+            "对所有超级岛生效；同时移除横条的触控/模糊占位",
+            settings.superIslandHidePullBar,
+            { update(settings.copy(superIslandHidePullBar = it)) },
+        )
+        SettingsSwitchItem(
+            "自定义下拉横条底边距",
+            "保存后重新触发超级岛即可生效",
+            settings.superIslandPullBarBottomMarginEnabled,
+            { update(settings.copy(superIslandPullBarBottomMarginEnabled = it)) },
+            enabled = !settings.superIslandHidePullBar,
+        )
+        SettingsSliderItemWithLabel(
+            "横条底边距",
+            settings.superIslandPullBarBottomMarginDp,
+            0f..48f,
+            { update(settings.copy(superIslandPullBarBottomMarginDp = it)) },
+            steps = 47,
+            valueText = { "${settingNumber(it)} dp" },
+            enabled = !settings.superIslandHidePullBar
+                    && settings.superIslandPullBarBottomMarginEnabled,
         )
     }
 }
@@ -262,21 +322,40 @@ import androidx.core.graphics.ColorUtils
 
 @Composable
 internal fun MediaConstraintSetSettingsPage(padding: PaddingValues, settings: ModifierSettings, update: (ModifierSettings) -> Unit, onScroll: (Float) -> Unit) = SettingsScrollPage(padding, onScroll) {
-    var xml by remember(settings.customMediaConstraintSetXml) {
-        mutableStateOf(settings.customMediaConstraintSetXml.ifBlank { MEDIA_CONSTRAINT_SET_TEMPLATE })
+    val context = LocalContext.current
+    val requestedPreset = (context as? Activity)?.intent
+        ?.getStringExtra(DetailSettingsActivity.EXTRA_MEDIA_PRESET)
+    val preset = requestedPreset?.takeIf { it in MediaLayoutPresets.all }
+        ?: MediaLayoutPresets.selected(settings)
+    val normalSaved = MediaLayoutPresets.xml(settings, preset, island = false)
+    val islandSaved = MediaLayoutPresets.xml(settings, preset, island = true)
+    val compactTemplate = remember(context) { MediaLayoutPresets.compactSource(context) }
+    val normalTemplate = when (preset) {
+        MediaLayoutPresets.COMPACT -> compactTemplate
+        MediaLayoutPresets.SYSTEM -> MEDIA_SYSTEM_NORMAL_TEMPLATE
+        else -> MEDIA_CONSTRAINT_SET_TEMPLATE
     }
+    val islandTemplate = when (preset) {
+        MediaLayoutPresets.COMPACT -> compactTemplate.replace("@id/media_bg\"", "@id/media_bg_view\"")
+        else -> MEDIA_ISLAND_CONSTRAINT_SET_TEMPLATE
+    }
+    var xml by remember(preset, normalSaved) {
+        mutableStateOf(normalSaved.ifBlank { normalTemplate })
+    }
+    var islandXml by remember(preset, islandSaved) {
+        mutableStateOf(islandSaved.ifBlank { islandTemplate })
+    }
+    Text(
+        "正在编辑：${MediaLayoutPresets.label(preset)}。保存只修改这个预设；勾选该预设后才会生效。高度由媒体布局预设页单独调整。",
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+    )
     MediaConstraintSetPreview(
         xml = xml,
-        defaultCardHeight = settings.expandedHeight,
+        defaultCardHeight = MediaLayoutPresets.height(settings, preset),
         modifier = Modifier.padding(vertical = 8.dp),
     )
-    SettingsSection(topLabel = "编辑布局") {
-        SettingsSwitchItem(
-            "使用自定义 XML",
-            "适用于普通锁屏媒体组件",
-            settings.customMediaConstraintSetEnabled,
-            { update(settings.copy(customMediaConstraintSetEnabled = it, customMediaConstraintSetXml = xml)) },
-        )
+    SettingsSection(topLabel = "普通锁屏媒体 XML") {
         Text("支持 Constraint / android:layout_* / app:layout_constraint* 属性。未写出的属性保持系统原值。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
         TextField(
             value = xml,
@@ -292,17 +371,63 @@ internal fun MediaConstraintSetSettingsPage(padding: PaddingValues, settings: Mo
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         TextButton(
-            "恢复模块默认",
-            { update(settings.copy(customMediaConstraintSetEnabled = false, customMediaConstraintSetXml = "")) },
+            "恢复该预设",
+            {
+                xml = normalTemplate
+                update(MediaLayoutPresets.withXml(settings, preset, island = false,
+                    if (preset == MediaLayoutPresets.COMPACT) normalTemplate else ""))
+            },
             modifier = Modifier.weight(1f),
         )
         Button(
-            { update(settings.copy(customMediaConstraintSetEnabled = true, customMediaConstraintSetXml = xml)) },
+            { update(MediaLayoutPresets.withXml(settings, preset, island = false,
+                if (preset == MediaLayoutPresets.COMPACT) xml.ifBlank { normalTemplate } else xml)) },
             modifier = Modifier.weight(1f),
             colors = ButtonDefaults.buttonColorsPrimary(),
-        ) { Text("保存并启用") }
+        ) { Text("保存 XML") }
+    }
+    SettingsSection(topLabel = "超级岛媒体布局") {
+        Text(
+            "对应 miui_media_session_island_normal。背景 ID 为 @id/media_bg_view；最终高度以预设高度为准。",
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+        )
+        TextField(
+            value = islandXml,
+            onValueChange = { islandXml = it },
+            modifier = Modifier.fillMaxWidth().height(360.dp).padding(horizontal = 16.dp),
+            textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            singleLine = false,
+            maxLines = Int.MAX_VALUE,
+        )
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        TextButton(
+            "恢复该预设",
+            {
+                islandXml = islandTemplate
+                update(MediaLayoutPresets.withXml(settings, preset, island = true,
+                    if (preset == MediaLayoutPresets.COMPACT) islandTemplate else ""))
+            },
+            modifier = Modifier.weight(1f),
+        )
+        Button(
+            { update(MediaLayoutPresets.withXml(settings, preset, island = true,
+                if (preset == MediaLayoutPresets.COMPACT) islandXml.ifBlank { islandTemplate } else islandXml)) },
+            modifier = Modifier.weight(1f),
+            colors = ButtonDefaults.buttonColorsPrimary(),
+        ) { Text("保存 XML") }
     }
 }
+
+private val MEDIA_SYSTEM_NORMAL_TEMPLATE = """
+    <ConstraintSet xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+      <Constraint android:id="@id/media_bg" android:layout_width="0dp" android:layout_height="0dp" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" />
+    </ConstraintSet>
+""".trimIndent()
 
 private val MEDIA_CONSTRAINT_SET_TEMPLATE = """
     <ConstraintSet xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
@@ -320,6 +445,12 @@ private val MEDIA_CONSTRAINT_SET_TEMPLATE = """
       <Constraint android:id="@id/action2" android:layout_width="@dimen/media_action_width" android:layout_height="@dimen/media_action_height" app:layout_constraintBottom_toBottomOf="@id/action0" app:layout_constraintLeft_toRightOf="@id/action1" app:layout_constraintRight_toLeftOf="@id/action3" app:layout_constraintTop_toTopOf="@id/action0" />
       <Constraint android:id="@id/action3" android:layout_width="@dimen/media_action_width" android:layout_height="@dimen/media_action_height" android:layout_marginStart="5dp" app:layout_constraintBottom_toBottomOf="@id/action0" app:layout_constraintLeft_toRightOf="@id/action2" app:layout_constraintRight_toLeftOf="@id/action4" app:layout_constraintTop_toTopOf="@id/action0" />
       <Constraint android:id="@id/action4" android:layout_width="@dimen/media_action_width" android:layout_height="@dimen/media_action_height" app:layout_constraintBottom_toBottomOf="@id/action0" app:layout_constraintLeft_toRightOf="@id/action3" app:layout_constraintRight_toRightOf="@id/actions" app:layout_constraintTop_toTopOf="@id/action0" />
+    </ConstraintSet>
+""".trimIndent()
+
+private val MEDIA_ISLAND_CONSTRAINT_SET_TEMPLATE = """
+    <ConstraintSet xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+      <Constraint android:id="@id/media_bg_view" android:layout_width="0dp" android:layout_height="0dp" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" />
     </ConstraintSet>
 """.trimIndent()
 
@@ -454,10 +585,11 @@ private fun settingNumber(value: Float): String =
 internal fun formatGlassParameter(value: Float): String =
     String.format(Locale.US, "%.4f", value).trimEnd('0').trimEnd('.').ifEmpty { "0" }
 
-internal fun Context.openDetailSettings(destination: SettingsDestination) {
+internal fun Context.openDetailSettings(destination: SettingsDestination, mediaPreset: String? = null) {
     if (destination.isTopLevel) return
     val intent = Intent(this, DetailSettingsActivity::class.java)
         .putExtra(DetailSettingsActivity.EXTRA_DESTINATION, destination.key)
+    if (mediaPreset != null) intent.putExtra(DetailSettingsActivity.EXTRA_MEDIA_PRESET, mediaPreset)
     startActivity(intent)
 }
 

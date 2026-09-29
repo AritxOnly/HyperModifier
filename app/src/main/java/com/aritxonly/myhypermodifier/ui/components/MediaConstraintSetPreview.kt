@@ -45,9 +45,9 @@ fun MediaConstraintSetPreview(
     val spec = remember(xml, defaultCardHeight) {
         MediaPreviewConstraintSpec.fromXml(xml, defaultCardHeight)
     }
-    val cardHeight = spec.cardHeight.coerceIn(104f, 240f)
+    val cardHeight = spec.cardHeight.coerceIn(84f, 240f)
     val artSize = spec.artSize.coerceIn(42f, 116f)
-    val previewHeight = cardHeight.coerceIn(120f, 180f)
+    val previewHeight = cardHeight.coerceIn(84f, 180f)
     val coverSize = artSize.coerceIn(48f, 62f)
     val white = Color.White
     val secondaryWhite = white.copy(alpha = 0.62f)
@@ -100,7 +100,11 @@ fun MediaConstraintSetPreview(
                     if (spec.showSeamless) {
                         Text("⌁", color = secondaryWhite, fontSize = 24.sp)
                     }
+                    if (spec.compact) {
+                        Text("◀  ▶  ▶", color = white, fontSize = 18.sp)
+                    }
                 }
+                if (!spec.compact) {
                 Spacer(Modifier.weight(1f))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -134,6 +138,7 @@ fun MediaConstraintSetPreview(
                     Spacer(Modifier.width(10.dp))
                     Text("03:48", color = secondaryWhite, fontSize = 11.sp)
                 }
+                }
             }
         }
         Text(
@@ -155,6 +160,7 @@ private data class MediaPreviewConstraintSpec(
     val progressBelowArt: Boolean,
     val actionsBelowProgress: Boolean,
     val showSeamless: Boolean,
+    val compact: Boolean,
     val parseError: String? = null,
 ) {
     val status: String
@@ -171,6 +177,7 @@ private data class MediaPreviewConstraintSpec(
                 progressBelowArt = true,
                 actionsBelowProgress = true,
                 showSeamless = true,
+                compact = false,
             )
             if (xml.isBlank()) return fallback
             return try {
@@ -179,8 +186,9 @@ private data class MediaPreviewConstraintSpec(
                 val title = constraints["header_title"].orEmpty()
                 val progress = constraints["media_progress_bar"].orEmpty()
                 val actions = constraints["actions"].orEmpty()
-                val background = constraints["media_bg"].orEmpty()
+                val background = (constraints["media_bg_view"] ?: constraints["media_bg"]).orEmpty()
                 val seamless = constraints["media_seamless"].orEmpty()
+                val compact = progress["visibility"] == "gone"
                 fallback.copy(
                     cardHeight = background["layout_height"].asDpOr(defaultCardHeight),
                     artSize = art["layout_width"].asDpOr(fallback.artSize),
@@ -189,7 +197,8 @@ private data class MediaPreviewConstraintSpec(
                     titleBesideArt = title["layout_constraintStart_toEndOf"].references("album_art"),
                     progressBelowArt = progress["layout_constraintTop_toBottomOf"].references("album_art"),
                     actionsBelowProgress = actions["layout_constraintTop_toBottomOf"].references("media_progress_bar"),
-                    showSeamless = seamless.isNotEmpty(),
+                    showSeamless = seamless.isNotEmpty() && seamless["visibility"] != "gone",
+                    compact = compact,
                 )
             } catch (_: Throwable) {
                 fallback.copy(parseError = "XML 尚未完整，当前显示安全回退布局")

@@ -52,9 +52,53 @@ import static com.aritxonly.myhypermodifier.ReflectiveAccess.*;
 /** Media ConstraintSet and seek-bar transformations. */
 final class MediaConstraintCustomizer {
     private static final String TAG = "MyHyperModifier";
+    private static final Map<View, Integer> ORIGINAL_MEDIA_ISLAND_LAYOUT_HEIGHTS =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, Integer> ORIGINAL_MEDIA_ISLAND_CAL_HEIGHTS =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, Boolean> MEDIA_ISLAND_ROOTS =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     /** Reproduces the edited miui_media_session_normal.xml ConstraintSet in the reference APK. */
     static void patchMediaConstraintSet(Context context, Object constraintSet, boolean island) {
+        String preset = mediaLayoutPreset;
+        if ("system".equals(preset) || "compact".equals(preset)
+                || "standard".equals(preset) || "custom".equals(preset)) {
+            if ("standard".equals(preset)) {
+                patchLegacyMediaConstraintSet(context, constraintSet, island);
+            }
+            String xml = presetXml(preset, island);
+            if (xml != null && !xml.trim().isEmpty()) {
+                applyCustomMediaConstraintSet(context, constraintSet, xml, island);
+            }
+            int heightDp = presetHeight(preset);
+            // This device's normal media stock resource is 185dp, while the island is 168dp.
+            // The requested "system default" preset is explicitly 168dp for both surfaces.
+            if (!island || !"system".equals(preset) || heightDp != 168
+                    || (xml != null && !xml.trim().isEmpty())) {
+                int background = id(context, island ? "media_bg_view" : "media_bg");
+                setHeight(constraintSet, background, dp(context, heightDp));
+            }
+            return;
+        }
+        patchLegacyMediaConstraintSet(context, constraintSet, island);
+    }
+
+    private static String presetXml(String preset, boolean island) {
+        switch (preset) {
+            case "system": return island ? systemMediaIslandXml : systemMediaXml;
+            case "compact": return island ? compactMediaIslandXml : compactMediaXml;
+            case "standard": return island ? standardMediaIslandXml : standardMediaXml;
+            default: return island ? customMediaIslandConstraintSetXml : customMediaConstraintSetXml;
+        }
+    }
+
+    private static int presetHeight(String preset) {
+        return activeMediaPresetHeight();
+    }
+
+    private static void patchLegacyMediaConstraintSet(Context context, Object constraintSet,
+                                                       boolean island) {
         int parent = 0;
         int mediaBackground = id(context, island ? "media_bg_view" : "media_bg");
         int mediaBackgroundFallback = id(context, "media_bg");
@@ -72,14 +116,19 @@ final class MediaConstraintCustomizer {
         // Do not replace expanded_island_height_dp globally: HyperOS also uses that integer for
         // non-media Super Island cards (for example, 12306).  The media island has its own
         // ConstraintSet, so changing its background here keeps this preference media-only.
+        if (island && customMediaIslandConstraintSetEnabled
+                && applyCustomMediaConstraintSet(context, constraintSet,
+                customMediaIslandConstraintSetXml)) {
+            return;
+        }
         if (island && islandEnabled) {
-            setHeight(constraintSet, mediaBackground, dp(context, islandHeight));
-            setHeight(constraintSet, mediaBackgroundFallback, dp(context, islandHeight));
+            int height = resolvedMediaIslandHeight(context);
+            setHeight(constraintSet, mediaBackground, height);
+            setHeight(constraintSet, mediaBackgroundFallback, height);
         }
         if (!mediaEnabled) return;
         // ConstraintSet.load() only accepts an APK resource id, therefore an XML string saved by
-        // the companion app is parsed after the stock set has loaded.  The custom XML is limited
-        // to the normal media session; the island set retains its dedicated reference layout.
+        // the companion app is parsed after the stock set has loaded.
         if (!island && customMediaConstraintSetEnabled
                 && applyCustomMediaConstraintSet(context, constraintSet, customMediaConstraintSetXml)) {
             setAodSeamlessConstraintVisibility(constraintSet, seamless);
@@ -154,6 +203,11 @@ final class MediaConstraintCustomizer {
      */
     static boolean applyCustomMediaConstraintSet(Context context, Object constraintSet,
                                                          String source) {
+        return applyCustomMediaConstraintSet(context, constraintSet, source, false);
+    }
+
+    private static boolean applyCustomMediaConstraintSet(Context context, Object constraintSet,
+                                                         String source, boolean island) {
         if (source == null || source.trim().isEmpty() || source.length() > 64 * 1024) {
             return false;
         }
@@ -172,11 +226,19 @@ final class MediaConstraintCustomizer {
                 }
                 int viewId = parseConstraintTarget(context, parser.getAttributeValue(
                         "http://schemas.android.com/apk/res/android", "id"));
+                if (island && viewId == id(context, "media_bg")) {
+                    viewId = id(context, "media_bg_view");
+                }
                 Object targetLayout = layout(constraintSet, viewId);
                 if (targetLayout == null) {
                     continue;
                 }
                 for (int index = 0; index < parser.getAttributeCount(); index++) {
+                    if ("visibility".equals(parser.getAttributeName(index))) {
+                        setConstraintVisibility(constraintSet, viewId,
+                                parser.getAttributeValue(index));
+                        continue;
+                    }
                     applyCustomConstraintAttribute(context, targetLayout,
                             parser.getAttributeName(index), parser.getAttributeValue(index));
                 }
@@ -186,6 +248,145 @@ final class MediaConstraintCustomizer {
         } catch (Throwable throwable) {
             Log.w(TAG, "Invalid custom media ConstraintSet XML; using bundled layout", throwable);
             return false;
+        }
+    }
+
+    private static void setConstraintVisibility(Object constraintSet, int viewId, String value) {
+        int visibility;
+        if ("gone".equals(value) || "8".equals(value)) visibility = View.GONE;
+        else if ("invisible".equals(value) || "4".equals(value)) visibility = View.INVISIBLE;
+        else if ("visible".equals(value) || "0".equals(value)) visibility = View.VISIBLE;
+        else return;
+        try {
+            constraintSet.getClass().getMethod("setVisibility", int.class, int.class)
+                    .invoke(constraintSet, viewId, visibility);
+        } catch (ReflectiveOperationException error) {
+            Log.w(TAG, "ConstraintSet visibility override unavailable", error);
+        }
+    }
+
+    /**
+     * Returns the explicit media-island background height requested by its custom XML, or zero
+     * when the XML leaves its height at 0dp/match-constraints. In the latter case the dedicated
+     * Super Island height slider remains the single source of truth for the outer root.
+     */
+    private static int customMediaIslandHeight(Context context) {
+        String source = customMediaIslandConstraintSetXml;
+        if (!customMediaIslandConstraintSetEnabled || source == null || source.trim().isEmpty()
+                || source.length() > 64 * 1024) {
+            return 0;
+        }
+        try {
+            XmlPullParser parser = Xml.newPullParser();
+            parser.setInput(new StringReader(source));
+            while (parser.next() != XmlPullParser.END_DOCUMENT) {
+                if (parser.getEventType() != XmlPullParser.START_TAG
+                        || !"Constraint".equals(parser.getName())) {
+                    continue;
+                }
+                String target = parser.getAttributeValue(
+                        "http://schemas.android.com/apk/res/android", "id");
+                int id = parseConstraintTarget(context, target);
+                if (id != id(context, "media_bg_view") && id != id(context, "media_bg")) {
+                    continue;
+                }
+                String height = parser.getAttributeValue(
+                        "http://schemas.android.com/apk/res/android", "layout_height");
+                int pixels = height == null ? 0 : parseDimension(context, height);
+                return Math.max(0, pixels);
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "Unable to read media island XML height", throwable);
+        }
+        return 0;
+    }
+
+    /** Resolves the height applied to both the media island ConstraintSet and its root. */
+    static int resolvedMediaIslandHeight(Context context) {
+        int customHeight = customMediaIslandHeight(context);
+        return customHeight > 0 ? customHeight : dp(context, islandHeight);
+    }
+
+    /** Zero means leave the stock host geometry untouched. */
+    static int requestedMediaIslandHeight(Context context) {
+        String preset = mediaLayoutPreset;
+        if ("system".equals(preset) || "compact".equals(preset)
+                || "standard".equals(preset) || "custom".equals(preset)) {
+            int height = presetHeight(preset);
+            return "system".equals(preset) && height == 168 ? 0 : dp(context, height);
+        }
+        int customHeight = customMediaIslandHeight(context);
+        return customHeight > 0 ? customHeight
+                : islandEnabled ? dp(context, islandHeight) : 0;
+    }
+
+    /**
+     * Synchronizes PlayerIslandConstraintLayout's own measured/root height with its background.
+     * The separate plugin host geometry is handled by MediaIslandHostHooks; changing this
+     * player root alone does not resize the plugin's translucent backdrop.
+     */
+    static void synchronizeMediaIslandRootHeight(View island) {
+        if (island == null) return;
+        int height = requestedMediaIslandHeight(island.getContext());
+        ViewGroup.LayoutParams layoutParams = island.getLayoutParams();
+        if (height <= 0) {
+            Integer originalCalHeight;
+            Integer originalLayoutHeight;
+            synchronized (ORIGINAL_MEDIA_ISLAND_CAL_HEIGHTS) {
+                originalCalHeight = ORIGINAL_MEDIA_ISLAND_CAL_HEIGHTS.remove(island);
+            }
+            synchronized (ORIGINAL_MEDIA_ISLAND_LAYOUT_HEIGHTS) {
+                originalLayoutHeight = ORIGINAL_MEDIA_ISLAND_LAYOUT_HEIGHTS.remove(island);
+            }
+            if (originalCalHeight != null) {
+                setDeclaredInt(island, "calHeight", originalCalHeight);
+            }
+            if (layoutParams != null && originalLayoutHeight != null
+                    && layoutParams.height != originalLayoutHeight) {
+                layoutParams.height = originalLayoutHeight;
+                island.setLayoutParams(layoutParams);
+            }
+            return;
+        }
+        synchronized (ORIGINAL_MEDIA_ISLAND_CAL_HEIGHTS) {
+            if (!ORIGINAL_MEDIA_ISLAND_CAL_HEIGHTS.containsKey(island)) {
+                ORIGINAL_MEDIA_ISLAND_CAL_HEIGHTS.put(island,
+                        declaredIntField(island, "calHeight", height));
+            }
+        }
+        setDeclaredInt(island, "calHeight", height);
+        if (layoutParams == null) return;
+        synchronized (ORIGINAL_MEDIA_ISLAND_LAYOUT_HEIGHTS) {
+            if (!ORIGINAL_MEDIA_ISLAND_LAYOUT_HEIGHTS.containsKey(island)) {
+                ORIGINAL_MEDIA_ISLAND_LAYOUT_HEIGHTS.put(island, layoutParams.height);
+            }
+        }
+        if (layoutParams.height != height) {
+            layoutParams.height = height;
+            island.setLayoutParams(layoutParams);
+        }
+    }
+
+    /** Keep both the visible and dummy PlayerIsland roots available after asynchronous settings load. */
+    static void rememberMediaIslandRoot(View island) {
+        if (island == null) return;
+        synchronized (MEDIA_ISLAND_ROOTS) {
+            MEDIA_ISLAND_ROOTS.put(island, Boolean.TRUE);
+        }
+    }
+
+    /** Re-measure every cached island root once remote preferences become available. */
+    static void refreshMediaIslandRoots() {
+        List<View> roots;
+        synchronized (MEDIA_ISLAND_ROOTS) {
+            roots = new ArrayList<>(MEDIA_ISLAND_ROOTS.keySet());
+        }
+        for (View root : roots) {
+            if (root == null) continue;
+            root.post(() -> {
+                synchronizeMediaIslandRootHeight(root);
+                root.requestLayout();
+            });
         }
     }
 

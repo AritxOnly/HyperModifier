@@ -140,9 +140,21 @@ final class BilibiliHooks {
             // Keep the app's listener authoritative; adjust its bottom inset after it runs.
             Class<?> mainInsets = Class.forName(
                     "tv.danmaku.bili.components.a", false, classLoader);
-            Class<?> compatInsets = Class.forName(
-                    "androidx.core.view.WindowInsetsCompat", false, classLoader);
-            module.hook(mainInsets.getDeclaredMethod("onApplyWindowInsets", View.class, compatInsets))
+            // Resolve the host signature from its own class. R8 rewrites Class.forName's
+            // AndroidX string to the module's obfuscated class name ("l52" in 1.4.1), which
+            // does not exist in Bilibili's ClassLoader and aborted all hook installation.
+            Method applyInsets = null;
+            for (Method candidate : mainInsets.getDeclaredMethods()) {
+                Class<?>[] parameters = candidate.getParameterTypes();
+                if (candidate.getName().equals("onApplyWindowInsets") && parameters.length == 2
+                        && View.class.isAssignableFrom(parameters[0])) {
+                    applyInsets = candidate;
+                    break;
+                }
+            }
+            if (applyInsets == null) throw new NoSuchMethodException(
+                    "Bilibili home OnApplyWindowInsetsListener");
+            module.hook(applyInsets)
                     .setId("bilibili-home-navigation-insets")
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {

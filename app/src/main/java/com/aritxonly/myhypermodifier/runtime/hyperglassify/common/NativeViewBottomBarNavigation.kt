@@ -13,6 +13,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.WindowManager
+import android.view.WindowInsets as AndroidWindowInsets
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.compose.foundation.layout.Box
@@ -35,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
@@ -43,8 +45,10 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
@@ -92,9 +96,15 @@ internal data class NativeViewBottomBarTarget(
     val useHardwareBackdrop: Boolean = false,
     val minimumCaptureIntervalMs: Long = 0L,
     val allowSoftwareBackdrop: Boolean = true,
+    val matchDisplayBackdropRefreshRate: Boolean = false,
+    val sampleBackdropOnSourceFrame: Boolean = false,
+    val pixelCopyRetryDelayMs: Long = 1_000L,
     val requestImmersiveInsets: Boolean = false,
+    val stableNavigationInset: Boolean = false,
     val onChromeReplacement: (Activity, Boolean) -> Unit = { _, _ -> },
     val retainNativeSuppressionDuringCover: Boolean = false,
+    val detachedActionContainerColor: Color? = null,
+    val displayTabLabel: (String, Int) -> String = { label, _ -> label },
 )
 
 /**
@@ -216,6 +226,8 @@ private data class NativeViewNavigationState(
     val selectedIndex: Int = 0,
     val visible: Boolean = false,
     val detachedAction: NativeViewTabState? = null,
+    val navigationLiftDp: Float = 0f,
+    val navigationInsetPx: Int = 0,
 )
 
 private class NativeViewBottomBarHost private constructor(
@@ -232,6 +244,7 @@ private class NativeViewBottomBarHost private constructor(
     private val windowImmersion = InjectedBottomNavigationImmersion(activity, target.requestImmersiveInsets)
     private val windowManager = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val composeView = ComposeView(activity)
+    private val visibility = FloatingNavigationVisibility(composeView, windowManager)
     private var composeWindowAttached = false
     private val sampler = ViewBackdropSampler(
         source = overlayParent,
@@ -240,9 +253,13 @@ private class NativeViewBottomBarHost private constructor(
         usePixelCopySampling = { target.useHardwareBackdrop },
         minimumCaptureIntervalMs = target.minimumCaptureIntervalMs,
         allowSoftwareFallback = target.allowSoftwareBackdrop,
+        matchDisplayRefreshRate = target.matchDisplayBackdropRefreshRate,
+        sampleOnSourceFrame = target.sampleBackdropOnSourceFrame,
+        pixelCopyRetryDelayMs = target.pixelCopyRetryDelayMs,
     ) { backdropSnapshot = it }
     private val refreshPolicy = NavigationRefreshPolicy(target.nativeRefreshIntervalMs)
     private var foreground = true
+    private var stableNavigationInsetPx = 0
     private val iconSnapshotter = NativeTabIconSnapshotter(activity.resources, activity.theme)
     private val trimmedIconCache = WeakHashMap<View, TrimmedNativeIconEntry>()
     private val contentBottomPadding = contentHost?.let(::InjectedScrollableContentBottomPadding)
@@ -303,6 +320,7 @@ private class NativeViewBottomBarHost private constructor(
         }
         windowManager.addView(composeView, params)
         composeWindowAttached = true
+        visibility.onAttached()
         composeView.addOnLayoutChangeListener(composeLayoutListener)
         overlayParent.viewTreeObserver.addOnPreDrawListener(preDrawListener)
         composeView.post { sampler.requestCaptureBurst(900L) }
@@ -323,6 +341,7 @@ private class NativeViewBottomBarHost private constructor(
 
     fun dispose() {
         target.onChromeReplacement(activity, false)
+        visibility.dispose()
         sampler.dispose()
         composeView.removeOnLayoutChangeListener(composeLayoutListener)
         contentBottomPadding?.dispose()
@@ -348,7 +367,7 @@ private class NativeViewBottomBarHost private constructor(
         ) {
             if (state.visible) state = state.copy(visible = false)
             sampler.setActive(false)
-            composeView.visibility = View.GONE
+            visibility.setVisible(false)
             updateNativeChromeReplacement(false)
             return
         }
@@ -380,15 +399,30 @@ private class NativeViewBottomBarHost private constructor(
             detachedAction = allTabs.getOrNull(actionIndex)?.takeIf {
                 target.tabVisible(it.label, it.nativeIndex)
             },
+            navigationLiftDp = ModuleSettings.hyperGlassifyHiddenNavigationLift.coerceIn(0f, 48f),
+            navigationInsetPx = if (target.stableNavigationInset) navigationInsetPx() else 0,
         )
         val selectionChanged = next.selectedIndex != state.selectedIndex
         val becameVisible = next.visible && !state.visible
         if (next != state) state = next
         if (selectionChanged) sampler.invalidateSamplingContext()
         updateNativeChromeReplacement(next.visible)
-        composeView.visibility = if (next.visible) View.VISIBLE else View.GONE
+        visibility.setVisible(next.visible)
         sampler.setActive(next.visible)
         if (selectionChanged || becameVisible) sampler.requestCaptureBurst()
+    }
+
+    private fun navigationInsetPx(): Int {
+        // The panel can briefly report a zero navigation inset after a child Activity closes.
+        // Keep the last real inset so its dock returns to the same height as before navigation.
+        val current = listOfNotNull(
+            composeView.rootWindowInsets,
+            activity.window.decorView.rootWindowInsets,
+        ).maxOfOrNull { insets ->
+            insets.getInsetsIgnoringVisibility(AndroidWindowInsets.Type.navigationBars()).bottom
+        } ?: 0
+        if (current > 0) stableNavigationInsetPx = current
+        return stableNavigationInsetPx
     }
 
     private fun View.readTabState(index: Int, selected: Boolean): NativeViewTabState {
@@ -575,7 +609,12 @@ private fun NativeViewBottomBarContent(
     val materialColors = remember(dark) { MhmPresetColors.material(dark) }
     val miuixColors = remember(dark, materialColors) { MhmPresetColors.miuix(materialColors, dark) }
     val backdrop = rememberLayerBackdrop()
-    val hiddenNavigationLift = hyperGlassifyHiddenNavigationLift()
+    val hiddenNavigationLift = state.navigationLiftDp.dp
+    val navigationPadding = if (target.stableNavigationInset && state.navigationInsetPx > 0) {
+        Modifier.padding(bottom = with(LocalDensity.current) { state.navigationInsetPx.toDp() })
+    } else {
+        Modifier.navigationBarsPadding()
+    }
     val items = state.tabs.map { tab ->
         val nativeIcons = tab.icons?.takeUnless { target.useMiuixIcons() }
         val monochrome = nativeIcons != null && target.useMonochromeIcons()
@@ -591,7 +630,7 @@ private fun NativeViewBottomBarContent(
         } ?: rememberVectorPainter(target.fallbackIcon(tab.label, tab.nativeIndex))
         MiuixFloatingTabItem(
             key = tab.nativeIndex.toString(),
-            label = tab.label,
+            label = target.displayTabLabel(tab.label, tab.nativeIndex),
             selectedIcon = selectedPainter,
             unselectedIcon = unselectedPainter,
             preserveOriginalIconColors = nativeIcons != null && !monochrome,
@@ -609,7 +648,7 @@ private fun NativeViewBottomBarContent(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .navigationBarsPadding()
+                        .then(navigationPadding)
                         .padding(
                             start = 16.dp,
                             top = INJECTED_NAVIGATION_SHADOW_TOP_PADDING,
@@ -644,8 +683,9 @@ private fun NativeViewBottomBarContent(
                         )
                     } else {
                         // Deadliner 4d1b755 MiuixFloatingNavigationDock geometry; native Views own routing.
+                        val maxDockWidth = detachedDockMaxWidth(items.size)
                         Row(
-                            modifier = boundsModifier.widthIn(max = 442.dp).fillMaxWidth()
+                            modifier = boundsModifier.widthIn(max = maxDockWidth).fillMaxWidth()
                                 .height(MiuixFloatingTabBarDefaults.Height).padding(horizontal = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -661,7 +701,8 @@ private fun NativeViewBottomBarContent(
                             )
                             SoftGlassFloatingActionButton(
                                 onClick = { onDestinationSelected(action.nativeIndex) },
-                                containerColor = MiuixTheme.colorScheme.primary,
+                                containerColor = target.detachedActionContainerColor
+                                    ?: MiuixTheme.colorScheme.primary,
                                 contentColor = MiuixTheme.colorScheme.onPrimary,
                                 size = MiuixFloatingTabBarDefaults.Height,
                                 backdrop = backdropSnapshot?.let { backdrop },
@@ -679,6 +720,15 @@ private fun NativeViewBottomBarContent(
         }
     }
 }
+
+/** The detached dock keeps Deadliner's 80dp cap even when only one tab remains. */
+internal fun detachedDockMaxWidth(tabCount: Int): Dp = minOf(
+    442.dp,
+    minOf(
+        MiuixFloatingTabBarDefaults.MaximumWidth,
+        MiuixFloatingTabBarDefaults.MaximumItemWidth * tabCount.coerceAtLeast(0),
+    ) + MiuixFloatingTabBarDefaults.Height + 24.dp,
+)
 
 private fun View.findDescendantByClassNames(classNames: Set<String>): View? {
     if (javaClass.name in classNames) return this

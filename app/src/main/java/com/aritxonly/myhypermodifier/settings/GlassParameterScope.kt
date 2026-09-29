@@ -12,7 +12,7 @@ internal enum class GlassParameterScope(val presetFormat: String) {
 
     fun enabled(settings: ModifierSettings): Boolean = when (this) {
         HeadsUp -> settings.headsUpGlassParametersEnabled
-        ShadeCards -> settings.shadeCardGlassParametersEnabled
+        ShadeCards -> settings.shadeCardGlassParametersEnabled && !settings.disableShadeGlassHooks
     }
 
     fun serialized(settings: ModifierSettings, dark: Boolean): String = when (this) {

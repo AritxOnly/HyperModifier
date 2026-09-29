@@ -104,7 +104,7 @@ internal fun GestureHandlePresetDialog(
     DeadlinerMiuixDialog(
         true,
         if (isImport) "导入 JSON 预设" else "导出 JSON 预设",
-        if (isImport) "替换小横条预设及应用设置。" else null,
+        if (isImport) "替换手势提示线预设及应用设置。" else null,
         onDismiss,
     ) {
         Column(
@@ -125,7 +125,7 @@ internal fun GestureHandlePresetDialog(
                 fileError != null -> fileError
                 feedback != null -> feedback
                 isImport && json.isNotBlank() && imported == null -> "JSON 格式、预设类型或应用模式无效。"
-                imported != null -> "${if (imported.modulePreset) "模块预设" else "系统预设"} · ${imported.apps.size} 个应用设置"
+                imported != null -> "${gestureHandlePresetLabel(imported.preset)} · ${imported.apps.size} 个应用设置"
                 else -> null
             }
             message?.let {

@@ -3,9 +3,27 @@
   "version": 1,
   "preset": "module",
   "apps": {
-    "com.example.alwaysvisible": "show",
-    "com.example.hidden": "hide",
-    "com.example.immersive": "immersive",
-    "com.example.systemdefault": "system"
-  }
+    "com.android.calendar": "hide",
+    "com.android.deskclock": "hide",
+    "com.android.soundrecorder": "hide",
+    "com.coolapk.market": "hide",
+    "com.deepseek.chat": "hide",
+    "com.eg.android.AlipayGphone": "hide",
+    "com.hyper.gallery.plugin": "hide",
+    "com.lilystudio.wheretosleepinnju": "show",
+    "com.miui.gallery": "hide",
+    "com.miui.mediaeditor": "hide",
+    "com.miui.notes": "hide",
+    "com.miui.themestore": "hide",
+    "com.miui.weather2": "hide",
+    "com.moonshot.kimichat": "hide",
+    "com.openai.chatgpt": "hide",
+    "com.ruanmei.ithome": "hide",
+    "com.tencent.mobileqq": "show",
+    "com.xingin.xhs": "show",
+    "me.weishu.kernelsu": "hide"
+  },
+  "touchReveal": true,
+  "swipeMotion": true,
+  "bottomTouchAreaDp": 16
 }

@@ -4,11 +4,11 @@ import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
+import android.content.res.ColorStateList;
 import android.app.Activity;
 import android.app.Application;
 import android.graphics.Color;
 import android.graphics.Outline;
-import android.content.res.ColorStateList;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.InsetDrawable;
@@ -301,6 +301,50 @@ public final class MyHyperModifier extends XposedModule {
                     Float replacement = replacementDimension(
                             (Resources) chain.getThisObject(), (Integer) chain.getArg(0));
                     return replacement != null ? (int) replacement.floatValue() : result;
+                });
+
+        hook(Resources.class.getDeclaredMethod("getColor", int.class))
+                .setId("super-island-pull-bar-color")
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept(chain -> {
+                    ensureLoaded();
+                    Object result = chain.proceed();
+                    Integer replacement = replacementColor(
+                            (Resources) chain.getThisObject(), (Integer) chain.getArg(0));
+                    return replacement != null ? replacement : result;
+                });
+
+        hook(Resources.class.getDeclaredMethod("getColor", int.class, Resources.Theme.class))
+                .setId("super-island-pull-bar-color-themed")
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept(chain -> {
+                    ensureLoaded();
+                    Object result = chain.proceed();
+                    Integer replacement = replacementColor(
+                            (Resources) chain.getThisObject(), (Integer) chain.getArg(0));
+                    return replacement != null ? replacement : result;
+                });
+
+        hook(Resources.class.getDeclaredMethod("getColorStateList", int.class))
+                .setId("super-island-pull-bar-color-state-list")
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept(chain -> {
+                    ensureLoaded();
+                    Object result = chain.proceed();
+                    Integer replacement = replacementColor(
+                            (Resources) chain.getThisObject(), (Integer) chain.getArg(0));
+                    return replacement != null ? ColorStateList.valueOf(replacement) : result;
+                });
+
+        hook(Resources.class.getDeclaredMethod("getColorStateList", int.class, Resources.Theme.class))
+                .setId("super-island-pull-bar-color-state-list-themed")
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept(chain -> {
+                    ensureLoaded();
+                    Object result = chain.proceed();
+                    Integer replacement = replacementColor(
+                            (Resources) chain.getThisObject(), (Integer) chain.getArg(0));
+                    return replacement != null ? ColorStateList.valueOf(replacement) : result;
                 });
 
         // XML drawables resolve their <corners android:radius="@dimen/..."> through a

@@ -97,6 +97,42 @@ final class ReflectiveAccess {
         return value instanceof Integer ? (Integer) value : fallback;
     }
 
+    /** Reads an integer field declared by a SystemUI class or one of its superclasses. */
+    static int declaredIntField(Object target, String fieldName, int fallback) {
+        if (target == null) return fallback;
+        Class<?> type = target.getClass();
+        while (type != null) {
+            try {
+                Field field = type.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                return field.getInt(target);
+            } catch (NoSuchFieldException ignored) {
+                type = type.getSuperclass();
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                return fallback;
+            }
+        }
+        return fallback;
+    }
+
+    /** Sets an integer field declared by a SystemUI class or one of its superclasses. */
+    static void setDeclaredInt(Object target, String fieldName, int value) {
+        if (target == null) return;
+        Class<?> type = target.getClass();
+        while (type != null) {
+            try {
+                Field field = type.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                field.setInt(target, value);
+                return;
+            } catch (NoSuchFieldException ignored) {
+                type = type.getSuperclass();
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                return;
+            }
+        }
+    }
+
     static void setFieldValue(Object target, String fieldName, Object value) {
         if (target == null) {
             return;

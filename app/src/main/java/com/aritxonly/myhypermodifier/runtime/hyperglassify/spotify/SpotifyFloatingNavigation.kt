@@ -161,6 +161,7 @@ private class SpotifyNavigationHost private constructor(
     private val originalNavigationLayoutHeight = nativeNavigationBar.layoutParams.height
     private val originalInsetVisibility = navigationInsetSpace?.visibility
     private val composeView = ComposeView(activity)
+    private val visibility = FloatingNavigationVisibility(composeView)
     private val sampler = ViewBackdropSampler(
         source = samplingView,
         excludedView = composeView,
@@ -217,6 +218,7 @@ private class SpotifyNavigationHost private constructor(
     fun onTouchEvent(event: MotionEvent) = sampler.onTouchEvent(event)
 
     fun dispose() {
+        visibility.dispose()
         sampler.dispose()
         composeView.removeOnLayoutChangeListener(composeLayoutListener)
         if (overlayParent.viewTreeObserver.isAlive) {
@@ -273,7 +275,7 @@ private class SpotifyNavigationHost private constructor(
         val selectionChanged = next.selectedIndex != state.selectedIndex
         val becameVisible = next.visible && !state.visible
         state = next
-        composeView.visibility = if (next.visible) View.VISIBLE else View.GONE
+        visibility.setVisible(next.visible)
         if (changed && (selectionChanged || becameVisible)) {
             sampler.requestCaptureBurst()
         }

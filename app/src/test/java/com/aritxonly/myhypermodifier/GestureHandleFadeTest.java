@@ -29,6 +29,14 @@ public class GestureHandleFadeTest {
         assertFalse(fade.running(1_410));
     }
 
+    @Test public void swipeRevealFadesInBeforeShortGestureEnds() {
+        GestureHandleFade fade = new GestureHandleFade(true);
+        assertEquals(0f, fade.alpha(false, 1_000, true), 0f);
+        assertEquals(0.5f, fade.alpha(false, 1_045, true), 0.001f);
+        assertEquals(1f, fade.alpha(false, 1_090, true), 0f);
+        assertFalse(fade.running(1_090));
+    }
+
     @Test public void initiallyHiddenHandleDoesNotFlashOrAnimateUntilShown() {
         GestureHandleFade fade = new GestureHandleFade(true);
         assertEquals(0f, fade.alpha(true, 5_000), 0f);

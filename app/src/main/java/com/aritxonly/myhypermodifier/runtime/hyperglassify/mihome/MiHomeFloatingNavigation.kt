@@ -72,6 +72,12 @@ private const val MI_HOME_VIEW_PAGER_CLASS = "com.xiaomi.smarthome.ui.LinearView
 private const val MI_HOME_SCENE_TAB_CLASS = "com.xiaomi.smarthome.scene.SceneTabFragment"
 private const val MI_HOME_SCENE_LIST_CLASS =
     "com.xiaomi.smarthome.scene.ui.list.MySceneFragmentkt"
+private const val MI_HOME_EDIT_MASK_CLASS =
+    "com.xiaomi.smarthome.newui.mainpage.EditMaskView"
+private const val MI_HOME_MICO_ACTION_BAR_CLASS =
+    "com.xiaomi.mico.common.editorbar.ActionBar"
+private const val MI_HOME_MICO_ACTION_MENU_CLASS =
+    "com.xiaomi.mico.common.editorbar.ActionMenu"
 
 /** Replaces Mi Home's visual tab strip while keeping its native routing and analytics intact. */
 internal object MiHomeFloatingNavigation {
@@ -159,6 +165,16 @@ internal object MiHomeFloatingNavigation {
         hosts[activity]?.onTouchEvent(event)
     }
 
+    @JvmStatic
+    fun onActionModeStarted(activity: Activity, mode: Any) {
+        hosts[activity]?.onActionModeStarted(mode)
+    }
+
+    @JvmStatic
+    fun onActionModeFinished(activity: Activity, mode: Any) {
+        hosts[activity]?.onActionModeFinished(mode)
+    }
+
     private const val VIEW_RETRY_MS = 16L
     private const val VIEW_WAIT_TIMEOUT_MS = 6_000L
     private const val TAG = "MyHyperModifier"
@@ -211,11 +227,19 @@ private class MiHomeNavigationHost private constructor(
     samplingView: View,
 ) {
     private var state by mutableStateOf(MiHomeNavigationState())
+    private val activeActionModes = IdentityHashMap<Any, Boolean>()
+    private var contextualActionBarVisible = false
+    // 11.8.605 inflates the scene selection title/menu and card editor menu as ordinary Views.
+    // They never dispatch Activity.onActionModeStarted and have no ActionBarContextView.
+    private val contextualViewIds = setOf("eah", "caj", "ar3").mapNotNull { name ->
+        activity.resources.getIdentifier(name, "id", activity.packageName).takeIf { it != 0 }
+    }.toSet()
     private var backdropSnapshot by mutableStateOf<ViewBackdropSnapshot?>(null)
     private val owner = InjectedViewTreeOwner()
     private val windowImmersion = InjectedBottomNavigationImmersion(activity)
     private val windowManager = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val composeView = ComposeView(activity)
+    private val visibility = FloatingNavigationVisibility(composeView, windowManager)
     private var composeWindowAttached = false
     private var lastNavigationDiagnostic: String? = null
     private val settingsRefreshRunnable = object : Runnable {
@@ -230,9 +254,12 @@ private class MiHomeNavigationHost private constructor(
     private val sampler = ViewBackdropSampler(
         source = samplingView,
         excludedView = composeView,
-        revealMiHomeMaterialCardFallbacks = true,
         pixelCopyWindow = activity.window,
-        usePixelCopySampling = { state.selectedIndex == MI_HOME_PAGE_INDEX },
+        usePixelCopySampling = { state.visible },
+        allowSoftwareFallback = false,
+        matchDisplayRefreshRate = true,
+        sampleOnSourceFrame = true,
+        pixelCopyRetryDelayMs = 32L,
     ) { backdropSnapshot = it }
     private val contentBottomPadding = InjectedScrollableContentBottomPadding(contentView)
     private val iconSnapshotter = MiHomeTabIconSnapshotter(activity)
@@ -262,6 +289,13 @@ private class MiHomeNavigationHost private constructor(
         logNavigationGeometry()
         sampler.onFrame()
         true
+    }
+    private val globalLayoutListener = ViewTreeObserver.OnGlobalLayoutListener {
+        val visible = overlayParent.hasVisibleContextualActionBar(contextualViewIds)
+        if (contextualActionBarVisible != visible) {
+            contextualActionBarVisible = visible
+            syncNativeState()
+        }
     }
 
     init {
@@ -299,6 +333,7 @@ private class MiHomeNavigationHost private constructor(
         }
         windowManager.addView(composeView, overlayLayoutParams)
         composeWindowAttached = true
+        visibility.onAttached()
         ModuleSettings.onLoaded {
             composeView.post {
                 if (composeWindowAttached) syncNativeState()
@@ -307,6 +342,9 @@ private class MiHomeNavigationHost private constructor(
         composeView.post(settingsRefreshRunnable)
         composeView.addOnLayoutChangeListener(composeLayoutListener)
         overlayParent.viewTreeObserver.addOnPreDrawListener(preDrawListener)
+        overlayParent.viewTreeObserver.addOnGlobalLayoutListener(globalLayoutListener)
+        contextualActionBarVisible = overlayParent.hasVisibleContextualActionBar(contextualViewIds)
+        syncNativeState()
         startupCaptureRunnables.forEachIndexed { index, runnable ->
             composeView.postDelayed(runnable, STARTUP_CAPTURE_DELAYS_MS[index])
         }
@@ -314,7 +352,19 @@ private class MiHomeNavigationHost private constructor(
 
     fun onTouchEvent(event: MotionEvent) = sampler.onTouchEvent(event)
 
+    fun onActionModeStarted(mode: Any) {
+        activeActionModes[mode] = true
+        syncNativeState()
+    }
+
+    fun onActionModeFinished(mode: Any) {
+        activeActionModes.remove(mode)
+        syncNativeState()
+    }
+
     fun dispose() {
+        activeActionModes.clear()
+        visibility.dispose()
         sampler.dispose()
         composeView.removeCallbacks(settingsRefreshRunnable)
         startupCaptureRunnables.forEach(composeView::removeCallbacks)
@@ -322,6 +372,7 @@ private class MiHomeNavigationHost private constructor(
         contentBottomPadding.dispose()
         if (overlayParent.viewTreeObserver.isAlive) {
             overlayParent.viewTreeObserver.removeOnPreDrawListener(preDrawListener)
+            overlayParent.viewTreeObserver.removeOnGlobalLayoutListener(globalLayoutListener)
         }
         if (composeWindowAttached) {
             runCatching { windowManager.removeViewImmediate(composeView) }
@@ -341,9 +392,6 @@ private class MiHomeNavigationHost private constructor(
                 windowImmersion.apply()
             }
             windowImmersion.ensureApplied()
-            if (nativeTabLayout.alpha != 0f) nativeTabLayout.alpha = 0f
-            nativeTabLayout.importantForAccessibility =
-                View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
             removeContentReservation()
             val contentInset = composeView.injectedNavigationContentInsetPx()
             if (contentInset > 0 && contentBottomPadding.apply(contentInset)) {
@@ -351,11 +399,21 @@ private class MiHomeNavigationHost private constructor(
             }
         } else if (replacingNativeChrome) {
             replacingNativeChrome = false
-            nativeTabLayout.alpha = originalBottomAlpha
-            nativeTabLayout.importantForAccessibility = originalBottomAccessibility
             contentBottomPadding.dispose()
             restoreContentReservation()
             windowImmersion.dispose()
+        }
+        // The official tab layout remains in the hierarchy for routing and selection state.
+        // Its visual suppression must outlive a temporarily hidden floating panel.
+        if (ModuleSettings.miHomeFloatingNavigationEnabled) {
+            if (nativeTabLayout.alpha != 0f) nativeTabLayout.alpha = 0f
+            nativeTabLayout.importantForAccessibility =
+                View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        } else {
+            if (nativeTabLayout.alpha != originalBottomAlpha) {
+                nativeTabLayout.alpha = originalBottomAlpha
+            }
+            nativeTabLayout.importantForAccessibility = originalBottomAccessibility
         }
     }
 
@@ -409,9 +467,11 @@ private class MiHomeNavigationHost private constructor(
         val next = MiHomeNavigationState(
             tabs = tabStates,
             selectedIndex = selected,
-            visible = activity.hasWindowFocus() &&
+            visible = ModuleSettings.miHomeFloatingNavigationEnabled &&
+                activity.hasWindowFocus() &&
                 nativeTabLayout.visibility == View.VISIBLE &&
-                nativeTabLayout.isShown && tabs.size > 1 &&
+                nativeTabLayout.isShown && tabs.size > 1 && activeActionModes.isEmpty() &&
+                !contextualActionBarVisible &&
                 (tabStates.getOrNull(selected)?.isSceneTab() != true || !isSceneSelectionActive()),
             navigationLiftDp = ModuleSettings.hyperGlassifyHiddenNavigationLift.coerceIn(0f, 48f),
         )
@@ -419,8 +479,13 @@ private class MiHomeNavigationHost private constructor(
         val becameVisible = next.visible && !state.visible
         if (next != state) state = next
         if (selectionChanged) sampler.invalidateSamplingContext()
-        updateNativeChromeReplacement(next.visible)
-        composeView.visibility = if (next.visible) View.VISIBLE else View.GONE
+        // Reserve immersive content space only while our dock or a contextual toolbar needs it.
+        updateNativeChromeReplacement(
+            ModuleSettings.miHomeFloatingNavigationEnabled &&
+                (next.visible || activeActionModes.isNotEmpty() || contextualActionBarVisible),
+        )
+        visibility.setVisible(next.visible)
+        sampler.setActive(next.visible)
         if (selectionChanged || becameVisible) sampler.requestCaptureBurst()
     }
 
@@ -739,6 +804,23 @@ private fun View.findDescendantByClassName(className: String): View? {
     return null
 }
 
+private fun View.hasVisibleContextualActionBar(contextualViewIds: Set<Int>): Boolean {
+    val name = javaClass.name
+    if ((id in contextualViewIds ||
+            name == MI_HOME_EDIT_MASK_CLASS ||
+            name == MI_HOME_MICO_ACTION_BAR_CLASS ||
+            name == MI_HOME_MICO_ACTION_MENU_CLASS ||
+            name.endsWith("ActionBarContextView") || name.endsWith("ActionModeView")) &&
+        isShown && alpha > 0f && width > 0 && height > 0
+    ) return true
+    if (this is ViewGroup) {
+        repeat(childCount) { index ->
+            if (getChildAt(index).hasVisibleContextualActionBar(contextualViewIds)) return true
+        }
+    }
+    return false
+}
+
 private fun Any.readField(name: String): Any? {
     var type: Class<*>? = javaClass
     while (type != null) {
@@ -999,5 +1081,3 @@ private fun createMiHomeLottieView(context: Context, viewClass: Class<*>): Image
     }.getOrElse {
         ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_INSIDE }
     }
-
-private const val MI_HOME_PAGE_INDEX = 0

@@ -241,6 +241,8 @@ final class PluginHooks {
     private static boolean isSystemUiLateHookClass(String className) {
         return "androidx.constraintlayout.widget.ConstraintSet".equals(className)
                 || PLAYER_ISLAND_CONSTRAINT_LAYOUT.equals(className)
+                || "com.android.systemui.statusbar.notification.mediaisland."
+                .concat("MiuiIslandMediaViewBinderImpl").equals(className)
                 || "com.android.systemui.statusbar.notification.mediacontrol."
                 .concat("MiuiMediaViewControllerImpl").equals(className);
     }
@@ -280,7 +282,8 @@ final class PluginHooks {
     }
 
     private static boolean isPluginCornerClass(String className) {
-        return "miui.systemui.controlcenter.qs.tileview.QSTileItemIconView".equals(className)
+        return MediaIslandHostHooks.CONTENT_CLASS.equals(className)
+                || "miui.systemui.controlcenter.qs.tileview.QSTileItemIconView".equals(className)
                 || "miui.systemui.controlcenter.qs.tileview.QSCardItemView".equals(className)
                 || "miui.systemui.controlcenter.panel.main.recyclerview.ToggleSliderViewHolder".equals(className)
                 || "miui.systemui.controlcenter.panel.secondary.SecondaryPanelControllerBase".equals(className)
@@ -297,6 +300,7 @@ final class PluginHooks {
      * is why a dimension-only hook could previously miss parts of the control centre.
      */
     void installSystemUiPluginCornerHooks(ClassLoader classLoader) {
+        MediaIslandHostHooks.install(module, classLoader);
         hookPluginCornerSetter(classLoader,
                 "miui.systemui.controlcenter.qs.tileview.QSTileItemIconView",
                 "setCornerRadius", ControlCenterSurface.TILE);
@@ -325,8 +329,11 @@ final class PluginHooks {
     }
 
     /** Hooks one already-loaded plugin class without triggering any further plugin class loads. */
-    private void installPluginCornerHookForLoadedClass(String className, Class<?> loadedClass) {
-        if ("miui.systemui.controlcenter.qs.tileview.QSTileItemIconView".equals(className)) {
+    private void installPluginCornerHookForLoadedClass(String className, Class<?> loadedClass)
+            throws Exception {
+        if (MediaIslandHostHooks.CONTENT_CLASS.equals(className)) {
+            MediaIslandHostHooks.installLoaded(module, loadedClass);
+        } else if ("miui.systemui.controlcenter.qs.tileview.QSTileItemIconView".equals(className)) {
             hookPluginCornerSetter(loadedClass, "setCornerRadius", ControlCenterSurface.TILE, false);
         } else if ("miui.systemui.controlcenter.qs.tileview.QSCardItemView".equals(className)) {
             hookPluginCornerSetter(loadedClass, "setCornerRadius", ControlCenterSurface.CARD, false);

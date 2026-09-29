@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -37,11 +38,13 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import java.text.Collator
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -76,6 +79,9 @@ internal fun GestureHandleSettingsPage(
     var loadAttempt by remember { mutableStateOf(0) }
     var selectedPackage by rememberSaveable { mutableStateOf<String?>(null) }
     var presetAction by rememberSaveable { mutableStateOf<GestureHandlePresetAction?>(null) }
+    var pendingPreset by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedPreset = ModifierSettingsPresets.selectedGestureHandlePreset(settings)
+    val currentPresetLabel = selectedPreset?.let(::gestureHandlePresetLabel) ?: "自定义"
     LaunchedEffect(context, loadAttempt) {
         loadFailed = false
         apps = withContext(Dispatchers.IO) { runCatching { loadVisibleApps(context) }.getOrNull() }
@@ -111,11 +117,27 @@ internal fun GestureHandleSettingsPage(
                     "选择预设", "",
                     trailingContent = {
                         Text(
-                            if (settings.gestureHandleModulePreset) "模块预设" else "系统预设",
+                            "当前：$currentPresetLabel",
                             color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                         )
                     },
-                    onClick = { focus.clearFocus(); keyboard?.hide(); presetAction = GestureHandlePresetAction.Choose },
+                    onClick = {
+                        focus.clearFocus()
+                        keyboard?.hide()
+                        pendingPreset = selectedPreset?.takeIf(GestureHandlePresets::selectable)
+                        presetAction = GestureHandlePresetAction.Choose
+                    },
+                )
+                SettingsSwitchItem("触摸时显示 3 秒", "", settings.gestureHandleTouchReveal,
+                    { update(settings.copy(gestureHandleTouchReveal = it)) })
+                SettingsSwitchItem("滑动时跟随", "", settings.gestureHandleSwipeMotion,
+                    { update(settings.copy(gestureHandleSwipeMotion = it)) })
+                SettingsSliderItemWithLabel(
+                    "底部响应距离", settings.gestureHandleTouchAreaDp,
+                    0f..GestureHandleTouchArea.MAX_DP,
+                    { update(settings.copy(gestureHandleTouchAreaDp = it.roundToInt().toFloat())) },
+                    steps = GestureHandleTouchArea.MAX_DP.toInt() - 1,
+                    valueText = { "${it.roundToInt()} dp" },
                 )
             }
             SearchBar(
@@ -225,21 +247,30 @@ internal fun GestureHandleSettingsPage(
                 Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Button(onClick = {
-                    update(ModifierSettingsPresets.gestureHandleModuleDefault(settings))
-                    presetAction = null
-                }, modifier = Modifier.fillMaxWidth()) { Text("模块预设") }
-                Button(onClick = {
-                    update(ModifierSettingsPresets.gestureHandleSystemDefault(settings))
-                    presetAction = null
-                }, modifier = Modifier.fillMaxWidth()) { Text("系统预设") }
+                listOf(
+                    GestureHandlePresets.MODULE,
+                    GestureHandlePresets.IMMERSIVE,
+                    GestureHandlePresets.HIDE,
+                    GestureHandlePresets.SHOW,
+                ).forEach { preset ->
+                    SettingsCheckboxItem(gestureHandlePresetLabel(preset), "",
+                        pendingPreset == preset, { pendingPreset = if (pendingPreset == preset) null else preset })
+                }
                 Button(onClick = { presetAction = GestureHandlePresetAction.Import }, modifier = Modifier.fillMaxWidth()) {
                     Text("导入 JSON")
                 }
                 Button(onClick = { presetAction = GestureHandlePresetAction.Export }, modifier = Modifier.fillMaxWidth()) {
                     Text("导出 JSON")
                 }
-                Button(onClick = { presetAction = null }, modifier = Modifier.fillMaxWidth()) { Text("取消") }
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton("取消", { presetAction = null }, modifier = Modifier.weight(1f))
+                    Button(onClick = {
+                        pendingPreset?.let { update(ModifierSettingsPresets.gestureHandlePreset(settings, it)) }
+                        presetAction = null
+                    }, modifier = Modifier.weight(1f), enabled = pendingPreset != null,
+                        colors = ButtonDefaults.buttonColorsPrimary()) { Text("确认") }
+                }
             }
         }
     }
@@ -256,8 +287,17 @@ private fun effectiveMode(settings: ModifierSettings, app: GestureHandleApp?, sc
     if (app == null) return null
     val explicit = settings.gestureHandleAppModes[app.packageName]
     return if (explicit == GestureHandleRules.SYSTEM) null else explicit ?: GestureHandleDefaults.mode(
-        settings.gestureHandleModulePreset, app.packageName, app.system, scope,
+        settings.gestureHandlePreset, app.packageName, app.system, scope,
     )
+}
+
+internal fun gestureHandlePresetLabel(preset: String) = when (preset) {
+    GestureHandlePresets.MODULE -> "模块预设"
+    GestureHandlePresets.IMMERSIVE -> "全沉浸"
+    GestureHandlePresets.HIDE -> "全隐藏"
+    GestureHandlePresets.SHOW -> "全显示"
+    GestureHandlePresets.STOCK -> "跟随系统"
+    else -> "模块预设"
 }
 
 private fun gestureHandleModeLabel(mode: String?) = when (mode) {

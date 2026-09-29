@@ -111,10 +111,18 @@ internal fun NotificationControlCenterSettingsPage(
     onOpenGlobalMaterialBlur: () -> Unit,
     onScroll: (Float) -> Unit,
 ) = SettingsScrollPage(padding, onScroll) {
+    SettingsSection(topLabel = "材质兼容性") {
+        SettingsSwitchItem(
+            "停用通知/控制中心玻璃材质 Hook",
+            "与 HyperLight 等模块共用时可开启。停用卡片配方与共享 Glass 模糊；保留圆角、背景模糊和压暗。切换后需重启 SystemUI；参数不会丢失。",
+            settings.disableShadeGlassHooks,
+            { update(settings.copy(disableShadeGlassHooks = it)) },
+        )
+    }
     SettingsSection(topLabel = "卡片柔光玻璃") {
         NavigationSettingItem(
-            title = "通知／控制中心卡片柔光玻璃",
-            summary = "调整卡片柔光玻璃配方；共享模糊统一在全局材质模糊中设置",
+            title = "通知/控制中心卡片柔光玻璃",
+            summary = if (settings.disableShadeGlassHooks) "玻璃材质 Hook 已停用，已保存参数仍可查看" else "调整卡片柔光玻璃配方；共享模糊统一在全局材质模糊中设置",
             onClick = onOpenCardGlassSettings,
         )
     }
@@ -224,6 +232,7 @@ internal fun HeadsUpGlassSettingsPage(
             supportingText = "只调整柔光玻璃配方；共享模糊由全局材质模糊页面独立控制",
             checked = scope.enabled(settings),
             onCheckedChange = { update(scope.setEnabled(settings, it)) },
+            enabled = scope != GlassParameterScope.ShadeCards || !settings.disableShadeGlassHooks,
         )
     }
     SettingsSection(topLabel = "预设") {
@@ -234,7 +243,7 @@ internal fun HeadsUpGlassSettingsPage(
         Text(
             when {
                 usingModulePreset -> if (scope == GlassParameterScope.ShadeCards) "当前：原生基准，尚未增加参数偏移。" else "当前柔光参数：模块默认。亮色与暗色分别应用。"
-                usingSystemPreset -> "当前：系统默认。自定义参数已保留，可随时重新启用。"
+                usingSystemPreset -> if (scope == GlassParameterScope.ShadeCards && settings.disableShadeGlassHooks) "当前：兼容模式，玻璃材质 Hook 已停用。预设操作只保存参数，不会重新启用 Hook。" else "当前：系统默认。自定义参数已保留，可随时重新启用。"
                 else -> if (scope == GlassParameterScope.ShadeCards) "当前：自定义。亮暗模式共用参数，原生基准会恢复零偏移，不更改全局模糊。" else "当前：自定义。应用模块默认会重置亮色与暗色参数。"
             },
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
@@ -290,7 +299,7 @@ internal fun HeadsUpGlassAdvancedSettingsPage(
 ) = SettingsScrollPage(padding, {}, scrollState) {
     Text(
         if (scope == GlassParameterScope.ShadeCards) {
-            "通知／控制中心、亮暗模式共用一套调整。显示值相对原生基准产生偏移，例如混合亮度从 -0.02 改到 0.18，所有卡片增加 0.20；仍保留各卡片原有差异。"
+            "通知/控制中心、亮暗模式共用一套调整。显示值相对原生基准产生偏移，例如混合亮度从 -0.02 改到 0.18，所有卡片增加 0.20；仍保留各卡片原有差异。"
         } else "拖动滑块微调，点击名称输入精确数值。保留项建议保持 0，固定项建议保持 1。",
         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         style = MiuixTheme.textStyles.footnote1,
@@ -498,7 +507,7 @@ internal fun HeadsUpGlassPresetDialog(
             )
             if (isImport && json.isNotBlank() && imported == null) {
                 Text(
-                    if (scope == GlassParameterScope.ShadeCards) "JSON 格式无效，或参数数量／模糊设置不符合范围。" else "JSON 格式无效，或亮色 / 暗色参数不是 42 个有限数字。",
+                    if (scope == GlassParameterScope.ShadeCards) "JSON 格式无效，或参数数量/模糊设置不符合范围。" else "JSON 格式无效，或亮色 / 暗色参数不是 42 个有限数字。",
                     color = MaterialTheme.colorScheme.error,
                     style = MiuixTheme.textStyles.footnote1,
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),

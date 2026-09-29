@@ -64,18 +64,20 @@ class BilibiliNavigationPolicyTest {
             BilibiliNavigationPolicy.isVisible(label, true, true, false, true, true, true)
         })
         assertTrue(ModifierSettingsPresets.moduleDefault().bilibiliFollowTabVisible)
+        assertEquals("动态", BilibiliNavigationPolicy.displayLabel("关注"))
+        assertEquals("动态", BilibiliNavigationPolicy.displayLabel("动态"))
+        assertFalse(BilibiliNavigationPolicy.isVisible("关注", true, true, false, true, true, true))
     }
 
     @Test fun splashAndStartupCoversAlwaysHideTheOverlay() {
-        assertFalse(BilibiliNavigationPolicy.overlayAllowed(true, true, true, false, false))
-        assertFalse(BilibiliNavigationPolicy.overlayAllowed(true, true, false, true, false))
-        assertTrue(BilibiliNavigationPolicy.overlayAllowed(true, true, false, false, false))
+        assertFalse(BilibiliNavigationPolicy.overlayAllowed(true, true, false, false))
+        assertFalse(BilibiliNavigationPolicy.overlayAllowed(true, false, true, false))
+        assertTrue(BilibiliNavigationPolicy.overlayAllowed(true, false, false, false))
     }
 
-    @Test fun dialogsBackgroundAndKeyboardHideTheOverlayUntilHomeIsInteractive() {
-        assertFalse(BilibiliNavigationPolicy.overlayAllowed(true, false, false, false, false))
-        assertFalse(BilibiliNavigationPolicy.overlayAllowed(false, true, false, false, false))
-        assertFalse(BilibiliNavigationPolicy.overlayAllowed(true, true, false, false, true))
-        assertTrue(BilibiliNavigationPolicy.overlayAllowed(true, true, false, false, false))
+    @Test fun backgroundAndKeyboardHideTheOverlayUntilHomeIsInteractive() {
+        assertFalse(BilibiliNavigationPolicy.overlayAllowed(false, false, false, false))
+        assertFalse(BilibiliNavigationPolicy.overlayAllowed(true, false, false, true))
+        assertTrue(BilibiliNavigationPolicy.overlayAllowed(true, false, false, false))
     }
 }

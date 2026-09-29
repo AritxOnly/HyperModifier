@@ -1,6 +1,6 @@
-# 通知／控制中心卡片柔光玻璃
+# 通知/控制中心卡片柔光玻璃
 
-入口：通知/控制中心 → 通知／控制中心卡片柔光玻璃 → 高级参数调整。
+入口：通知/控制中心 → 通知/控制中心卡片柔光玻璃 → 高级参数调整。
 
 ## 参考与实现
 
@@ -15,7 +15,7 @@ framework 参数映射补充，HyperChanger 并未提供全部 42 项的完整�
 此资源没有夜间覆盖。编辑页现只保留一套共用值，亮暗模式应用相同偏移。
 运行时计算为 `原有参数[i] + 编辑值[i] - 参考基准[i]`，非负槽位下限为 0。
 未编辑的槽位完全保持原值；系统全零清理数组、长度不同的数组、非有限数组不处理。
-这能保留通知卡片、控制中心已开启／未开启按钮、动画配方的原生差异。
+这能保留通知卡片、控制中心已开启/未开启按钮、动画配方的原生差异。
 基准中的数值不是每一种控制中心卡片实际使用的绝对值。
 
 ## 范围
@@ -25,8 +25,8 @@ framework 参数映射补充，HyperChanger 并未提供全部 42 项的完整�
 - 控制中心：`miui.systemui.controlcenter.*` 调用；只有材质工具动画回调时，额外要求
   View 的父链存在控制中心组件，避免动画刷新把修改覆盖回原值。
 - **42 项配方**排除 ShadeBlendBlurController 以及识别出的整页背景容器。
-  **Glass 半径**按 HyperChanger 的调用栈路由包含 shade 命名空间／原生 BlurProvider，不能复用配方的排除条件。
-- 不影响 MiLink、PIN 页和锁屏快捷方式；不新增任何玻璃／模糊层。
+  **Glass 半径**按 HyperChanger 的调用栈路由包含 shade 命名空间/原生 BlurProvider，不能复用配方的排除条件。
+- 不影响 MiLink、PIN 页和锁屏快捷方式；不新增任何玻璃/模糊层。
 - 调整系统已有的柔光玻璃与卡片背景模糊；传统模糊或非玻璃主题不会被强制切换成玻璃。
 
 ## 设置、预设与恢复
@@ -40,7 +40,7 @@ framework 参数映射补充，HyperChanger 并未提供全部 42 项的完整�
 旧应用配置同样采用已保存的亮色配方；原有暗色 preference 保留但不再参与运行时渲染。
 悬浮通知 JSON 不接受导入到卡片页面，反之亦然。
 
-记录系统实际应用过的卡片配方与原生 Glass 半径，设置变化后分别在卡片／半径所属 View 的主线程重放。
+记录系统实际应用过的卡片配方与原生 Glass 半径，设置变化后分别在卡片/半径所属 View 的主线程重放。
 卡片再次可见时只重放材质配方，不再向继承模糊的子 View 注入半径。
 通过独立的持久设置观察器响应每次 remote preferences 快照；原 onLoaded 回调是一次性的，
 不能用它代替滑杆变化后的刷新。其他原有一次性加载观察器保持不变。
@@ -65,7 +65,7 @@ HyperChanger 对卡片的 Glass 半径 Hook 位于 setMiGlassBlurRadius(int,int)
 NotificationRowGlassEffect.apply 先应用 NotificationRowBlurEffect，再调用 setMiGlassCompat，
 整个普通通知行应用流程没有设置半径。控制中心的 MainPanelItemViewHolder 同样先设置
 View blur mode，再应用 MiBackgroundStyle；多数卡片不单独设置半径。父级 BlurProvider
-才负责通知面板／控制中心容器的背景和 Glass 半径。
+才负责通知面板/控制中心容器的背景和 Glass 半径。
 
 9 月 27 日第一次适配：在 setMiGlass 后给子 View 设置半径，并尝试取父链半径作为比例基准。
 用户反馈依旧无效，此方案已移除，不再以“子采样半径不能消除背景模糊”解释该功能无效。
@@ -84,7 +84,7 @@ reference 验证路径：BlurProvider.applyGlassBlurBlurRatio -> view.setMiGlass
 与 HyperChanger 一样，绝对值覆盖不再把入参 (0,0) 自动当作不可修改的清理调用；
 是否启用捕获仍由原生 material / blur mode / pass blur 生命周期管理。比例模式零入参仍为零。
 有自己的背景半径的卡片仍缩放其原生值；没有的卡片不创建独立背景捕获、不启用新 blur mode。
-普通 setMiBackgroundBlurRadius 的面板容器仍由全局背景设置控制，不改变其缩放／压暗。
+普通 setMiBackgroundBlurRadius 的面板容器仍由全局背景设置控制，不改变其缩放/压暗。
 注意：Glass 缓冲由容器共享，这不是每张卡片独立的背景层；窗口级共享缓冲也可能改变
 其他使用者的 Glass 采样，包括从同一窗口取样的通知。直接的悬浮通知材质参数仍保持独立。
 设备尚未连接，本轮不能声称实机已生效。日志新增 Native Glass radius matched，输出实际
@@ -99,7 +99,7 @@ ShadeBlendBlurControllerImpl.updateMaxBlurRadius 中的 getDimensionPixelSize �
 | --- | --- | ---: | ---: |
 | 通知小 Glass | notification_glass_small_blur_max_radius | 14.55 | 40 |
 | 通知大 Glass | notification_glass_big_blur_max_radius | 181.82 | 500 |
-| 合并窗口／原生控制中心 Glass | combined_blur_max_radius | 40 | 110 |
+| 合并窗口/原生控制中心 Glass | combined_blur_max_radius | 40 | 110 |
 
 悬浮通知生效且启用仿生材质时，通知小半径另有 3.64dp 的 heads_up_extra（440dpi 约 10px）。
 这些是资源最大值，真实 px 由设备 density 与 glassBlurRatio 决定，不应把 dp 当作 px，
@@ -119,13 +119,13 @@ ShadeBlendBlurControllerImpl.updateMaxBlurRadius 中的 getDimensionPixelSize �
 
 新增首页“系统界面 → 全局材质模糊”二级页面：
 - 共享 Glass：独立启用开关、0–200% 比例、半径覆盖开关与 0–100px 半径。
-- 全局背景：通知中心／控制中心／MiLink 的背景模糊比例与混色压暗。
-- 通知／控制中心、悬浮通知、两类材质编辑页面均显示同一跳转入口与当前数值摘要。
+- 全局背景：通知中心/控制中心/MiLink 的背景模糊比例与混色压暗。
+- 通知/控制中心、悬浮通知、两类材质编辑页面均显示同一跳转入口与当前数值摘要。
 
 保留原 BlurProvider / 原生 View.setMiGlassBlurRadius Hook 匹配方式，仅解耦启用条件，
 不新增模糊层，不新增 PIN / MiLink 的 Glass 入口，也不扩展独立悬浮通知 Hook。
 新增 global_glass_blur_enabled；旧配置无该键时继承 shade_card_glass_parameters_enabled，
-使此前已启用的比例／半径不失效。比例与半径继续使用旧键，原有数值不会被覆盖。
+使此前已启用的比例/半径不失效。比例与半径继续使用旧键，原有数值不会被覆盖。
 启用条件不再依赖卡片或悬浮通知配方开关；整页背景的设置与 Hook 保持原样。
 
 材质页面的启用、原生基准、系统默认、JSON 导入仅影响各自配方。
@@ -141,7 +141,7 @@ UI 沿用项目现有 MIUIX SettingsScrollPage / SettingsSection / NavigationSet
 ### 半径上限收窄与主页入口样式
 
 按用户要求，自定义 Glass 基础半径现限制为 0–100px，滑杆每档 1px。
-偏好加载／保存、Bundle、运行时与旧 JSON 校验共用该上限；旧自定义值超过 100px
+偏好加载/保存、Bundle、运行时与旧 JSON 校验共用该上限；旧自定义值超过 100px
 时收敛到 100px。比例仍为 0–200%，只收窄自定义半径，不将系统原生的大半径截成 100px，
 也不修改整页背景模糊或压暗范围。
 主页“全局材质模糊”移除摘要，复用其他系统项的 HomeSystemIcon 左侧图标样式；

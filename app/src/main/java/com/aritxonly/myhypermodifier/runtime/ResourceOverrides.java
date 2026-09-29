@@ -2,6 +2,7 @@ package com.aritxonly.myhypermodifier;
 
 import android.content.res.Resources;
 import android.content.res.TypedArray;
+import android.graphics.Color;
 
 import java.lang.reflect.Field;
 
@@ -38,6 +39,11 @@ final class ResourceOverrides {
                 dp = ModuleSettings.miLinkMainCardRadius;
                 break;
             case "qs_media_session_height_expanded":
+                int presetHeight = ModuleSettings.activeMediaPresetHeight();
+                if (presetHeight > 0) {
+                    dp = presetHeight;
+                    break;
+                }
                 if (!ModuleSettings.mediaEnabled) return null;
                 dp = ModuleSettings.expandedHeight;
                 break;
@@ -49,10 +55,30 @@ final class ResourceOverrides {
                 if (!ModuleSettings.mediaEnabled) return null;
                 dp = ModuleSettings.fullAodHeight;
                 break;
+            // These names belong to the generic Super Island pull-down handle, not to media.
+            // Hide every geometry component together so no empty hit target or blur remains.
+            case "mini_window_bar_width":
+            case "mini_window_bar_height":
+            case "min_window_blur_radius":
+                if (!ModuleSettings.superIslandHidePullBar) return null;
+                dp = 0f;
+                break;
+            case "mini_window_bar_marginBottom":
+            case "mini_window_bar_margin_bottom":
+                if (!ModuleSettings.superIslandPullBarBottomMarginEnabled) return null;
+                dp = ModuleSettings.superIslandPullBarBottomMarginDp;
+                break;
             default:
                 return null;
         }
         return dp * resources.getDisplayMetrics().density;
+    }
+
+    /** Prevent the bar from being drawn via a color lookup when it is hidden. */
+    static Integer replacementColor(Resources resources, int resourceId) {
+        if (!ModuleSettings.superIslandHidePullBar) return null;
+        String name = resourceEntryName(resources, resourceId);
+        return "mini_window_bar_color".equals(name) ? Color.TRANSPARENT : null;
     }
 
     static Float replacementTypedArrayDimension(TypedArray array, int index) {

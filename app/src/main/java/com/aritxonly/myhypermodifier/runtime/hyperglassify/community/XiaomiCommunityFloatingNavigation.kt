@@ -32,6 +32,12 @@ internal object XiaomiCommunityFloatingNavigation {
             contentHostMethodName = "M0",
             reservationViewMethodNames = setOf("M0", "l1"),
             trimNativeIconTransparentPadding = true,
+            nativeRefreshIntervalMs = 32L,
+            useHardwareBackdrop = true,
+            allowSoftwareBackdrop = false,
+            matchDisplayBackdropRefreshRate = true,
+            sampleBackdropOnSourceFrame = true,
+            pixelCopyRetryDelayMs = 32L,
         ),
     )
 

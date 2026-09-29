@@ -40,7 +40,7 @@ internal fun BilibiliSettingsPage(
             enabled = enabled && (!settings.bilibiliDynamicTabVisible || visibleCount > 1),
         )
         SettingsSwitchItem(
-            "关注", "", settings.bilibiliFollowTabVisible,
+            "关注", "底栏显示为动态", settings.bilibiliFollowTabVisible,
             { update(settings.copy(bilibiliFollowTabVisible = it)) },
             enabled = enabled && (!settings.bilibiliFollowTabVisible || visibleCount > 1),
         )

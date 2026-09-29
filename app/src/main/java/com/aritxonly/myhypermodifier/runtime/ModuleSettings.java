@@ -40,6 +40,7 @@ final class ModuleSettings {
     static volatile float headsUpBottomMarginDp = 13f;
     static volatile boolean headsUpGlassParametersEnabled = false;
     static volatile boolean shadeCardGlassParametersEnabled = false;
+    static volatile boolean disableShadeGlassHooks = false;
     static volatile boolean globalGlassBlurEnabled = false;
     private static volatile float[] shadeCardGlassParameters = ShadeCardGlassPolicy.defaults();
     static volatile int shadeCardBackgroundBlurPercent = 100;
@@ -78,6 +79,9 @@ final class ModuleSettings {
     static volatile boolean islandEnabled = false;
     static volatile int islandHeight = 160;
     static volatile boolean islandProgressBar = false;
+    static volatile boolean superIslandHidePullBar = false;
+    static volatile boolean superIslandPullBarBottomMarginEnabled = false;
+    static volatile float superIslandPullBarBottomMarginDp = 8f;
     static volatile boolean hideAodActions = false;
     static volatile boolean hideAodSeamless = false;
     static volatile boolean sinkLockscreenNotificationsForFingerprint = false;
@@ -135,13 +139,29 @@ final class ModuleSettings {
     static volatile boolean inFullAod;
     static volatile boolean customMediaConstraintSetEnabled = false;
     static volatile String customMediaConstraintSetXml = "";
+    static volatile boolean customMediaIslandConstraintSetEnabled = false;
+    static volatile String customMediaIslandConstraintSetXml = "";
+    static volatile String mediaLayoutPreset = "";
+    static volatile int systemMediaHeight = 168;
+    static volatile int compactMediaHeight = 84;
+    static volatile int standardMediaHeight = 150;
+    static volatile int customMediaHeight = 150;
+    static volatile String systemMediaXml = "";
+    static volatile String systemMediaIslandXml = "";
+    static volatile String compactMediaXml = "";
+    static volatile String compactMediaIslandXml = "";
+    static volatile String standardMediaXml = "";
+    static volatile String standardMediaIslandXml = "";
     private static volatile String lastLoadStatus = "not-requested";
     // Supplied by XposedInterface#getRemotePreferences. It is specifically designed for module
     // state and stays available even when Android hides this module package from the target app.
     private static volatile SharedPreferences remotePreferences;
 
     static volatile Map<String, String> gestureHandleAppModes = java.util.Collections.emptyMap();
-    static volatile boolean gestureHandleModulePreset = true;
+    static volatile String gestureHandlePreset = GestureHandlePresets.MODULE;
+    static volatile boolean gestureHandleTouchReveal = true;
+    static volatile boolean gestureHandleSwipeMotion = true;
+    static volatile float gestureHandleTouchAreaDp = GestureHandleTouchArea.DEFAULT_DP;
     static volatile java.util.Set<String> gestureHandleScopePackages = java.util.Collections.emptySet();
 
     private ModuleSettings() {
@@ -155,6 +175,13 @@ final class ModuleSettings {
     static void setRemotePreferences(SharedPreferences preferences) {
         if (preferences == null) return;
         remotePreferences = preferences;
+        // Read this gate before PackageLoaded installs native Glass hooks. No Application or
+        // provider IPC is needed: LSPosed has already supplied the preferences snapshot.
+        try {
+            disableShadeGlassHooks = preferences.getBoolean("disable_shade_glass_hooks", false);
+        } catch (Throwable throwable) {
+            Log.w(TAG, "Could not read shade Glass compatibility gate", throwable);
+        }
         if (!REMOTE_LISTENER_REGISTERED.compareAndSet(false, true)) return;
         try {
             preferences.registerOnSharedPreferenceChangeListener((sharedPreferences, key) ->
@@ -339,8 +366,16 @@ final class ModuleSettings {
             }
             lastLoadStatus = "remote-preferences";
             Bundle values = preferencesToBundle(preferences);
+            gestureHandlePreset = GestureHandlePresets.fromStored(
+                    values.getString("gesture_handle_preset"),
+                    values.getBoolean("gesture_handle_module_preset", true));
+            boolean newModuleDefaults = GestureHandlePresets.MODULE.equals(gestureHandlePreset)
+                    && !values.containsKey("gesture_handle_app_modes");
             gestureHandleAppModes = GestureHandleRules.decode(values.getString("gesture_handle_app_modes", ""));
-            gestureHandleModulePreset = values.getBoolean("gesture_handle_module_preset", true);
+            gestureHandleTouchReveal = values.getBoolean("gesture_handle_touch_reveal", newModuleDefaults);
+            gestureHandleSwipeMotion = values.getBoolean("gesture_handle_swipe_motion", newModuleDefaults);
+            gestureHandleTouchAreaDp = GestureHandleTouchArea.normalize(values.getFloat(
+                    "gesture_handle_touch_area_dp", GestureHandleTouchArea.DEFAULT_DP));
             java.util.Set<String> scope = new java.util.HashSet<>();
             for (String name : values.getString("gesture_handle_scope_packages", "").split("\n")) {
                 if (!name.isEmpty()) scope.add(name);
@@ -358,6 +393,7 @@ final class ModuleSettings {
             headsUpGlassParametersEnabled = values.getBoolean(
                     "heads_up_glass_parameters_enabled", false);
             shadeCardGlassParametersEnabled = values.getBoolean("shade_card_glass_parameters_enabled", false);
+            disableShadeGlassHooks = values.getBoolean("disable_shade_glass_hooks", false);
             globalGlassBlurEnabled = values.getBoolean("global_glass_blur_enabled", shadeCardGlassParametersEnabled);
             shadeCardGlassParameters = parseHeadsUpGlassParameters(values.getString(
                     "shade_card_glass_parameters", ""), ShadeCardGlassPolicy.defaults());
@@ -407,6 +443,14 @@ final class ModuleSettings {
             islandEnabled = values.getBoolean("island_enabled", false);
             islandHeight = Math.round(values.getFloat("island_height", 160f));
             islandProgressBar = values.getBoolean("island_progress", false);
+            superIslandHidePullBar = values.getBoolean("super_island_hide_pull_bar", false);
+            superIslandPullBarBottomMarginEnabled = values.getBoolean(
+                    "super_island_pull_bar_bottom_margin_enabled", false);
+            float requestedSuperIslandPullBarMargin = values.getFloat(
+                    "super_island_pull_bar_bottom_margin_dp", 8f);
+            superIslandPullBarBottomMarginDp = Float.isNaN(requestedSuperIslandPullBarMargin)
+                    || Float.isInfinite(requestedSuperIslandPullBarMargin) ? 8f
+                    : Math.max(0f, Math.min(48f, requestedSuperIslandPullBarMargin));
             hideAodActions = values.getBoolean("hide_aod_actions", false);
             hideAodSeamless = values.getBoolean("hide_aod_seamless", false);
             sinkLockscreenNotificationsForFingerprint = values.getBoolean(
@@ -495,6 +539,21 @@ final class ModuleSettings {
                     "spotify_shuffle_button_enabled", false);
             customMediaConstraintSetEnabled = values.getBoolean("custom_media_constraint_set_enabled", false);
             customMediaConstraintSetXml = values.getString("custom_media_constraint_set_xml", "");
+            customMediaIslandConstraintSetEnabled = values.getBoolean(
+                    "custom_media_island_constraint_set_enabled", false);
+            customMediaIslandConstraintSetXml = values.getString(
+                    "custom_media_island_constraint_set_xml", "");
+            mediaLayoutPreset = values.getString("media_layout_preset", "");
+            systemMediaHeight = boundedMediaHeight(values.getFloat("system_media_height", 168f), 168);
+            compactMediaHeight = boundedMediaHeight(values.getFloat("compact_media_height", 84f), 84);
+            standardMediaHeight = boundedMediaHeight(values.getFloat("standard_media_height", 150f), 150);
+            customMediaHeight = boundedMediaHeight(values.getFloat("custom_media_height", 150f), 150);
+            systemMediaXml = values.getString("system_media_xml", "");
+            systemMediaIslandXml = values.getString("system_media_island_xml", "");
+            compactMediaXml = values.getString("compact_media_xml", "");
+            compactMediaIslandXml = values.getString("compact_media_island_xml", "");
+            standardMediaXml = values.getString("standard_media_xml", "");
+            standardMediaIslandXml = values.getString("standard_media_island_xml", "");
             lastLoadStatus = "loaded(remote:" + values.size() + ')';
             return true;
         } catch (Throwable throwable) {
@@ -506,6 +565,21 @@ final class ModuleSettings {
                 Log.w(TAG, "Settings unavailable; using defaults and retrying in background", throwable);
             }
             return false;
+        }
+    }
+
+    private static int boundedMediaHeight(float requested, int fallback) {
+        if (Float.isNaN(requested) || Float.isInfinite(requested)) return fallback;
+        return Math.max(84, Math.min(240, Math.round(requested)));
+    }
+
+    static int activeMediaPresetHeight() {
+        switch (mediaLayoutPreset) {
+            case "system": return systemMediaHeight;
+            case "compact": return compactMediaHeight;
+            case "standard": return standardMediaHeight;
+            case "custom": return customMediaHeight;
+            default: return 0;
         }
     }
 

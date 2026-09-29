@@ -57,6 +57,7 @@ final class ShadeCardGlassHooks {
     private ShadeCardGlassHooks() {}
 
     static void install(XposedModule module) {
+        if (disableShadeGlassHooks) return;
         if (SETTINGS_OBSERVER_INSTALLED.compareAndSet(false, true)) onChanged(ShadeCardGlassHooks::refresh);
         installBlurHook(module, "setMiBackgroundBlurRadius", BACKGROUND_BLUR_INSTALLED, false);
         installBlurHook(module, "setMiGlassBlurRadius", GLASS_BLUR_INSTALLED, true);
@@ -69,6 +70,7 @@ final class ShadeCardGlassHooks {
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
                         ensureLoaded();
+                        if (disableShadeGlassHooks) return chain.proceed();
                         if (Boolean.TRUE.equals(REPLAYING.get())) return chain.proceed();
                         Object viewObject = chain.getThisObject();
                         Object values = chain.getArg(0);
@@ -123,6 +125,7 @@ final class ShadeCardGlassHooks {
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
                         ensureLoaded();
+                        if (disableShadeGlassHooks) return chain.proceed();
                         if (Boolean.TRUE.equals(REPLAYING.get())) return chain.proceed();
                         Object receiver = chain.getThisObject();
                         if (!(receiver instanceof View)) return chain.proceed();
@@ -166,6 +169,7 @@ final class ShadeCardGlassHooks {
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
                         Object result = chain.proceed();
+                        if (disableShadeGlassHooks) return result;
                         if (Boolean.TRUE.equals(chain.getArg(0)) && chain.getThisObject() instanceof View) {
                             View view = (View) chain.getThisObject();
                             Card card = CARDS.get(view);
@@ -180,6 +184,7 @@ final class ShadeCardGlassHooks {
     }
 
     static void refresh() {
+        if (disableShadeGlassHooks) return;
         ArrayList<Map.Entry<View, Card>> cards = snapshot();
         if (shadeCardGlassParametersEnabled || globalGlassBlurEnabled) Log.i("MyHyperModifier", "Card settings refresh: tracked="
                 + cards.size() + ", nativeGlassTargets=" + NATIVE_GLASS_TARGETS.size()
@@ -202,12 +207,14 @@ final class ShadeCardGlassHooks {
     }
 
     private static void schedule(View view, Card card, boolean recipe) {
+        if (disableShadeGlassHooks) return;
         if (recipe) card.pendingRecipe = true;
         if (!card.pending.compareAndSet(false, true)) return;
         view.post(() -> {
             boolean replayRecipe = card.pendingRecipe;
             card.pendingRecipe = false;
             card.pending.set(false);
+            if (disableShadeGlassHooks) return;
             if (CARDS.get(view) != card || !view.isAttachedToWindow() || !view.isShown()) return;
             if (!hasControlCenterAncestor(view) && !isShadeNotificationBackground(view)) return;
             try {
@@ -241,6 +248,7 @@ final class ShadeCardGlassHooks {
     }
 
     static void refreshNativeRadii() {
+        if (disableShadeGlassHooks) return;
         ArrayList<Map.Entry<View, NativeRadius>> targets = new ArrayList<>();
         synchronized (NATIVE_GLASS_TARGETS) {
             for (Map.Entry<View, NativeRadius> entry : NATIVE_GLASS_TARGETS.entrySet()) {
@@ -252,6 +260,7 @@ final class ShadeCardGlassHooks {
             View view = entry.getKey();
             NativeRadius state = entry.getValue();
             view.post(() -> {
+                if (disableShadeGlassHooks) return;
                 if (NATIVE_GLASS_TARGETS.get(view) != state || !view.isAttachedToWindow() || radiusSetter == null) return;
                 boolean enabled = nativeRadiusEnabled(view, state);
                 if (!enabled && !state.modified) return;
@@ -287,6 +296,7 @@ final class ShadeCardGlassHooks {
     }
 
     private static void applyOwnBackgroundRadius(View view, Card card, int percent) {
+        if (disableShadeGlassHooks) return;
         Integer own = STOCK_BACKGROUND_RADII.get(view);
         if (own == null || backgroundSetter == null || (percent == 100 && !card.backgroundApplied)) return;
         try {

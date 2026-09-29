@@ -134,16 +134,22 @@ internal class ViewBackdropSampler(
     private val usePixelCopySampling: () -> Boolean = { false },
     private val minimumCaptureIntervalMs: Long = 0L,
     private val allowSoftwareFallback: Boolean = true,
+    private val matchDisplayRefreshRate: Boolean = false,
+    private val sampleOnSourceFrame: Boolean = false,
+    private val pixelCopyRetryDelayMs: Long = PIXEL_COPY_RETRY_DELAY_MS,
     private val onSnapshotChanged: (ViewBackdropSnapshot?) -> Unit,
 ) {
     private val handler = Handler(Looper.getMainLooper())
     private var bounds: ViewBackdropBounds? = null
     private var captureScheduled = false
-    private var lastCaptureAt = Long.MIN_VALUE
+    private var lastCaptureStartedAt = Long.MIN_VALUE
     private var keepCapturingUntil = Long.MIN_VALUE
     private var generation = 0L
-    private val buffers = arrayOfNulls<Bitmap>(2)
-    private var displayedBitmap: Bitmap? = null
+    private var lastPublishedBitmap: Bitmap? = null
+    private var lastPublishedSourceWidthPx = 0
+    private var lastPublishedSourceHeightPx = 0
+    private var lastPublishedOffsetXPx = 0
+    private var lastPublishedOffsetYPx = 0
     private var pendingPixelCopyBitmap: Bitmap? = null
     private var pixelCopyInFlight = false
     private var pixelCopyRefreshPending = false
@@ -193,7 +199,9 @@ internal class ViewBackdropSampler(
     }
 
     fun onFrame() {
-        if (active && SystemClock.uptimeMillis() < keepCapturingUntil) requestCapture()
+        if (active && (sampleOnSourceFrame || SystemClock.uptimeMillis() < keepCapturingUntil)) {
+            requestCapture()
+        }
     }
 
     /** Hidden chrome must not keep copying frames underneath an ad, dialog or another Activity. */
@@ -220,9 +228,11 @@ internal class ViewBackdropSampler(
             return
         }
         if (captureScheduled) return
-        val elapsed = if (lastCaptureAt == Long.MIN_VALUE) Long.MAX_VALUE
-        else SystemClock.uptimeMillis() - lastCaptureAt
-        val captureInterval = maxOf(minimumCaptureIntervalMs, if (usePixelCopySampling()) {
+        val elapsed = if (lastCaptureStartedAt == Long.MIN_VALUE) Long.MAX_VALUE
+        else SystemClock.uptimeMillis() - lastCaptureStartedAt
+        val captureInterval = maxOf(minimumCaptureIntervalMs, if (matchDisplayRefreshRate) {
+            BackdropCaptureCadence.intervalMs(source.display?.refreshRate ?: Float.NaN)
+        } else if (usePixelCopySampling()) {
             PIXEL_COPY_CAPTURE_INTERVAL_MS
         } else {
             CAPTURE_INTERVAL_MS
@@ -252,10 +262,9 @@ internal class ViewBackdropSampler(
         if (source.viewTreeObserver.isAlive) {
             source.viewTreeObserver.removeOnScrollChangedListener(scrollChangedListener)
         }
-        displayedBitmap = null
-        buffers.forEach { bitmap ->
-            if (bitmap !== pendingPixelCopyBitmap) bitmap?.recycle()
-        }
+        // Published bitmaps may still be referenced by Compose's recorded draw commands.
+        // Drop our state; the renderer and GC own their lifetime after publication.
+        lastPublishedBitmap = null
         onSnapshotChanged(null)
     }
 
@@ -307,11 +316,12 @@ internal class ViewBackdropSampler(
         if (!allowSoftwareFallback) {
             // Keep the last sample (or the glass recipe's tint fallback), rather than synchronously
             // redrawing a complex app on the UI thread after a transient PixelCopy failure.
-            lastCaptureAt = now
+            lastCaptureStartedAt = now
             if (now < keepCapturingUntil) requestCapture()
             return
         }
 
+        lastCaptureStartedAt = now
         val bitmap = obtainBuffer(
             max(1, (sourceRect.width() * SAMPLE_SCALE).roundToInt()),
             max(1, (sourceRect.height() * SAMPLE_SCALE).roundToInt()),
@@ -339,6 +349,7 @@ internal class ViewBackdropSampler(
             if (excludedAlpha != null) excludedView.alpha = 0f
             source.draw(canvas)
         } catch (_: Throwable) {
+            bitmap.recycle() // Never published to Compose.
             retryInitialCapture()
             return
         } finally {
@@ -347,7 +358,7 @@ internal class ViewBackdropSampler(
             if (excludedAlpha != null) excludedView.alpha = excludedAlpha
         }
 
-        publishSnapshot(
+        publishIfChanged(
             bitmap = bitmap,
             sourceWidthPx = sourceRect.width(),
             sourceHeightPx = sourceRect.height(),
@@ -382,7 +393,7 @@ internal class ViewBackdropSampler(
         pixelCopyRefreshPending = false
         pixelCopyInFlight = true
         pendingPixelCopyBitmap = bitmap
-        lastCaptureAt = SystemClock.uptimeMillis()
+        lastCaptureStartedAt = SystemClock.uptimeMillis()
         return runCatching {
             PixelCopy.request(window, requestRect, bitmap, { result ->
                 pixelCopyInFlight = false
@@ -393,13 +404,17 @@ internal class ViewBackdropSampler(
                     bitmap.recycle()
                     return@request
                 }
-                if (!active) return@request
+                if (!active) {
+                    bitmap.recycle() // This result was not published.
+                    return@request
+                }
                 if (requestGeneration != samplingContextGeneration || !usePixelCopySampling()) {
+                    bitmap.recycle() // A newer generation superseded this copy.
                     requestCapture()
                     return@request
                 }
                 if (result == PixelCopy.SUCCESS) {
-                    publishSnapshot(
+                    publishIfChanged(
                         bitmap = bitmap,
                         sourceWidthPx = sampleWidth,
                         sourceHeightPx = sampleHeight,
@@ -408,10 +423,11 @@ internal class ViewBackdropSampler(
                     )
                     if (refreshLatestFrame) requestCapture()
                 } else {
+                    bitmap.recycle() // A failed copy cannot be displayed.
                     // Fall back briefly to View.draw() so a transient compositor failure does not
                     // leave the glass empty. The next burst retries hardware sampling.
                     pixelCopyFallbackUntil = SystemClock.uptimeMillis() +
-                        PIXEL_COPY_RETRY_DELAY_MS
+                        pixelCopyRetryDelayMs
                     requestCapture()
                 }
             }, handler)
@@ -419,11 +435,12 @@ internal class ViewBackdropSampler(
             pixelCopyInFlight = false
             pendingPixelCopyBitmap = null
             pixelCopyRefreshPending = false
-            pixelCopyFallbackUntil = SystemClock.uptimeMillis() + PIXEL_COPY_RETRY_DELAY_MS
+            pixelCopyFallbackUntil = SystemClock.uptimeMillis() + pixelCopyRetryDelayMs
+            bitmap.recycle() // PixelCopy never accepted this destination.
         }.isSuccess
     }
 
-    private fun publishSnapshot(
+    private fun publishIfChanged(
         bitmap: Bitmap,
         sourceWidthPx: Int,
         sourceHeightPx: Int,
@@ -431,13 +448,26 @@ internal class ViewBackdropSampler(
         alignmentOffsetYPx: Int,
     ) {
         val now = SystemClock.uptimeMillis()
+        val unchanged = lastPublishedSourceWidthPx == sourceWidthPx &&
+            lastPublishedSourceHeightPx == sourceHeightPx &&
+            lastPublishedOffsetXPx == alignmentOffsetXPx &&
+            lastPublishedOffsetYPx == alignmentOffsetYPx &&
+            lastPublishedBitmap?.sameAs(bitmap) == true
+        if (unchanged) {
+            bitmap.recycle() // Never handed to Compose.
+            if (now < keepCapturingUntil) requestCapture()
+            return
+        }
         if (generation == 0L) {
             // LayerBackdrop registers its producer and consumer on adjacent Compose frames.
             // A short startup burst guarantees a second sample without waiting for user input.
             keepCapturingUntil = maxOf(keepCapturingUntil, now + INITIAL_CAPTURE_BURST_MS)
         }
-        lastCaptureAt = now
-        displayedBitmap = bitmap
+        lastPublishedBitmap = bitmap
+        lastPublishedSourceWidthPx = sourceWidthPx
+        lastPublishedSourceHeightPx = sourceHeightPx
+        lastPublishedOffsetXPx = alignmentOffsetXPx
+        lastPublishedOffsetYPx = alignmentOffsetYPx
         generation += 1
         onSnapshotChanged(
             ViewBackdropSnapshot(
@@ -562,19 +592,10 @@ internal class ViewBackdropSampler(
         }.getOrNull()
     }
 
-    private fun obtainBuffer(width: Int, height: Int): Bitmap {
-        buffers.forEach { bitmap ->
-            if (bitmap !== displayedBitmap && bitmap !== pendingPixelCopyBitmap &&
-                bitmap != null && !bitmap.isRecycled &&
-                bitmap.width == width && bitmap.height == height
-            ) return bitmap
-        }
-        val index = buffers.indexOfFirst {
-            it !== displayedBitmap && it !== pendingPixelCopyBitmap
-        }.coerceAtLeast(0)
-        buffers[index]?.recycle()
-        return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { buffers[index] = it }
-    }
+    private fun obtainBuffer(width: Int, height: Int): Bitmap =
+        // A snapshot handed to Compose is immutable from the sampler's perspective. Neither
+        // reusing nor recycling it here is safe: a previous RenderNode may draw it next frame.
+        Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
 
     private companion object {
         const val MIUI_HYPER_CARD_VIEW_CLASS = "miuix.cardview.HyperCardView"

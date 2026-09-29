@@ -50,5 +50,6 @@ class DetailSettingsActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_DESTINATION = "com.aritxonly.myhypermodifier.detail_destination"
+        const val EXTRA_MEDIA_PRESET = "com.aritxonly.myhypermodifier.media_preset"
     }
 }

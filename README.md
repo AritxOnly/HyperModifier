@@ -51,17 +51,27 @@ Xiaomi Community 6.6.9, and Bilibili 9.13.0 (`reference/哔哩哔哩.apk`).
   visible on AOD.
 - Status-bar network-generation text (such as 5G) can be restored and adjusted for size, weight,
   and horizontal offset.
-- The “小横条” page configures the gesture hint per app: show, hide, or reveal for 3 seconds
+- The “手势提示线” page configures the gesture hint per app: show, hide, or reveal for 3 seconds
   after the foreground Activity/task changes, with 220 ms opacity fades on visibility changes.
   The module preset hides the hint for declared or configured scope apps, system apps and
-  `com.aritxonly.*`; other apps default to immersive.
-  The system preset restores the system default for every app. Individual overrides take priority,
+  `com.aritxonly.*`; other apps default to immersive. It also includes 19 bundled app rules
+  and enables touch reveal and swipe motion.
+  The other presets apply show, hide, or immersive mode to every app. Individual overrides take priority,
   and switching presets clears them. Newly installed apps inherit the selected preset.
+  Two independent switches optionally keep the hint visible while the handle or bottom gesture
+  area is touched and for 3 seconds after release, overriding app modes even across an Activity
+  or app transition. The swipe option makes the drawn hint follow four-direction swipes with a
+  damped return spring. The bottom touch band is adjustable from 0 to 32 dp and defaults to 16 dp.
   The picker includes system apps with enabled, visible Activity windows and supports name/package
   search with the MIUIX SearchBar in a single grouped card. Gesture-handle presets can be imported by pasting JSON or
-  selecting a file; see [gesture-handle-preset.example.json](docs/examples/gesture-handle-preset.example.json). Set `preset` to `module` or `system`,
-  and map package names in `apps` to `show`, `hide`, `immersive`, or `system`. Import replaces
+  selecting a file; see [gesture-handle-preset.example.json](docs/examples/gesture-handle-preset.example.json). Set `preset` to `module`, `show`, `hide`, or `immersive`,
+  and map package names in `apps` to `show`, `hide`, `immersive`, or `system`. Optional Boolean
+  `touchReveal`, `swipeMotion`, and `bottomTouchAreaDp` fields configure the gesture options. Import replaces
   only gesture-handle settings; omitted apps inherit the selected preset.
+  Existing JSON using `preset: "system"` imports as `show`; `stock` remains available in JSON
+  for the app-wide system reset.
+  The preset picker shows the matching built-in preset only while its app rules and gesture
+  switches match; edits are shown as “自定义” until a preset is confirmed again.
   The “选择预设” dialog also exports the current preset and overrides to the clipboard or a JSON file.
   Hooks run only in SystemUI; hiding the hint preserves gesture handling and navigation
   insets. Configure the SystemUI scope and restart it once after installing the updated module.
@@ -92,7 +102,8 @@ Xiaomi Community 6.6.9, and Bilibili 9.13.0 (`reference/哔哩哔哩.apk`).
   padding is trimmed from app-supplied icon canvases before rendering.
 
 - Official Bilibili 9.13.0 uses Deadliner's soft-glass tab capsule with an independent “+”
-  action. Home (`Home`, 0.95 scale), Dynamics (`Messages`), Following (`Album`), Mall (`Carrier`), and Mine
+  action tinted `#FFFF6698`. Home (`Home`, 0.95 scale), Dynamics (`Messages`), Following (shown as
+  “动态”, `Messages`), Mall (`Carrier`), and Mine
   (`ContactsCircle`) use MIUIX icons; each destination, the publish button, and badges can be
   configured in “哔哩哔哩”. At least one navigation destination stays available. Native indices,
   page routing, reselection and publish touch callbacks remain authoritative. While replacement
@@ -100,10 +111,14 @@ Xiaomi Community 6.6.9, and Bilibili 9.13.0 (`reference/哔哩哔哩.apk`).
   floating panel is temporarily covered; disabling replacement restores it. Enable the
   `tv.danmaku.bili` LSPosed scope and restart Bilibili after changing settings. Home extends
   beneath the transparent system navigation bar; only the official bottom inset/background strip
-  is removed, retaining status and side insets. Splash ads, startup covers, loss of window focus,
-  backgrounding and the keyboard hide the overlay and suspend sampling. Input interception is
+  is removed, retaining status and side insets. Splash ads, startup covers, backgrounding and the
+  keyboard hide the overlay and suspend sampling; window focus alone does not hide it. Input interception is
   scoped to the app's tab/publish callbacks. Native state/tree work is capped at 100 ms; the
-  backdrop uses PixelCopy at a minimum 64 ms interval, with no synchronous View.draw fallback.
+  backdrop uses display-paced PixelCopy (up to 120 Hz), follows native source frames, skips unchanged
+  captures and retries transient copy failures promptly, with no synchronous View.draw fallback.
+  Published backdrop bitmaps remain owned by Compose until it releases them; the sampler never
+  recycles or overwrites a bitmap that may still be drawn. Home inset hook signatures are resolved
+  from Bilibili's class loader to survive R8 obfuscation in Release builds.
 
 API 102 no longer supports legacy resource replacement. `Resources#getDimension*` and
 `Resources#getInteger` are therefore hooked by resource name, which covers the base, xxhdpi, and

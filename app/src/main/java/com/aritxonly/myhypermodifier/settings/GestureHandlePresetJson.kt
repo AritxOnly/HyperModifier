@@ -7,18 +7,32 @@ import org.json.JSONTokener
 internal object GestureHandlePresetJson {
     const val MAX_LENGTH = 262_144
 
-    data class Preset(val modulePreset: Boolean, val apps: Map<String, String>) {
+    data class Preset(
+        val preset: String,
+        val apps: Map<String, String>,
+        val touchReveal: Boolean,
+        val swipeMotion: Boolean,
+        val bottomTouchAreaDp: Float,
+    ) {
         fun applyTo(settings: ModifierSettings) = settings.copy(
-            gestureHandleModulePreset = modulePreset,
+            gestureHandlePreset = preset,
             gestureHandleAppModes = apps,
+            gestureHandleTouchReveal = touchReveal,
+            gestureHandleSwipeMotion = swipeMotion,
+            gestureHandleTouchAreaDp = bottomTouchAreaDp,
         )
     }
 
     fun export(settings: ModifierSettings): String = JSONObject()
         .put("format", "myhypermodifier-gesture-handle")
         .put("version", 1)
-        .put("preset", if (settings.gestureHandleModulePreset) "module" else "system")
-        .put("apps", JSONObject(settings.gestureHandleAppModes.toSortedMap()))
+        .put("preset", settings.gestureHandlePreset)
+        .put("apps", JSONObject((if (settings.gestureHandlePreset == GestureHandlePresets.MODULE)
+            GestureHandlePresets.MODULE_APPS + settings.gestureHandleAppModes
+        else settings.gestureHandleAppModes).toSortedMap()))
+        .put("touchReveal", settings.gestureHandleTouchReveal)
+        .put("swipeMotion", settings.gestureHandleSwipeMotion)
+        .put("bottomTouchAreaDp", GestureHandleTouchArea.normalize(settings.gestureHandleTouchAreaDp))
         .toString(2)
 
     fun parse(serialized: String): Preset? = runCatching {
@@ -28,10 +42,14 @@ internal object GestureHandlePresetJson {
         require(input.nextClean() == '\u0000')
         require(root.getString("format") == "myhypermodifier-gesture-handle")
         require(root.get("version") == 1)
-        require(root.keys().asSequence().toSet() == setOf("format", "version", "preset", "apps"))
-        val module = when (root.get("preset")) {
-            "module" -> true
-            "system" -> false
+        require(root.keys().asSequence().toSet().let { keys ->
+            keys.containsAll(setOf("format", "version", "preset", "apps")) &&
+                keys.all { it in setOf("format", "version", "preset", "apps", "touchReveal", "swipeMotion",
+                    "bottomTouchAreaDp") }
+        })
+        val preset = when (val value = root.get("preset")) {
+            "system" -> GestureHandlePresets.SHOW
+            is String -> value.takeIf(GestureHandlePresets::valid) ?: error("Unknown preset")
             else -> error("Unknown preset")
         }
         val source = root.getJSONObject("apps")
@@ -44,6 +62,17 @@ internal object GestureHandlePresetJson {
             ))
             mode
         }
-        Preset(module, apps)
+        val touchReveal = optionalBoolean(root, "touchReveal")
+        val swipeMotion = optionalBoolean(root, "swipeMotion")
+        val bottomTouchAreaDp = if (root.has("bottomTouchAreaDp")) {
+            val raw = root.get("bottomTouchAreaDp")
+            require(raw is Number)
+            raw.toFloat().also { require(!it.isNaN() && !it.isInfinite() &&
+                it in 0f..GestureHandleTouchArea.MAX_DP) }
+        } else GestureHandleTouchArea.DEFAULT_DP
+        Preset(preset, apps, touchReveal, swipeMotion, bottomTouchAreaDp)
     }.getOrNull()
+
+    private fun optionalBoolean(root: JSONObject, key: String): Boolean =
+        if (root.has(key)) root.get(key) as? Boolean ?: error("Invalid $key") else false
 }

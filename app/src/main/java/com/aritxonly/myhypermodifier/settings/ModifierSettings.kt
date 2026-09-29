@@ -8,8 +8,11 @@ import android.util.Log
 import io.github.libxposed.service.XposedService
 
 data class ModifierSettings(
-    val gestureHandleModulePreset: Boolean = true,
+    val gestureHandlePreset: String = GestureHandlePresets.MODULE,
     val gestureHandleAppModes: Map<String, String> = emptyMap(),
+    val gestureHandleTouchReveal: Boolean = true,
+    val gestureHandleSwipeMotion: Boolean = true,
+    val gestureHandleTouchAreaDp: Float = GestureHandleTouchArea.DEFAULT_DP,
     val notificationsEnabled: Boolean = false,
     val notificationRadius: Float = 28f,
     val hideHeadsUpMiniBar: Boolean = false,
@@ -19,6 +22,7 @@ data class ModifierSettings(
     val headsUpGlassParameters: String = HeadsUpGlassParameters.regularSerialized,
     val headsUpGlassDarkParameters: String = HeadsUpGlassParameters.darkSerialized,
     val shadeCardGlassParametersEnabled: Boolean = false,
+    val disableShadeGlassHooks: Boolean = false,
     val shadeCardGlassParameters: String = HeadsUpGlassParameters.serialize(ShadeCardGlassPolicy.defaults()),
     val globalGlassBlurEnabled: Boolean = false,
     val shadeCardBackgroundBlurPercent: Float = 100f,
@@ -50,6 +54,9 @@ data class ModifierSettings(
     val islandEnabled: Boolean = false,
     val islandHeight: Float = 160f,
     val islandProgressBar: Boolean = false,
+    val superIslandHidePullBar: Boolean = false,
+    val superIslandPullBarBottomMarginEnabled: Boolean = false,
+    val superIslandPullBarBottomMarginDp: Float = 8f,
     val hideAodActions: Boolean = false,
     val hideAodSeamless: Boolean = false,
     val sinkLockscreenNotificationsForFingerprint: Boolean = false,
@@ -106,22 +113,55 @@ data class ModifierSettings(
     val spotifyShuffleButtonEnabled: Boolean = false,
     val customMediaConstraintSetEnabled: Boolean = false,
     val customMediaConstraintSetXml: String = "",
+    val customMediaIslandConstraintSetEnabled: Boolean = false,
+    val customMediaIslandConstraintSetXml: String = "",
+    /** Empty preserves installations made before the shared media preset selector existed. */
+    val mediaLayoutPreset: String = "",
+    val systemMediaHeight: Float = 168f,
+    val compactMediaHeight: Float = 84f,
+    val standardMediaHeight: Float = 150f,
+    val customMediaHeight: Float = 150f,
+    val systemMediaXml: String = "",
+    val systemMediaIslandXml: String = "",
+    val compactMediaXml: String = "",
+    val compactMediaIslandXml: String = "",
+    val standardMediaXml: String = "",
+    val standardMediaIslandXml: String = "",
 )
 
 /** Explicit presets keep reset behavior independent from persisted values and future migrations. */
 object ModifierSettingsPresets {
     /** Fresh installs enable HyperGlassify and the rule-based gesture handle module preset. */
-    fun moduleDefault(): ModifierSettings = ModifierSettings()
+    fun moduleDefault(): ModifierSettings = ModifierSettings(mediaLayoutPreset = MediaLayoutPresets.SYSTEM)
 
-    fun gestureHandleModuleDefault(settings: ModifierSettings): ModifierSettings = settings.copy(
-        gestureHandleModulePreset = true,
-        gestureHandleAppModes = emptyMap(),
-    )
+    fun gestureHandlePreset(settings: ModifierSettings, preset: String): ModifierSettings {
+        require(GestureHandlePresets.selectable(preset))
+        val module = preset == GestureHandlePresets.MODULE
+        return settings.copy(
+            gestureHandlePreset = preset,
+            gestureHandleAppModes = emptyMap(),
+            gestureHandleTouchReveal = module,
+            gestureHandleSwipeMotion = module,
+            gestureHandleTouchAreaDp = GestureHandleTouchArea.DEFAULT_DP,
+        )
+    }
 
-    fun gestureHandleSystemDefault(settings: ModifierSettings): ModifierSettings = settings.copy(
-        gestureHandleModulePreset = false,
-        gestureHandleAppModes = emptyMap(),
-    )
+    fun selectedGestureHandlePreset(settings: ModifierSettings): String? {
+        val preset = settings.gestureHandlePreset
+        if (preset == GestureHandlePresets.STOCK) return preset.takeIf {
+            settings.gestureHandleAppModes.isEmpty() && !settings.gestureHandleTouchReveal &&
+                !settings.gestureHandleSwipeMotion &&
+                settings.gestureHandleTouchAreaDp == GestureHandleTouchArea.DEFAULT_DP
+        }
+        if (!GestureHandlePresets.selectable(preset)) return null
+        val module = preset == GestureHandlePresets.MODULE
+        val matchingRules = if (module) settings.gestureHandleAppModes.all { (app, mode) ->
+            GestureHandlePresets.MODULE_APPS[app] == mode
+        } else settings.gestureHandleAppModes.isEmpty()
+        return preset.takeIf { matchingRules && settings.gestureHandleTouchReveal == module &&
+            settings.gestureHandleSwipeMotion == module &&
+            settings.gestureHandleTouchAreaDp == GestureHandleTouchArea.DEFAULT_DP }
+    }
 
     /** Apply the paired light/dark heads-up preset without changing unrelated module settings. */
     fun headsUpGlassModuleDefault(settings: ModifierSettings): ModifierSettings = settings.copy(
@@ -142,7 +182,10 @@ object ModifierSettingsPresets {
      * material alignment remains enabled by the module's default policy.
      */
     fun systemDefault(): ModifierSettings = ModifierSettings(
-        gestureHandleModulePreset = false,
+        gestureHandlePreset = GestureHandlePresets.STOCK,
+        gestureHandleAppModes = emptyMap(),
+        gestureHandleTouchReveal = false,
+        gestureHandleSwipeMotion = false,
         notificationsEnabled = false,
         controlCenterFollowMiLinkBackgroundMaterial = true,
         hideHeadsUpMiniBar = false,
@@ -153,6 +196,8 @@ object ModifierSettingsPresets {
         mediaEnabled = false,
         islandEnabled = false,
         islandProgressBar = false,
+        superIslandHidePullBar = false,
+        superIslandPullBarBottomMarginEnabled = false,
         hideAodActions = false,
         hideAodSeamless = false,
         sinkLockscreenNotificationsForFingerprint = false,
@@ -192,6 +237,19 @@ object ModifierSettingsPresets {
         spotifyShuffleButtonEnabled = false,
         customMediaConstraintSetEnabled = false,
         customMediaConstraintSetXml = "",
+        customMediaIslandConstraintSetEnabled = false,
+        customMediaIslandConstraintSetXml = "",
+        mediaLayoutPreset = "system",
+        systemMediaHeight = 168f,
+        compactMediaHeight = 84f,
+        standardMediaHeight = 150f,
+        customMediaHeight = 150f,
+        systemMediaXml = "",
+        systemMediaIslandXml = "",
+        compactMediaXml = "",
+        compactMediaIslandXml = "",
+        standardMediaXml = "",
+        standardMediaIslandXml = "",
     )
 }
 
@@ -200,8 +258,12 @@ object ModifierSettingsStore {
     const val PREFS = "modifier_settings"
     const val METHOD_GET = "get_settings"
     private const val KEY_GESTURE_HANDLE_MODULE_PRESET = "gesture_handle_module_preset"
+    private const val KEY_GESTURE_HANDLE_PRESET = "gesture_handle_preset"
     private const val KEY_GESTURE_HANDLE_SCOPE_PACKAGES = "gesture_handle_scope_packages"
     private const val KEY_GESTURE_HANDLE_APP_MODES = "gesture_handle_app_modes"
+    private const val KEY_GESTURE_HANDLE_TOUCH_REVEAL = "gesture_handle_touch_reveal"
+    private const val KEY_GESTURE_HANDLE_SWIPE_MOTION = "gesture_handle_swipe_motion"
+    private const val KEY_GESTURE_HANDLE_TOUCH_AREA_DP = "gesture_handle_touch_area_dp"
     private const val KEY_NOTIFICATIONS = "notifications_enabled"
     private const val KEY_NOTIFICATION_RADIUS = "notification_radius"
     private const val KEY_HIDE_HEADS_UP_MINI_BAR = "hide_heads_up_mini_bar"
@@ -211,6 +273,7 @@ object ModifierSettingsStore {
     private const val KEY_HEADS_UP_GLASS_PARAMETERS = "heads_up_glass_parameters"
     private const val KEY_HEADS_UP_GLASS_DARK_PARAMETERS = "heads_up_glass_dark_parameters"
     private const val KEY_SHADE_CARD_GLASS_ENABLED = "shade_card_glass_parameters_enabled"
+    private const val KEY_DISABLE_SHADE_GLASS_HOOKS = "disable_shade_glass_hooks"
     private const val KEY_GLOBAL_GLASS_BLUR_ENABLED = "global_glass_blur_enabled"
     private const val KEY_SHADE_CARD_GLASS_PARAMETERS = "shade_card_glass_parameters"
     private const val KEY_SHADE_CARD_GLASS_DARK_PARAMETERS = "shade_card_glass_dark_parameters"
@@ -245,6 +308,11 @@ object ModifierSettingsStore {
     private const val KEY_ISLAND = "island_enabled"
     private const val KEY_ISLAND_HEIGHT = "island_height"
     private const val KEY_ISLAND_PROGRESS = "island_progress"
+    private const val KEY_SUPER_ISLAND_HIDE_PULL_BAR = "super_island_hide_pull_bar"
+    private const val KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_ENABLED =
+        "super_island_pull_bar_bottom_margin_enabled"
+    private const val KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_DP =
+        "super_island_pull_bar_bottom_margin_dp"
     private const val KEY_HIDE_AOD_ACTIONS = "hide_aod_actions"
     private const val KEY_HIDE_AOD_SEAMLESS = "hide_aod_seamless"
     private const val KEY_SINK_LOCKSCREEN_NOTIFICATIONS_FOR_FINGERPRINT =
@@ -316,6 +384,21 @@ object ModifierSettingsStore {
     private const val KEY_SPOTIFY_SHUFFLE_BUTTON = "spotify_shuffle_button_enabled"
     private const val KEY_CUSTOM_MEDIA_CONSTRAINT_SET = "custom_media_constraint_set_enabled"
     private const val KEY_CUSTOM_MEDIA_CONSTRAINT_SET_XML = "custom_media_constraint_set_xml"
+    private const val KEY_CUSTOM_MEDIA_ISLAND_CONSTRAINT_SET =
+        "custom_media_island_constraint_set_enabled"
+    private const val KEY_CUSTOM_MEDIA_ISLAND_CONSTRAINT_SET_XML =
+        "custom_media_island_constraint_set_xml"
+    private const val KEY_MEDIA_LAYOUT_PRESET = "media_layout_preset"
+    private const val KEY_SYSTEM_MEDIA_HEIGHT = "system_media_height"
+    private const val KEY_COMPACT_MEDIA_HEIGHT = "compact_media_height"
+    private const val KEY_STANDARD_MEDIA_HEIGHT = "standard_media_height"
+    private const val KEY_CUSTOM_MEDIA_HEIGHT = "custom_media_height"
+    private const val KEY_SYSTEM_MEDIA_XML = "system_media_xml"
+    private const val KEY_SYSTEM_MEDIA_ISLAND_XML = "system_media_island_xml"
+    private const val KEY_COMPACT_MEDIA_XML = "compact_media_xml"
+    private const val KEY_COMPACT_MEDIA_ISLAND_XML = "compact_media_island_xml"
+    private const val KEY_STANDARD_MEDIA_XML = "standard_media_xml"
+    private const val KEY_STANDARD_MEDIA_ISLAND_XML = "standard_media_island_xml"
 
     fun load(context: Context): ModifierSettings {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -328,9 +411,19 @@ object ModifierSettingsStore {
             HeadsUpGlassParameters.darkDefault,
         )
         val migrateGlassDefaults = HeadsUpGlassDefaults.isLegacyDefaultPair(regularGlass, darkGlass)
+        val gesturePreset = GestureHandlePresets.fromStored(
+            prefs.getString(KEY_GESTURE_HANDLE_PRESET, null),
+            prefs.getBoolean(KEY_GESTURE_HANDLE_MODULE_PRESET, true),
+        )
+        val newModuleDefaults = gesturePreset == GestureHandlePresets.MODULE &&
+            !prefs.contains(KEY_GESTURE_HANDLE_APP_MODES)
         return ModifierSettings(
-            gestureHandleModulePreset = prefs.getBoolean(KEY_GESTURE_HANDLE_MODULE_PRESET, true),
+            gestureHandlePreset = gesturePreset,
             gestureHandleAppModes = GestureHandleRules.decode(prefs.getString(KEY_GESTURE_HANDLE_APP_MODES, "")),
+            gestureHandleTouchReveal = prefs.getBoolean(KEY_GESTURE_HANDLE_TOUCH_REVEAL, newModuleDefaults),
+            gestureHandleSwipeMotion = prefs.getBoolean(KEY_GESTURE_HANDLE_SWIPE_MOTION, newModuleDefaults),
+            gestureHandleTouchAreaDp = GestureHandleTouchArea.normalize(
+                prefs.getFloat(KEY_GESTURE_HANDLE_TOUCH_AREA_DP, GestureHandleTouchArea.DEFAULT_DP)),
             notificationsEnabled = prefs.getBoolean(KEY_NOTIFICATIONS, false),
             notificationRadius = prefs.getFloat(KEY_NOTIFICATION_RADIUS, 28f),
             hideHeadsUpMiniBar = prefs.getBoolean(KEY_HIDE_HEADS_UP_MINI_BAR, false),
@@ -353,6 +446,7 @@ object ModifierSettingsStore {
                 false,
             ),
             shadeCardGlassParametersEnabled = prefs.getBoolean(KEY_SHADE_CARD_GLASS_ENABLED, false),
+            disableShadeGlassHooks = prefs.getBoolean(KEY_DISABLE_SHADE_GLASS_HOOKS, false),
             globalGlassBlurEnabled = prefs.getBoolean(KEY_GLOBAL_GLASS_BLUR_ENABLED,
                 prefs.getBoolean(KEY_SHADE_CARD_GLASS_ENABLED, false)),
             shadeCardGlassParameters = HeadsUpGlassParameters.serialize(
@@ -398,6 +492,13 @@ object ModifierSettingsStore {
             islandEnabled = prefs.getBoolean(KEY_ISLAND, false),
             islandHeight = prefs.getFloat(KEY_ISLAND_HEIGHT, 160f),
             islandProgressBar = prefs.getBoolean(KEY_ISLAND_PROGRESS, false),
+            superIslandHidePullBar = prefs.getBoolean(KEY_SUPER_ISLAND_HIDE_PULL_BAR, false),
+            superIslandPullBarBottomMarginEnabled = prefs.getBoolean(
+                KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_ENABLED, false,
+            ),
+            superIslandPullBarBottomMarginDp = normalizedSuperIslandPullBarBottomMargin(
+                prefs.getFloat(KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_DP, 8f),
+            ),
             hideAodActions = prefs.getBoolean(KEY_HIDE_AOD_ACTIONS, false),
             hideAodSeamless = prefs.getBoolean(KEY_HIDE_AOD_SEAMLESS, false),
             sinkLockscreenNotificationsForFingerprint = prefs.getBoolean(
@@ -500,13 +601,42 @@ object ModifierSettingsStore {
             spotifyShuffleButtonEnabled = prefs.getBoolean(KEY_SPOTIFY_SHUFFLE_BUTTON, false),
             customMediaConstraintSetEnabled = prefs.getBoolean(KEY_CUSTOM_MEDIA_CONSTRAINT_SET, false),
             customMediaConstraintSetXml = prefs.getString(KEY_CUSTOM_MEDIA_CONSTRAINT_SET_XML, "").orEmpty(),
+            customMediaIslandConstraintSetEnabled = prefs.getBoolean(
+                KEY_CUSTOM_MEDIA_ISLAND_CONSTRAINT_SET, false,
+            ),
+            customMediaIslandConstraintSetXml = prefs.getString(
+                KEY_CUSTOM_MEDIA_ISLAND_CONSTRAINT_SET_XML, "",
+            ).orEmpty(),
+            mediaLayoutPreset = prefs.getString(KEY_MEDIA_LAYOUT_PRESET,
+                if (prefs.contains(KEY_MEDIA) || prefs.contains(KEY_ISLAND)
+                    || prefs.contains(KEY_CUSTOM_MEDIA_CONSTRAINT_SET)) ""
+                else MediaLayoutPresets.SYSTEM).orEmpty(),
+            systemMediaHeight = prefs.getFloat(KEY_SYSTEM_MEDIA_HEIGHT, 168f),
+            compactMediaHeight = prefs.getFloat(KEY_COMPACT_MEDIA_HEIGHT, 84f),
+            standardMediaHeight = prefs.getFloat(KEY_STANDARD_MEDIA_HEIGHT, 150f),
+            customMediaHeight = prefs.getFloat(KEY_CUSTOM_MEDIA_HEIGHT, 150f),
+            systemMediaXml = prefs.getString(KEY_SYSTEM_MEDIA_XML, "").orEmpty(),
+            systemMediaIslandXml = prefs.getString(KEY_SYSTEM_MEDIA_ISLAND_XML, "").orEmpty(),
+            compactMediaXml = prefs.getString(KEY_COMPACT_MEDIA_XML, "").orEmpty(),
+            compactMediaIslandXml = prefs.getString(KEY_COMPACT_MEDIA_ISLAND_XML, "").orEmpty(),
+            standardMediaXml = prefs.getString(KEY_STANDARD_MEDIA_XML, "").orEmpty(),
+            standardMediaIslandXml = prefs.getString(KEY_STANDARD_MEDIA_ISLAND_XML, "").orEmpty(),
         )
     }
 
     fun save(context: Context, value: ModifierSettings) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putBoolean(KEY_GESTURE_HANDLE_MODULE_PRESET, value.gestureHandleModulePreset)
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val presetChanged = preferences.getString(KEY_GESTURE_HANDLE_PRESET, null) != value.gestureHandlePreset
+        val editor = preferences.edit()
+        editor
+            .putString(KEY_GESTURE_HANDLE_PRESET, value.gestureHandlePreset)
+            .putBoolean(KEY_GESTURE_HANDLE_MODULE_PRESET,
+                value.gestureHandlePreset == GestureHandlePresets.MODULE)
             .putString(KEY_GESTURE_HANDLE_APP_MODES, GestureHandleRules.encode(value.gestureHandleAppModes))
+            .putBoolean(KEY_GESTURE_HANDLE_TOUCH_REVEAL, value.gestureHandleTouchReveal)
+            .putBoolean(KEY_GESTURE_HANDLE_SWIPE_MOTION, value.gestureHandleSwipeMotion)
+            .putFloat(KEY_GESTURE_HANDLE_TOUCH_AREA_DP,
+                GestureHandleTouchArea.normalize(value.gestureHandleTouchAreaDp))
             .putBoolean(KEY_NOTIFICATIONS, value.notificationsEnabled)
             .putFloat(KEY_NOTIFICATION_RADIUS, value.notificationRadius)
             .putBoolean(KEY_HIDE_HEADS_UP_MINI_BAR, value.hideHeadsUpMiniBar)
@@ -542,6 +672,7 @@ object ModifierSettingsStore {
                 value.headsUpBackgroundBlurRadiusEnabled,
             )
             .putBoolean(KEY_SHADE_CARD_GLASS_ENABLED, value.shadeCardGlassParametersEnabled)
+            .putBoolean(KEY_DISABLE_SHADE_GLASS_HOOKS, value.disableShadeGlassHooks)
             .putBoolean(KEY_GLOBAL_GLASS_BLUR_ENABLED, value.globalGlassBlurEnabled)
             .putString(KEY_SHADE_CARD_GLASS_PARAMETERS, HeadsUpGlassParameters.serialize(
                 HeadsUpGlassParameters.parseSerializedOrDefault(value.shadeCardGlassParameters, ShadeCardGlassPolicy.defaults()),
@@ -592,6 +723,15 @@ object ModifierSettingsStore {
             .putBoolean(KEY_ISLAND, value.islandEnabled)
             .putFloat(KEY_ISLAND_HEIGHT, value.islandHeight)
             .putBoolean(KEY_ISLAND_PROGRESS, value.islandProgressBar)
+            .putBoolean(KEY_SUPER_ISLAND_HIDE_PULL_BAR, value.superIslandHidePullBar)
+            .putBoolean(
+                KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_ENABLED,
+                value.superIslandPullBarBottomMarginEnabled,
+            )
+            .putFloat(
+                KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_DP,
+                normalizedSuperIslandPullBarBottomMargin(value.superIslandPullBarBottomMarginDp),
+            )
             .putBoolean(KEY_HIDE_AOD_ACTIONS, value.hideAodActions)
             .putBoolean(KEY_HIDE_AOD_SEAMLESS, value.hideAodSeamless)
             .putBoolean(
@@ -692,7 +832,31 @@ object ModifierSettingsStore {
             .putBoolean(KEY_SPOTIFY_SHUFFLE_BUTTON, value.spotifyShuffleButtonEnabled)
             .putBoolean(KEY_CUSTOM_MEDIA_CONSTRAINT_SET, value.customMediaConstraintSetEnabled)
             .putString(KEY_CUSTOM_MEDIA_CONSTRAINT_SET_XML, value.customMediaConstraintSetXml)
-            .apply()
+            .putBoolean(
+                KEY_CUSTOM_MEDIA_ISLAND_CONSTRAINT_SET,
+                value.customMediaIslandConstraintSetEnabled,
+            )
+            .putString(
+                KEY_CUSTOM_MEDIA_ISLAND_CONSTRAINT_SET_XML,
+                value.customMediaIslandConstraintSetXml,
+            )
+            .putString(KEY_MEDIA_LAYOUT_PRESET, value.mediaLayoutPreset)
+            .putFloat(KEY_SYSTEM_MEDIA_HEIGHT, value.systemMediaHeight)
+            .putFloat(KEY_COMPACT_MEDIA_HEIGHT, value.compactMediaHeight)
+            .putFloat(KEY_STANDARD_MEDIA_HEIGHT, value.standardMediaHeight)
+            .putFloat(KEY_CUSTOM_MEDIA_HEIGHT, value.customMediaHeight)
+            .putString(KEY_SYSTEM_MEDIA_XML, value.systemMediaXml)
+            .putString(KEY_SYSTEM_MEDIA_ISLAND_XML, value.systemMediaIslandXml)
+            .putString(KEY_COMPACT_MEDIA_XML, value.compactMediaXml)
+            .putString(KEY_COMPACT_MEDIA_ISLAND_XML, value.compactMediaIslandXml)
+            .putString(KEY_STANDARD_MEDIA_XML, value.standardMediaXml)
+            .putString(KEY_STANDARD_MEDIA_ISLAND_XML, value.standardMediaIslandXml)
+        // A preset switch must survive leaving this Activity immediately after selection.
+        if (presetChanged) {
+            if (!editor.commit()) Log.w(TAG, "Could not persist gesture handle preset")
+        } else {
+            editor.apply()
+        }
         syncRemotePreferences(context)
         context.contentResolver.notifyChange(SETTINGS_URI, null)
     }
@@ -747,8 +911,14 @@ object ModifierSettingsStore {
             .lineSequence().filter { it.isNotBlank() }.toSet()
 
     fun toBundle(value: ModifierSettings) = Bundle().apply {
-        putBoolean(KEY_GESTURE_HANDLE_MODULE_PRESET, value.gestureHandleModulePreset)
+        putString(KEY_GESTURE_HANDLE_PRESET, value.gestureHandlePreset)
+        putBoolean(KEY_GESTURE_HANDLE_MODULE_PRESET,
+            value.gestureHandlePreset == GestureHandlePresets.MODULE)
         putString(KEY_GESTURE_HANDLE_APP_MODES, GestureHandleRules.encode(value.gestureHandleAppModes))
+        putBoolean(KEY_GESTURE_HANDLE_TOUCH_REVEAL, value.gestureHandleTouchReveal)
+        putBoolean(KEY_GESTURE_HANDLE_SWIPE_MOTION, value.gestureHandleSwipeMotion)
+        putFloat(KEY_GESTURE_HANDLE_TOUCH_AREA_DP,
+            GestureHandleTouchArea.normalize(value.gestureHandleTouchAreaDp))
         putBoolean(KEY_NOTIFICATIONS, value.notificationsEnabled)
         putFloat(KEY_NOTIFICATION_RADIUS, value.notificationRadius)
         putBoolean(KEY_HIDE_HEADS_UP_MINI_BAR, value.hideHeadsUpMiniBar)
@@ -761,6 +931,7 @@ object ModifierSettingsStore {
         putString(KEY_HEADS_UP_GLASS_PARAMETERS, value.headsUpGlassParameters)
         putString(KEY_HEADS_UP_GLASS_DARK_PARAMETERS, value.headsUpGlassDarkParameters)
         putBoolean(KEY_SHADE_CARD_GLASS_ENABLED, value.shadeCardGlassParametersEnabled)
+        putBoolean(KEY_DISABLE_SHADE_GLASS_HOOKS, value.disableShadeGlassHooks)
         putBoolean(KEY_GLOBAL_GLASS_BLUR_ENABLED, value.globalGlassBlurEnabled)
         putString(KEY_SHADE_CARD_GLASS_PARAMETERS, value.shadeCardGlassParameters)
         putFloat(KEY_SHADE_CARD_BACKGROUND_BLUR_PERCENT, ShadeCardGlassPolicy.normalize(value.shadeCardBackgroundBlurPercent, 200f, 100f))
@@ -806,6 +977,15 @@ object ModifierSettingsStore {
         putBoolean(KEY_ISLAND, value.islandEnabled)
         putFloat(KEY_ISLAND_HEIGHT, value.islandHeight)
         putBoolean(KEY_ISLAND_PROGRESS, value.islandProgressBar)
+        putBoolean(KEY_SUPER_ISLAND_HIDE_PULL_BAR, value.superIslandHidePullBar)
+        putBoolean(
+            KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_ENABLED,
+            value.superIslandPullBarBottomMarginEnabled,
+        )
+        putFloat(
+            KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_DP,
+            normalizedSuperIslandPullBarBottomMargin(value.superIslandPullBarBottomMarginDp),
+        )
         putBoolean(KEY_HIDE_AOD_ACTIONS, value.hideAodActions)
         putBoolean(KEY_HIDE_AOD_SEAMLESS, value.hideAodSeamless)
         putBoolean(
@@ -905,6 +1085,25 @@ object ModifierSettingsStore {
         putBoolean(KEY_SPOTIFY_SHUFFLE_BUTTON, value.spotifyShuffleButtonEnabled)
         putBoolean(KEY_CUSTOM_MEDIA_CONSTRAINT_SET, value.customMediaConstraintSetEnabled)
         putString(KEY_CUSTOM_MEDIA_CONSTRAINT_SET_XML, value.customMediaConstraintSetXml)
+        putBoolean(
+            KEY_CUSTOM_MEDIA_ISLAND_CONSTRAINT_SET,
+            value.customMediaIslandConstraintSetEnabled,
+        )
+        putString(
+            KEY_CUSTOM_MEDIA_ISLAND_CONSTRAINT_SET_XML,
+            value.customMediaIslandConstraintSetXml,
+        )
+        putString(KEY_MEDIA_LAYOUT_PRESET, value.mediaLayoutPreset)
+        putFloat(KEY_SYSTEM_MEDIA_HEIGHT, value.systemMediaHeight)
+        putFloat(KEY_COMPACT_MEDIA_HEIGHT, value.compactMediaHeight)
+        putFloat(KEY_STANDARD_MEDIA_HEIGHT, value.standardMediaHeight)
+        putFloat(KEY_CUSTOM_MEDIA_HEIGHT, value.customMediaHeight)
+        putString(KEY_SYSTEM_MEDIA_XML, value.systemMediaXml)
+        putString(KEY_SYSTEM_MEDIA_ISLAND_XML, value.systemMediaIslandXml)
+        putString(KEY_COMPACT_MEDIA_XML, value.compactMediaXml)
+        putString(KEY_COMPACT_MEDIA_ISLAND_XML, value.compactMediaIslandXml)
+        putString(KEY_STANDARD_MEDIA_XML, value.standardMediaXml)
+        putString(KEY_STANDARD_MEDIA_ISLAND_XML, value.standardMediaIslandXml)
     }
 
     private fun normalizedAodClockWeight(weight: Float): Float =
@@ -912,4 +1111,7 @@ object ModifierSettingsStore {
 
     private fun normalizedHeadsUpBottomMargin(margin: Float): Float =
         if (margin.isFinite()) margin.coerceIn(0f, 32f) else 13f
+
+    private fun normalizedSuperIslandPullBarBottomMargin(margin: Float): Float =
+        if (margin.isFinite()) margin.coerceIn(0f, 48f) else 8f
 }

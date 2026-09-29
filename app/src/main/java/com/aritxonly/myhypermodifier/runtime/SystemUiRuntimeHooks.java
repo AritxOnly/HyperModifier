@@ -70,6 +70,8 @@ final class SystemUiRuntimeHooks {
     private static final int XML_MEDIA_NORMAL = 0x7f180019;
     private static final String PLAYER_ISLAND_CONSTRAINT_LAYOUT =
             "com.android.systemui.statusbar.notification.mediaisland.PlayerIslandConstraintLayout";
+    private static final String MIUI_ISLAND_MEDIA_VIEW_BINDER =
+            "com.android.systemui.statusbar.notification.mediaisland.MiuiIslandMediaViewBinderImpl";
     private static final String HEADS_UP_GLASS_EFFECT =
             "com.android.systemui.statusbar.notification.style.vieweffect."
                     + "HeadsUpNotificationGlassEffect";
@@ -189,6 +191,8 @@ final class SystemUiRuntimeHooks {
                             + "MiuiMediaViewControllerImpl", false, classLoader));
             installSystemUiHookForLoadedClass(PLAYER_ISLAND_CONSTRAINT_LAYOUT,
                     Class.forName(PLAYER_ISLAND_CONSTRAINT_LAYOUT, false, classLoader));
+            installSystemUiHookForLoadedClass(MIUI_ISLAND_MEDIA_VIEW_BINDER,
+                    Class.forName(MIUI_ISLAND_MEDIA_VIEW_BINDER, false, classLoader));
             installHeadsUpGlassEffectHooks(classLoader);
             installGlobalBackgroundBlurHook();
             installControlCenterMiLinkBackgroundMaterialHook(classLoader);
@@ -220,6 +224,16 @@ final class SystemUiRuntimeHooks {
             }
             if (PLAYER_ISLAND_CONSTRAINT_LAYOUT.equals(className)) {
                 hookMediaIslandMeasuredHeight(loadedClass.getDeclaredMethod("calSizeByDensity"));
+                hookMediaIslandMeasure(loadedClass.getDeclaredMethod(
+                        "onMeasure", int.class, int.class));
+                return;
+            }
+            if (MIUI_ISLAND_MEDIA_VIEW_BINDER.equals(className)) {
+                for (Method method : loadedClass.getDeclaredMethods()) {
+                    if ("attach".equals(method.getName()) && method.getParameterCount() == 2) {
+                        hookMediaIslandAttach(method);
+                    }
+                }
                 return;
             }
             if (!"com.android.systemui.statusbar.notification.mediacontrol."
@@ -371,10 +385,14 @@ final class SystemUiRuntimeHooks {
                                         }
                                     }
                                     radiusField.setInt(instance, MILINK_FUSION_MATERIAL_BLUR_RADIUS);
-                                    smallGlassRadiusField.setInt(instance,
-                                            MILINK_FUSION_MATERIAL_BLUR_RADIUS);
-                                    bigGlassRadiusField.setInt(instance,
-                                            MILINK_FUSION_MATERIAL_BLUR_RADIUS);
+                                    // Compatibility mode yields Glass ownership to other modules,
+                                    // while keeping our non-Glass background blur/scale behavior.
+                                    if (!disableShadeGlassHooks) {
+                                        smallGlassRadiusField.setInt(instance,
+                                                MILINK_FUSION_MATERIAL_BLUR_RADIUS);
+                                        bigGlassRadiusField.setInt(instance,
+                                                MILINK_FUSION_MATERIAL_BLUR_RADIUS);
+                                    }
                                     scaleField.setBoolean(instance, false);
                                     if (CONTROL_CENTER_MILINK_MATERIAL_LOGGED
                                             .compareAndSet(false, true)) {
@@ -389,8 +407,10 @@ final class SystemUiRuntimeHooks {
                                     }
                                     if (defaults != null) {
                                         radiusField.setInt(instance, defaults[0]);
-                                        smallGlassRadiusField.setInt(instance, defaults[1]);
-                                        bigGlassRadiusField.setInt(instance, defaults[2]);
+                                        if (!disableShadeGlassHooks) {
+                                            smallGlassRadiusField.setInt(instance, defaults[1]);
+                                            bigGlassRadiusField.setInt(instance, defaults[2]);
+                                        }
                                         scaleField.setBoolean(instance, defaults[3] != 0);
                                     }
                                 }
@@ -677,9 +697,10 @@ final class SystemUiRuntimeHooks {
                         Object result = chain.proceed();
                         ensureLoaded();
                         Object island = chain.getThisObject();
-                        if (islandEnabled && island instanceof View) {
+                        if (island instanceof View) {
                             View view = (View) island;
-                            setInt(island, "calHeight", dp(view.getContext(), islandHeight));
+                            rememberMediaIslandRoot(view);
+                            synchronizeMediaIslandRootHeight(view);
                             view.requestLayout();
                         }
                         return result;
@@ -688,6 +709,59 @@ final class SystemUiRuntimeHooks {
             INSTALLED_SYSTEM_UI_METHOD_HOOKS.remove(method);
             throw throwable;
         }
+    }
+
+    /** Apply the root height before every measure pass, not just when MIUI reloads density. */
+    private void hookMediaIslandMeasure(Method method) throws Throwable {
+        if (!claimSystemUiMethod(method)) return;
+        try {
+            module.hook(method).setId("media-island-root-measure")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        ensureLoaded();
+                        Object island = chain.getThisObject();
+                        if (island instanceof View) {
+                            rememberMediaIslandRoot((View) island);
+                            synchronizeMediaIslandRootHeight((View) island);
+                        }
+                        return chain.proceed();
+                    });
+        } catch (Throwable throwable) {
+            INSTALLED_SYSTEM_UI_METHOD_HOOKS.remove(method);
+            throw throwable;
+        }
+    }
+
+    /**
+     * HyperOS binds a second, offscreen/dummy media island and mirrors the main MusicBgView's
+     * gradient onto it. Apply the root height to both holders at their attach point, so that
+     * dummy background can never retain the stock 168dp surface beneath a shorter main player.
+     */
+    private void hookMediaIslandAttach(Method method) throws Throwable {
+        if (!claimSystemUiMethod(method)) return;
+        try {
+            module.hook(method).setId("media-island-main-and-dummy-height")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        Object result = chain.proceed();
+                        ensureLoaded();
+                        synchronizeMediaIslandHolder(chain.getArg(0));
+                        synchronizeMediaIslandHolder(chain.getArg(1));
+                        return result;
+                    });
+        } catch (Throwable throwable) {
+            INSTALLED_SYSTEM_UI_METHOD_HOOKS.remove(method);
+            throw throwable;
+        }
+    }
+
+    private static void synchronizeMediaIslandHolder(Object holder) {
+        Object player = fieldValue(holder, "player");
+        if (!(player instanceof View)) return;
+        View root = (View) player;
+        rememberMediaIslandRoot(root);
+        synchronizeMediaIslandRootHeight(root);
+        root.requestLayout();
     }
 
     private void hookFullAodStateChanged(Method method) throws Throwable {

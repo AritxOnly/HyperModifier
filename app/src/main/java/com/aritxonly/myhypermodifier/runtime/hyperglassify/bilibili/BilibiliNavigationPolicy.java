@@ -19,6 +19,11 @@ public final class BilibiliNavigationPolicy {
         return Role.OTHER;
     }
 
+    /** Presentation only: keep the native FOLLOW role and its independent visibility setting. */
+    public static String displayLabel(String nativeLabel) {
+        return role(nativeLabel) == Role.FOLLOW ? "动态" : nativeLabel;
+    }
+
     public static boolean isVisible(String label, boolean home, boolean dynamic,
                                     boolean mall, boolean mine, boolean publish) {
         return isVisible(label, home, dynamic, true, mall, mine, publish);
@@ -42,8 +47,8 @@ public final class BilibiliNavigationPolicy {
         return role(label) == Role.HOME ? 0.95f : 1f;
     }
 
-    public static boolean overlayAllowed(boolean foreground, boolean focused, boolean splash,
+    public static boolean overlayAllowed(boolean foreground, boolean splash,
                                          boolean startup, boolean ime) {
-        return foreground && focused && !splash && !startup && !ime;
+        return foreground && !splash && !startup && !ime;
     }
 }

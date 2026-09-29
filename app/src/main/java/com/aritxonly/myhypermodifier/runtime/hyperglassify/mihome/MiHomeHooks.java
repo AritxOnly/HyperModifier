@@ -3,6 +3,7 @@ package com.aritxonly.myhypermodifier;
 import android.app.Activity;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.ActionMode;
 import android.view.MotionEvent;
 
 import java.lang.reflect.Method;
@@ -91,9 +92,54 @@ final class MiHomeHooks {
                         }
                         return result;
                     });
+
+            tryHookActionMode(module, mainActivity,
+                    mainActivity.getMethod("onActionModeStarted", ActionMode.class), true);
+            tryHookActionMode(module, mainActivity,
+                    mainActivity.getMethod("onActionModeFinished", ActionMode.class), false);
+            // MIUI's AppCompat ActionMode uses separate support callbacks on some pages.
+            for (Method method : mainActivity.getMethods()) {
+                String name = method.getName();
+                if ((name.equals("onSupportActionModeStarted") ||
+                        name.equals("onSupportActionModeFinished")) &&
+                        method.getParameterCount() == 1 &&
+                        method.getParameterTypes()[0].getSimpleName().equals("ActionMode")) {
+                    tryHookActionMode(module, mainActivity, method,
+                            name.equals("onSupportActionModeStarted"));
+                }
+            }
         } catch (Throwable throwable) {
             INSTALLED.set(false);
             module.log(Log.ERROR, TAG, "Could not install Mi Home navigation hooks", throwable);
         }
+    }
+
+    private static void tryHookActionMode(XposedModule module, Class<?> mainActivity,
+                                          Method method, boolean started) {
+        try {
+            hookActionMode(module, mainActivity, method, started);
+        } catch (Throwable throwable) {
+            module.log(Log.WARN, TAG, "Could not hook Mi Home " + method.getName(), throwable);
+        }
+    }
+
+    private static void hookActionMode(XposedModule module, Class<?> mainActivity,
+                                       Method method, boolean started) {
+        module.hook(method)
+                .setId("mi-home-floating-navigation-" + method.getName())
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept(chain -> {
+                    Object result = chain.proceed();
+                    Object target = chain.getThisObject();
+                    Object mode = chain.getArg(0);
+                    if (mainActivity.isInstance(target) && target instanceof Activity && mode != null) {
+                        if (started) {
+                            MiHomeFloatingNavigation.onActionModeStarted((Activity) target, mode);
+                        } else {
+                            MiHomeFloatingNavigation.onActionModeFinished((Activity) target, mode);
+                        }
+                    }
+                    return result;
+                });
     }
 }
