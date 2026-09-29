@@ -6,6 +6,7 @@ import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowInsets
 import android.widget.TextView
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -24,13 +25,15 @@ import java.util.WeakHashMap
 internal object BilibiliFloatingNavigation {
     private const val TAB_HOST = "com.bilibili.lib.homepage.widget.TabHost"
     private var forwardingNativeInput = false
-    private val tabMethods = WeakHashMap<Class<*>, Pair<Method, Method>>()
+    private val tabMethods = WeakHashMap<Class<*>, Pair<Method, Method>?>()
+    private val tabHostClasses = WeakHashMap<Class<*>, Boolean>()
     private val homeStates = WeakHashMap<Activity, HomeState>()
     private val delegate = NativeViewBottomBarNavigation(
         NativeViewBottomBarTarget(
             logName = "Bilibili",
             testedVersion = "9.13.0",
             bottomBarClassNames = setOf(TAB_HOST),
+            resolveBottomBar = ::findTabHost,
             tabClassNames = emptySet(),
             fallbackLabels = listOf("首页", "动态", "发布", "会员购", "我的"),
             enabled = { ModuleSettings.bilibiliFloatingNavigationEnabled },
@@ -63,6 +66,8 @@ internal object BilibiliFloatingNavigation {
             contentHostResourceName = "content",
             overlayAllowed = ::homeAllowsOverlay,
             nativeRefreshIntervalMs = 100L,
+            lateAttachWindowMs = 60_000L,
+            onAttachDiagnostic = BilibiliHooks::logDiagnostic,
             useHardwareBackdrop = true,
             minimumCaptureIntervalMs = 0L,
             allowSoftwareBackdrop = false,
@@ -102,20 +107,55 @@ internal object BilibiliFloatingNavigation {
         if (forwardingNativeInput) return false
         var candidate: View? = view
         while (candidate != null) {
-            if (candidate.javaClass.name == TAB_HOST) return delegate.isReplacingBottomBar(candidate)
+            if (delegate.isReplacingBottomBar(candidate)) return true
             candidate = candidate.parent as? View
         }
         return false
     }
 
-    private fun tabViews(bar: View): List<View> = runCatching {
-        val (getCount, getTab) = tabMethods.getOrPut(bar.javaClass) {
-            bar.javaClass.getMethod("getItemCount") to
-                bar.javaClass.getMethod("k", Int::class.javaPrimitiveType)
+    private fun findTabHost(root: View): View? {
+        if (root is ViewGroup) {
+            if (isTabHost(root.javaClass)) return root
+            repeat(root.childCount) { index ->
+                findTabHost(root.getChildAt(index))?.let { return it }
+            }
         }
-        val count = getCount.invoke(bar) as Int
-        (0 until count.coerceIn(0, 8)).map { index -> getTab.invoke(bar, index) as View }
-    }.getOrDefault(emptyList())
+        return null
+    }
+
+    private fun isTabHost(type: Class<*>): Boolean = tabHostClasses.getOrPut(type) {
+        if (generateSequence(type as Class<*>?) { it.superclass }.any { it.name == TAB_HOST }) {
+            return@getOrPut true
+        }
+        if (!type.name.startsWith("com.bilibili.") &&
+            !type.name.startsWith("tv.danmaku.bili.")
+        ) return@getOrPut false
+        type.simpleName == "TabHost" || runCatching {
+            type.getMethod("getItemCount")
+            type.getMethod("getCurrentItem")
+            type.getMethod("k", Int::class.javaPrimitiveType)
+        }.isSuccess
+    }
+
+    private fun tabViews(bar: View): List<View> {
+        val type = bar.javaClass
+        val methods = if (tabMethods.containsKey(type)) tabMethods[type] else {
+            runCatching {
+                type.getMethod("getItemCount") to
+                    type.getMethod("k", Int::class.javaPrimitiveType)
+            }.getOrNull().also { tabMethods[type] = it }
+        }
+        val reflected = methods?.let { (getCount, getTab) ->
+            runCatching {
+                val count = getCount.invoke(bar) as Int
+                (0 until count.coerceIn(0, 8)).map { index -> getTab.invoke(bar, index) as View }
+            }.getOrNull()
+        }
+        if (!reflected.isNullOrEmpty()) return reflected
+        val group = bar as? ViewGroup ?: return emptyList()
+        val tabs = if (group.childCount == 1) group.getChildAt(0) as? ViewGroup ?: group else group
+        return (0 until tabs.childCount.coerceAtMost(8)).map(tabs::getChildAt)
+    }
 
     private fun publishView(tab: View): View? = tab.resourceView("home_publish_icon")
         ?.takeIf { it.visibility == View.VISIBLE }

@@ -39,7 +39,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import io.github.libxposed.api.XposedInterface;
 import io.github.libxposed.api.XposedModule;
 
-/** Hook points verified against the local September 24 HyperOS SystemUI reference. */
+/** Hook points for the local HyperOS 2 and OS3 SystemUI references. */
 final class GestureHandleHooks {
     private static final String TAG = "MyHyperModifier";
     private static final String HANDLE = "com.android.systemui.navigationbar.gestural.NavigationHandle";
@@ -82,38 +82,47 @@ final class GestureHandleHooks {
         try {
             Class<?> handle = Class.forName(HANDLE, false, classLoader);
             hook(module, handle.getDeclaredMethod("onDraw", Canvas.class), GestureHandleHooks::draw);
-            hook(module, handle.getDeclaredMethod("onAttachedToWindow"), chain -> {
-                Object result = chain.proceed();
-                View view = (View) chain.getThisObject();
-                HANDLES.put(view, null);
-                MOTION.rebaseForNewHost(SystemClock.uptimeMillis());
-                initialize(view.getContext());
-                ModuleSettings.ensureLoaded();
-                refresh();
-                return result;
-            });
-            hook(module, handle.getDeclaredMethod("onDetachedFromWindow"), chain -> {
-                View view = (View) chain.getThisObject();
-                HANDLES.remove(view);
-                if (activeTouchHandle == view && main != null) {
-                    // Keep observing the in-flight bottom gesture after an app switch replaces
-                    // the handle. Release it if the old window was the only input source.
-                    main.removeCallbacks(DETACHED_GESTURE_TIMEOUT);
-                    main.postDelayed(DETACHED_GESTURE_TIMEOUT, 750L);
-                }
-                return chain.proceed();
-            });
-            Class<?> observer = Class.forName(TOP_OBSERVER, false, classLoader);
-            hook(module, observer.getDeclaredMethod("updateTopActivity", boolean.class,
-                    ActivityManager.RunningTaskInfo.class), chain -> {
-                Object result = chain.proceed();
-                ActivityManager.RunningTaskInfo info = (ActivityManager.RunningTaskInfo) chain.getArg(1);
-                // The stock observer already resolves the foreground task on its background handler.
-                dispatch(() -> foreground(info));
-                return result;
-            });
+            // OS3 inherits these View methods instead of declaring them. Its first draw is
+            // also a valid host-registration point, so lifecycle hooks are optional.
+            try {
+                hook(module, handle.getDeclaredMethod("onAttachedToWindow"), chain -> {
+                    Object result = chain.proceed();
+                    if (ModuleSettings.gestureHandleEnabled) trackHandle((View) chain.getThisObject());
+                    return result;
+                });
+                hook(module, handle.getDeclaredMethod("onDetachedFromWindow"), chain -> {
+                    View view = (View) chain.getThisObject();
+                    HANDLES.remove(view);
+                    if (activeTouchHandle == view && main != null) {
+                        main.removeCallbacks(DETACHED_GESTURE_TIMEOUT);
+                        main.postDelayed(DETACHED_GESTURE_TIMEOUT, 750L);
+                    }
+                    return chain.proceed();
+                });
+            } catch (NoSuchMethodException ignored) {
+                // OS3 has no NavigationHandle lifecycle overrides.
+            }
         } catch (Throwable error) {
-            module.log(Log.WARN, TAG, "Gesture handle / foreground hook unavailable", error);
+            module.log(Log.WARN, TAG, "Gesture handle draw hook unavailable", error);
+        }
+        try {
+            Class<?> observer = Class.forName(TOP_OBSERVER, false, classLoader);
+            for (Method method : observer.getDeclaredMethods()) {
+                if (!"updateTopActivity".equals(method.getName())) continue;
+                Class<?>[] parameters = method.getParameterTypes();
+                int taskArg = parameters.length - 1;
+                if (taskArg < 0 || parameters[taskArg] != ActivityManager.RunningTaskInfo.class) continue;
+                hook(module, method, chain -> {
+                    Object result = chain.proceed();
+                    ActivityManager.RunningTaskInfo info =
+                            (ActivityManager.RunningTaskInfo) chain.getArg(taskArg);
+                    // Both revisions resolve the foreground task on their background handler.
+                    dispatch(() -> foreground(info));
+                    return result;
+                });
+            }
+        } catch (Throwable error) {
+            module.log(Log.WARN, TAG, "Gesture handle foreground hook unavailable", error);
         }
         try {
             // Landscape quick-switch uses an overriding draw method rather than the base pill.
@@ -145,9 +154,10 @@ final class GestureHandleHooks {
     }
 
     private static Object draw(XposedInterface.Chain chain) throws Throwable {
+        if (!ModuleSettings.gestureHandleEnabled) return chain.proceed();
         View view = (View) chain.getThisObject();
         if (view.getDisplay() == null || view.getDisplay().getDisplayId() != 0) return chain.proceed();
-        if (!receiverInstalled) initialize(view.getContext());
+        trackHandle(view);
         long now = SystemClock.uptimeMillis();
         boolean systemHidden = rulesPresent && stockHidden;
         boolean hidden = appliesTo(view)
@@ -180,8 +190,20 @@ final class GestureHandleHooks {
         }
     }
 
+    private static void trackHandle(View view) {
+        synchronized (HANDLES) {
+            if (HANDLES.containsKey(view)) return;
+            HANDLES.put(view, null);
+        }
+        MOTION.rebaseForNewHost(SystemClock.uptimeMillis());
+        initialize(view.getContext());
+        ModuleSettings.ensureLoaded();
+        refresh();
+    }
+
     private static void observeTouch(View frame, MotionEvent event) {
-        if ((!ModuleSettings.gestureHandleTouchReveal && !ModuleSettings.gestureHandleSwipeMotion)
+        if (!ModuleSettings.gestureHandleEnabled
+                || (!ModuleSettings.gestureHandleTouchReveal && !ModuleSettings.gestureHandleSwipeMotion)
                 || (frame != null && !appliesTo(frame))) return;
         int action = event.getActionMasked();
         long now = SystemClock.uptimeMillis();
@@ -296,8 +318,15 @@ final class GestureHandleHooks {
     private static RectF pillRect(View handle) {
         try {
             return (RectF) handle.getClass().getMethod("getPillRect").invoke(handle);
-        } catch (ReflectiveOperationException error) {
-            return null;
+        } catch (ReflectiveOperationException ignored) {
+            // OS3 draws across the full handle width and no longer exposes getPillRect().
+            Object radiusValue = ReflectiveAccess.fieldValue(handle, "mRadius");
+            Object bottomValue = ReflectiveAccess.fieldValue(handle, "mBottom");
+            if (!(radiusValue instanceof Number) || !(bottomValue instanceof Number)) return null;
+            float radius = ((Number) radiusValue).floatValue();
+            float bottom = ((Number) bottomValue).floatValue();
+            float bottomEdge = handle.getHeight() - bottom;
+            return new RectF(0f, bottomEdge - 2f * radius, handle.getWidth(), bottomEdge);
         }
     }
 
@@ -315,7 +344,7 @@ final class GestureHandleHooks {
                     Object owner = chain.getThisObject();
                     controller = new WeakReference<>(owner);
                     Context context = (Context) ReflectiveAccess.fieldValue(owner, "mContext");
-                    if (context != null) initialize(context);
+                    if (context != null && ModuleSettings.gestureHandleEnabled) initialize(context);
                     Object injector = injector(owner);
                     stockHidden = bool(injector, "mHideGestureLine");
                     boolean override = hasPolicies()
@@ -370,6 +399,7 @@ final class GestureHandleHooks {
         filter.addAction(Intent.ACTION_SCREEN_OFF);
         context.registerReceiver(new BroadcastReceiver() {
             @Override public void onReceive(Context ignored, Intent intent) {
+                if (!ModuleSettings.gestureHandleEnabled) return;
                 if (Intent.ACTION_USER_PRESENT.equals(intent.getAction())) {
                     POLICY.reveal(SystemClock.uptimeMillis());
                     scheduleHide();
@@ -403,7 +433,7 @@ final class GestureHandleHooks {
     }
 
     private static void installInputMonitor() {
-        if (hasInputMonitor() || loader == null) return;
+        if (!ModuleSettings.gestureHandleEnabled || hasInputMonitor() || loader == null) return;
         Object monitor = null;
         try {
             // The navigation-bar window does not receive every gestural input stream. Use the
@@ -444,6 +474,22 @@ final class GestureHandleHooks {
 
     private static boolean hasInputMonitor() {
         return inputMonitorInstalled && inputMonitor != null && inputReceiver != null;
+    }
+
+    private static void stopInputMonitor() {
+        Object receiver = inputReceiver;
+        Object monitor = inputMonitor;
+        inputReceiver = null;
+        inputMonitor = null;
+        inputMonitorInstalled = false;
+        if (receiver != null) {
+            try { receiver.getClass().getMethod("dispose").invoke(receiver); }
+            catch (Throwable error) { Log.w(TAG, "Gesture handle input receiver disposal unavailable", error); }
+        }
+        if (monitor != null) {
+            try { monitor.getClass().getMethod("dispose").invoke(monitor); }
+            catch (Throwable error) { Log.w(TAG, "Gesture handle input monitor disposal unavailable", error); }
+        }
     }
 
     private static boolean foregroundObserved;
@@ -495,6 +541,16 @@ final class GestureHandleHooks {
         dispatch(() -> {
             POLICY.configure(ModuleSettings.gestureHandleAppModes, ModuleSettings.gestureHandlePreset,
                     ModuleSettings.gestureHandleScopePackages, SystemClock.uptimeMillis());
+            if (!ModuleSettings.gestureHandleEnabled) {
+                POLICY.clearTouchReveal();
+                POLICY.clearSwipeReveal();
+                activeTouchHandle = null;
+                activeSwipeRevealed = false;
+                MOTION.reset();
+                stopInputMonitor();
+            } else {
+                if (receiverInstalled) installInputMonitor();
+            }
             if (!ModuleSettings.gestureHandleTouchReveal) POLICY.clearTouchReveal();
             if (!ModuleSettings.gestureHandleSwipeMotion) {
                 POLICY.clearSwipeReveal();
@@ -503,14 +559,20 @@ final class GestureHandleHooks {
             boolean nextPresent = hasPolicies();
             Object owner = controller.get();
             if (owner != null) {
+                if (nextPresent && !receiverInstalled) {
+                    Context context = (Context) ReflectiveAccess.fieldValue(owner, "mContext");
+                    if (context != null) initialize(context);
+                }
                 Object injector = injector(owner);
                 stockHidden = bool(injector, "mHideGestureLine");
                 if (stockHidden && bool(injector, "mIsFsgMode")) {
                     try {
+                        Object view = defaultNavigationBar(owner);
                         if (nextPresent) {
-                            Object view = owner.getClass().getMethod("getDefaultNavigationBarView").invoke(owner);
                             if (view == null) owner.getClass().getMethod("addDefaultNavigationBar").invoke(owner);
-                        } else if (rulesPresent) {
+                        } else if (view != null) {
+                            // The stock controller has no bar in this state. Remove the host
+                            // previously kept alive for our rules when the master switch is off.
                             owner.getClass().getMethod("removeNavigationBar", int.class).invoke(owner, 0);
                         }
                     } catch (Throwable error) {
@@ -524,18 +586,27 @@ final class GestureHandleHooks {
         });
     }
 
+    private static Object defaultNavigationBar(Object owner) throws ReflectiveOperationException {
+        try {
+            return owner.getClass().getMethod("getDefaultNavigationBarView").invoke(owner);
+        } catch (NoSuchMethodException ignored) {
+            return owner.getClass().getMethod("getDefaultNavigationBar").invoke(owner);
+        }
+    }
+
     private static void scheduleHide() {
         if (main == null) return;
         main.removeCallbacks(HIDE);
+        if (!ModuleSettings.gestureHandleEnabled) return;
         long remaining = POLICY.remaining(SystemClock.uptimeMillis());
         if (remaining > 0L) main.postDelayed(HIDE, remaining);
     }
 
     private static boolean hasPolicies() {
-        return (GestureHandlePresets.valid(ModuleSettings.gestureHandlePreset)
+        return ModuleSettings.gestureHandleEnabled && ((GestureHandlePresets.valid(ModuleSettings.gestureHandlePreset)
                 && !GestureHandlePresets.STOCK.equals(ModuleSettings.gestureHandlePreset))
                 || !ModuleSettings.gestureHandleAppModes.isEmpty()
-                || ModuleSettings.gestureHandleTouchReveal || ModuleSettings.gestureHandleSwipeMotion;
+                || ModuleSettings.gestureHandleTouchReveal || ModuleSettings.gestureHandleSwipeMotion);
     }
 
     private static void clearMotion() {

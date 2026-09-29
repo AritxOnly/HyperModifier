@@ -113,6 +113,14 @@ internal fun GestureHandleSettingsPage(
     ) {
         item {
             SettingsSection {
+                SettingsSwitchItem(
+                    "启用手势提示线修改",
+                    "关闭后由系统控制手势提示线，保留下面的预设和应用规则。",
+                    settings.gestureHandleEnabled,
+                    { update(settings.copy(gestureHandleEnabled = it)) },
+                )
+            }
+            SettingsSection {
                 SettingItem(
                     "选择预设", "",
                     trailingContent = {

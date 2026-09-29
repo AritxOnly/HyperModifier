@@ -157,6 +157,7 @@ final class ModuleSettings {
     // state and stays available even when Android hides this module package from the target app.
     private static volatile SharedPreferences remotePreferences;
 
+    static volatile boolean gestureHandleEnabled = true;
     static volatile Map<String, String> gestureHandleAppModes = java.util.Collections.emptyMap();
     static volatile String gestureHandlePreset = GestureHandlePresets.MODULE;
     static volatile boolean gestureHandleTouchReveal = true;
@@ -366,6 +367,7 @@ final class ModuleSettings {
             }
             lastLoadStatus = "remote-preferences";
             Bundle values = preferencesToBundle(preferences);
+            gestureHandleEnabled = values.getBoolean("gesture_handle_enabled", true);
             gestureHandlePreset = GestureHandlePresets.fromStored(
                     values.getString("gesture_handle_preset"),
                     values.getBoolean("gesture_handle_module_preset", true));

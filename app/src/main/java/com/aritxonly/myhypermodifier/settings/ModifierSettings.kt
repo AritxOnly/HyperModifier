@@ -8,6 +8,7 @@ import android.util.Log
 import io.github.libxposed.service.XposedService
 
 data class ModifierSettings(
+    val gestureHandleEnabled: Boolean = true,
     val gestureHandlePreset: String = GestureHandlePresets.MODULE,
     val gestureHandleAppModes: Map<String, String> = emptyMap(),
     val gestureHandleTouchReveal: Boolean = true,
@@ -182,6 +183,7 @@ object ModifierSettingsPresets {
      * material alignment remains enabled by the module's default policy.
      */
     fun systemDefault(): ModifierSettings = ModifierSettings(
+        gestureHandleEnabled = false,
         gestureHandlePreset = GestureHandlePresets.STOCK,
         gestureHandleAppModes = emptyMap(),
         gestureHandleTouchReveal = false,
@@ -258,6 +260,7 @@ object ModifierSettingsStore {
     const val PREFS = "modifier_settings"
     const val METHOD_GET = "get_settings"
     private const val KEY_GESTURE_HANDLE_MODULE_PRESET = "gesture_handle_module_preset"
+    private const val KEY_GESTURE_HANDLE_ENABLED = "gesture_handle_enabled"
     private const val KEY_GESTURE_HANDLE_PRESET = "gesture_handle_preset"
     private const val KEY_GESTURE_HANDLE_SCOPE_PACKAGES = "gesture_handle_scope_packages"
     private const val KEY_GESTURE_HANDLE_APP_MODES = "gesture_handle_app_modes"
@@ -422,6 +425,7 @@ object ModifierSettingsStore {
         val newModuleDefaults = gesturePreset == GestureHandlePresets.MODULE &&
             !prefs.contains(KEY_GESTURE_HANDLE_APP_MODES)
         return ModifierSettings(
+            gestureHandleEnabled = prefs.getBoolean(KEY_GESTURE_HANDLE_ENABLED, true),
             gestureHandlePreset = gesturePreset,
             gestureHandleAppModes = GestureHandleRules.decode(prefs.getString(KEY_GESTURE_HANDLE_APP_MODES, "")),
             gestureHandleTouchReveal = prefs.getBoolean(KEY_GESTURE_HANDLE_TOUCH_REVEAL, newModuleDefaults),
@@ -635,6 +639,7 @@ object ModifierSettingsStore {
         val presetChanged = preferences.getString(KEY_GESTURE_HANDLE_PRESET, null) != value.gestureHandlePreset
         val editor = preferences.edit()
         editor
+            .putBoolean(KEY_GESTURE_HANDLE_ENABLED, value.gestureHandleEnabled)
             .putString(KEY_GESTURE_HANDLE_PRESET, value.gestureHandlePreset)
             .putBoolean(KEY_GESTURE_HANDLE_MODULE_PRESET,
                 value.gestureHandlePreset == GestureHandlePresets.MODULE)
@@ -917,6 +922,7 @@ object ModifierSettingsStore {
             .lineSequence().filter { it.isNotBlank() }.toSet()
 
     fun toBundle(value: ModifierSettings) = Bundle().apply {
+        putBoolean(KEY_GESTURE_HANDLE_ENABLED, value.gestureHandleEnabled)
         putString(KEY_GESTURE_HANDLE_PRESET, value.gestureHandlePreset)
         putBoolean(KEY_GESTURE_HANDLE_MODULE_PRESET,
             value.gestureHandlePreset == GestureHandlePresets.MODULE)

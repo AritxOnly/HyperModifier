@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
@@ -217,6 +218,7 @@ private data class MiHomeNavigationState(
     val selectedIndex: Int = 0,
     val visible: Boolean = false,
     val navigationLiftDp: Float = 24f,
+    val navigationInsetPx: Int = 0,
 )
 
 private class MiHomeNavigationHost private constructor(
@@ -240,6 +242,7 @@ private class MiHomeNavigationHost private constructor(
     private val windowManager = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val composeView = ComposeView(activity)
     private val visibility = FloatingNavigationVisibility(composeView, windowManager)
+    private val stableNavigationInset = StableNavigationBarInset()
     private var composeWindowAttached = false
     private var lastNavigationDiagnostic: String? = null
     private val settingsRefreshRunnable = object : Runnable {
@@ -474,6 +477,9 @@ private class MiHomeNavigationHost private constructor(
                 !contextualActionBarVisible &&
                 (tabStates.getOrNull(selected)?.isSceneTab() != true || !isSceneSelectionActive()),
             navigationLiftDp = ModuleSettings.hyperGlassifyHiddenNavigationLift.coerceIn(0f, 48f),
+            navigationInsetPx = stableNavigationInset.bottomPx(
+                composeView, activity.window.decorView,
+            ),
         )
         val selectionChanged = next.selectedIndex != state.selectedIndex
         val becameVisible = next.visible && !state.visible
@@ -675,6 +681,11 @@ private fun MiHomeNavigationContent(
     val miuixColors = remember(dark, materialColors) { MhmPresetColors.miuix(materialColors, dark) }
     val backdrop = rememberLayerBackdrop()
     val hiddenNavigationLift = state.navigationLiftDp.coerceIn(0f, 48f).dp
+    val navigationPadding = if (state.navigationInsetPx > 0) {
+        Modifier.padding(bottom = with(LocalDensity.current) { state.navigationInsetPx.toDp() })
+    } else {
+        Modifier.navigationBarsPadding()
+    }
     val items = state.tabs.mapIndexed { index, tab ->
         val useMiuixIcons = ModuleSettings.miHomeMiuixIconsEnabled
         // Mi Home's glass navigation has one foreground-color contract. Keeping this fixed also
@@ -727,7 +738,7 @@ private fun MiHomeNavigationContent(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .navigationBarsPadding()
+                        .then(navigationPadding)
                         .padding(
                             start = 16.dp,
                             top = INJECTED_NAVIGATION_SHADOW_TOP_PADDING,

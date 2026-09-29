@@ -13,7 +13,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.WindowManager
-import android.view.WindowInsets as AndroidWindowInsets
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.compose.foundation.layout.Box
@@ -72,6 +71,7 @@ internal data class NativeViewBottomBarTarget(
     val logName: String,
     val testedVersion: String,
     val bottomBarClassNames: Set<String>,
+    val resolveBottomBar: ((View) -> View?)? = null,
     val tabClassNames: Set<String>,
     val fallbackLabels: List<String>,
     val enabled: () -> Boolean,
@@ -92,6 +92,8 @@ internal data class NativeViewBottomBarTarget(
     val tabIconScale: ((String, Int) -> Float)? = null,
     val contentHostResourceName: String? = null,
     val overlayAllowed: (Activity) -> Boolean = { true },
+    val lateAttachWindowMs: Long = 8_000L,
+    val onAttachDiagnostic: (String) -> Unit = {},
     val nativeRefreshIntervalMs: Long = 0L,
     val useHardwareBackdrop: Boolean = false,
     val minimumCaptureIntervalMs: Long = 0L,
@@ -129,7 +131,9 @@ internal class NativeViewBottomBarNavigation(
         startupSuppressors[activity] = EarlyBottomBarSuppressor(
             activity = activity,
             findBottomBar = {
-                activity.window.decorView.findDescendantByClassNames(target.bottomBarClassNames)
+                val root = activity.window.decorView
+                target.resolveBottomBar?.invoke(root)
+                    ?: root.findDescendantByClassNames(target.bottomBarClassNames)
             },
         ).also(EarlyBottomBarSuppressor::start)
     }
@@ -141,12 +145,14 @@ internal class NativeViewBottomBarNavigation(
 
         ModuleSettings.ensureLoaded()
         if (ModuleSettings.isLoaded() && !target.enabled()) {
+            target.onAttachDiagnostic("floating navigation disabled by settings")
             startupSuppressors.remove(activity)?.restore()
             return
         }
         prepare(activity)
         val suppressor = startupSuppressors[activity] ?: return
         val startedAt = SystemClock.uptimeMillis()
+        var reportedLateAttach = false
         lateinit var retry: Runnable
         retry = Runnable {
             if (activity.isFinishing || activity.isDestroyed) {
@@ -161,22 +167,39 @@ internal class NativeViewBottomBarNavigation(
                 return@Runnable
             }
             if (!target.enabled()) {
+                target.onAttachDiagnostic("floating navigation disabled by settings")
                 pendingAttachments.remove(activity)
                 startupSuppressors.remove(activity)?.restore()
                 return@Runnable
             }
             suppressor.restore()
             val host = NativeViewBottomBarHost.create(activity, target)
-            if (host == null && SystemClock.uptimeMillis() - startedAt < VIEW_WAIT_TIMEOUT_MS) {
-                suppressor.start()
-                activity.window.decorView.postDelayed(retry, VIEW_RETRY_MS)
+            val elapsed = SystemClock.uptimeMillis() - startedAt
+            if (host == null && elapsed < target.lateAttachWindowMs) {
+                if (!reportedLateAttach && elapsed >= VIEW_WAIT_TIMEOUT_MS) {
+                    reportedLateAttach = true
+                    target.onAttachDiagnostic("waiting for native bottom bar after ${elapsed} ms")
+                }
+                if (elapsed < VIEW_WAIT_TIMEOUT_MS) suppressor.start()
+                activity.window.decorView.postDelayed(
+                    retry,
+                    if (elapsed < VIEW_WAIT_TIMEOUT_MS) VIEW_RETRY_MS else LATE_VIEW_RETRY_MS,
+                )
                 return@Runnable
             }
             pendingAttachments.remove(activity)
             startupSuppressors.remove(activity)
             if (host == null) {
+                val root = activity.window.decorView
+                val barFound = target.resolveBottomBar?.invoke(root)
+                    ?: root.findDescendantByClassNames(target.bottomBarClassNames)
+                target.onAttachDiagnostic(
+                    if (barFound == null) "native bottom bar not found after ${elapsed} ms"
+                    else "navigation host unavailable after ${elapsed} ms",
+                )
                 Log.w(TAG, "${target.logName} ${target.testedVersion} bottom bar was not found")
             } else {
+                target.onAttachDiagnostic("floating navigation attached")
                 hosts[activity] = host
                 Log.i(TAG, "Attached ${target.logName} ${target.testedVersion} soft-glass navigation")
             }
@@ -210,6 +233,7 @@ internal class NativeViewBottomBarNavigation(
         const val SETTINGS_WAIT_TIMEOUT_MS = 1_500L
         const val VIEW_RETRY_MS = 16L
         const val VIEW_WAIT_TIMEOUT_MS = 8_000L
+        const val LATE_VIEW_RETRY_MS = 750L
         const val TAG = "MyHyperModifier"
     }
 }
@@ -259,7 +283,7 @@ private class NativeViewBottomBarHost private constructor(
     ) { backdropSnapshot = it }
     private val refreshPolicy = NavigationRefreshPolicy(target.nativeRefreshIntervalMs)
     private var foreground = true
-    private var stableNavigationInsetPx = 0
+    private val stableNavigationInset = StableNavigationBarInset()
     private val iconSnapshotter = NativeTabIconSnapshotter(activity.resources, activity.theme)
     private val trimmedIconCache = WeakHashMap<View, TrimmedNativeIconEntry>()
     private val contentBottomPadding = contentHost?.let(::InjectedScrollableContentBottomPadding)
@@ -272,6 +296,7 @@ private class NativeViewBottomBarHost private constructor(
     private val originalBottomAccessibility = nativeBottomBar.importantForAccessibility
     private var replacingNativeChrome = false
     private var nativeBarSuppressed = false
+    private var nativeTabsReady = false
     private val composeLayoutListener = View.OnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
         val contentInset = view.injectedNavigationContentInsetPx()
         if (replacingNativeChrome && contentInset > 0 &&
@@ -377,6 +402,7 @@ private class NativeViewBottomBarHost private constructor(
             return
         }
         val nativeTabs = nativeTabViews()
+        if (nativeTabs.size > 1) nativeTabsReady = true
         val selected = target.selectedIndexMethodName?.let(nativeBottomBar::invokeInt)
             ?.takeIf { it in nativeTabs.indices }
             ?: nativeTabs.indexOfFirst { it.isSelected || it.invokeBoolean("getStatus") }
@@ -400,7 +426,9 @@ private class NativeViewBottomBarHost private constructor(
                 target.tabVisible(it.label, it.nativeIndex)
             },
             navigationLiftDp = ModuleSettings.hyperGlassifyHiddenNavigationLift.coerceIn(0f, 48f),
-            navigationInsetPx = if (target.stableNavigationInset) navigationInsetPx() else 0,
+            navigationInsetPx = if (target.stableNavigationInset) {
+                stableNavigationInset.bottomPx(composeView, activity.window.decorView)
+            } else 0,
         )
         val selectionChanged = next.selectedIndex != state.selectedIndex
         val becameVisible = next.visible && !state.visible
@@ -410,19 +438,6 @@ private class NativeViewBottomBarHost private constructor(
         visibility.setVisible(next.visible)
         sampler.setActive(next.visible)
         if (selectionChanged || becameVisible) sampler.requestCaptureBurst()
-    }
-
-    private fun navigationInsetPx(): Int {
-        // The panel can briefly report a zero navigation inset after a child Activity closes.
-        // Keep the last real inset so its dock returns to the same height as before navigation.
-        val current = listOfNotNull(
-            composeView.rootWindowInsets,
-            activity.window.decorView.rootWindowInsets,
-        ).maxOfOrNull { insets ->
-            insets.getInsetsIgnoringVisibility(AndroidWindowInsets.Type.navigationBars()).bottom
-        } ?: 0
-        if (current > 0) stableNavigationInsetPx = current
-        return stableNavigationInsetPx
     }
 
     private fun View.readTabState(index: Int, selected: Boolean): NativeViewTabState {
@@ -493,7 +508,9 @@ private class NativeViewBottomBarHost private constructor(
 
     private fun updateNativeBarSuppression(overlayVisible: Boolean) {
         val suppress = NativeBottomBarPolicy.shouldSuppressNative(
-            target.enabled(), overlayVisible, target.retainNativeSuppressionDuringCover,
+            target.enabled() && nativeTabsReady,
+            overlayVisible,
+            target.retainNativeSuppressionDuringCover,
         )
         if (suppress) {
             nativeBarSuppressed = true
@@ -571,7 +588,8 @@ private class NativeViewBottomBarHost private constructor(
         fun create(activity: Activity, target: NativeViewBottomBarTarget): NativeViewBottomBarHost? =
             runCatching {
                 val overlayParent = activity.window.decorView as? ViewGroup ?: return null
-                val bar = overlayParent.findDescendantByClassNames(target.bottomBarClassNames)
+                val bar = (target.resolveBottomBar?.invoke(overlayParent)
+                    ?: overlayParent.findDescendantByClassNames(target.bottomBarClassNames))
                     ?: return null
                 val contentHost = target.contentHostMethodName?.let(activity::invokeNoArg) as? View
                     ?: target.contentHostResourceName?.let { name ->

@@ -1,5 +1,6 @@
 package com.aritxonly.myhypermodifier;
 
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -28,6 +29,23 @@ final class MediaIslandHostHooks {
     private static final Set<Method> INSTALLED = ConcurrentHashMap.newKeySet();
     private static final Map<View, Integer> ORIGINAL_BOTTOM_PADDING =
             Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, PullBarState> ORIGINAL_PULL_BARS =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
+    private static final class PullBarState {
+        final Drawable background;
+        final int width;
+        final int height;
+        final float alpha;
+
+        PullBarState(View bar) {
+            ViewGroup.LayoutParams params = bar.getLayoutParams();
+            background = bar.getBackground();
+            width = params == null ? 0 : params.width;
+            height = params == null ? 0 : params.height;
+            alpha = bar.getAlpha();
+        }
+    }
 
     static void install(XposedModule module, ClassLoader loader) {
         try {
@@ -44,6 +62,45 @@ final class MediaIslandHostHooks {
 
     static void installLoaded(XposedModule module, Class<?> type) throws Exception {
         for (Method method : type.getDeclaredMethods()) {
+            if ("setMiniBar".equals(method.getName())
+                    && method.getParameterCount() == 1
+                    && method.getParameterTypes()[0] == View.class
+                    && INSTALLED.add(method)) {
+                try {
+                    module.hook(method)
+                            .setId("super-island-pull-bar-init")
+                            .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                            .intercept(chain -> {
+                                Object result = chain.proceed();
+                                ModuleSettings.ensureLoaded();
+                                updatePullBar((View) chain.getArg(0));
+                                return result;
+                            });
+                } catch (Throwable error) {
+                    INSTALLED.remove(method);
+                    throw error;
+                }
+            }
+            if ("updateMiniBar".equals(method.getName())
+                    && method.getParameterCount() == 1
+                    && INSTALLED.add(method)) {
+                try {
+                    Method getter = type.getDeclaredMethod("getMiniBar");
+                    getter.setAccessible(true);
+                    module.hook(method)
+                            .setId("super-island-pull-bar-visibility")
+                            .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                            .intercept(chain -> {
+                                Object result = chain.proceed();
+                                ModuleSettings.ensureLoaded();
+                                updatePullBar((View) getter.invoke(chain.getThisObject()));
+                                return result;
+                            });
+                } catch (Throwable error) {
+                    INSTALLED.remove(method);
+                    throw error;
+                }
+            }
             Class<?>[] parameters = method.getParameterTypes();
             if (!"updateExpandedSize".equals(method.getName()) || parameters.length != 3
                     || parameters[0] != int.class || parameters[1] != int.class
@@ -113,6 +170,39 @@ final class MediaIslandHostHooks {
             } catch (Throwable error) {
                 INSTALLED.remove(method);
                 throw error;
+            }
+        }
+    }
+
+    private static void updatePullBar(View bar) {
+        if (bar == null) return;
+        PullBarState original = ORIGINAL_PULL_BARS.get(bar);
+        if (ModuleSettings.superIslandHidePullBar) {
+            if (original == null) {
+                original = new PullBarState(bar);
+                ORIGINAL_PULL_BARS.put(bar, original);
+                Log.i(TAG, "Hiding Super Island pull bar");
+            }
+            // HyperOS makes this View visible again during island state changes. Removing its
+            // background and geometry also keeps it invisible during those animations.
+            bar.setVisibility(View.GONE);
+            bar.setBackground(null);
+            bar.setAlpha(0f);
+            ViewGroup.LayoutParams params = bar.getLayoutParams();
+            if (params != null && (params.width != 0 || params.height != 0)) {
+                params.width = 0;
+                params.height = 0;
+                bar.setLayoutParams(params);
+            }
+        } else if (original != null) {
+            ORIGINAL_PULL_BARS.remove(bar);
+            bar.setBackground(original.background);
+            bar.setAlpha(original.alpha);
+            ViewGroup.LayoutParams params = bar.getLayoutParams();
+            if (params != null) {
+                params.width = original.width;
+                params.height = original.height;
+                bar.setLayoutParams(params);
             }
         }
     }

@@ -738,8 +738,9 @@ private fun scopeStatuses(
         appName = "系统界面",
         packageName = ModuleScopePackage.SYSTEM_UI,
         hasModification = listOf(
-            settings.gestureHandlePreset != GestureHandlePresets.STOCK || settings.gestureHandleAppModes.isNotEmpty() ||
-                settings.gestureHandleTouchReveal || settings.gestureHandleSwipeMotion,
+            settings.gestureHandleEnabled && (settings.gestureHandlePreset != GestureHandlePresets.STOCK ||
+                settings.gestureHandleAppModes.isNotEmpty() || settings.gestureHandleTouchReveal ||
+                settings.gestureHandleSwipeMotion),
             settings.notificationsEnabled,
             settings.hideHeadsUpMiniBar,
             settings.headsUpBottomMarginEnabled,

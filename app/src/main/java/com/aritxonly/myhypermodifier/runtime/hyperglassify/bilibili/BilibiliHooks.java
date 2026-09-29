@@ -18,19 +18,17 @@ final class BilibiliHooks {
     private static final String MAIN_ACTIVITY =
             "tv.danmaku.bili.MainActivityV2";
     private static final AtomicBoolean INSTALLED = new AtomicBoolean();
+    private static volatile XposedModule logger;
 
     private BilibiliHooks() {
     }
 
     static void install(XposedModule module, ClassLoader classLoader) {
         if (!INSTALLED.compareAndSet(false, true)) return;
+        logger = module;
         try {
             Class<?> mainActivity = Class.forName(MAIN_ACTIVITY, false, classLoader);
             Method onCreate = mainActivity.getDeclaredMethod("onCreate", Bundle.class);
-            Method onResume = mainActivity.getDeclaredMethod("onResume");
-            Method onDestroy = mainActivity.getDeclaredMethod("onDestroy");
-            Method dispatchTouchEvent = Activity.class.getDeclaredMethod(
-                    "dispatchTouchEvent", MotionEvent.class);
 
             module.hook(onCreate)
                     .setId("bilibili-floating-navigation-create")
@@ -50,7 +48,28 @@ final class BilibiliHooks {
                         return result;
                     });
 
-            module.hook(onResume)
+            installResumeHook(module, mainActivity);
+            installDestroyHook(module, mainActivity);
+            installTouchHook(module, mainActivity);
+            installPauseHook(module, mainActivity);
+            installFocusHook(module, mainActivity);
+            installTabClickHook(module, classLoader);
+            installPublishTouchHook(module, classLoader);
+            installHomeInsetsHook(module, classLoader);
+        } catch (Throwable throwable) {
+            INSTALLED.set(false);
+            module.log(Log.ERROR, TAG, "Could not install Bilibili navigation hooks", throwable);
+        }
+    }
+
+    static void logDiagnostic(String message) {
+        XposedModule module = logger;
+        if (module != null) module.log(Log.INFO, TAG, "Bilibili: " + message);
+    }
+
+    private static void installResumeHook(XposedModule module, Class<?> mainActivity) {
+        try {
+            module.hook(mainActivity.getDeclaredMethod("onResume"))
                     .setId("bilibili-floating-navigation-resume")
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
@@ -63,7 +82,14 @@ final class BilibiliHooks {
                         return result;
                     });
 
-            module.hook(onDestroy)
+        } catch (Throwable throwable) {
+            module.log(Log.WARN, TAG, "Bilibili resume hook unavailable", throwable);
+        }
+    }
+
+    private static void installDestroyHook(XposedModule module, Class<?> mainActivity) {
+        try {
+            module.hook(mainActivity.getDeclaredMethod("onDestroy"))
                     .setId("bilibili-floating-navigation-destroy")
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
@@ -74,6 +100,15 @@ final class BilibiliHooks {
                         return chain.proceed();
                     });
 
+        } catch (Throwable throwable) {
+            module.log(Log.WARN, TAG, "Bilibili destroy hook unavailable", throwable);
+        }
+    }
+
+    private static void installTouchHook(XposedModule module, Class<?> mainActivity) {
+        try {
+            Method dispatchTouchEvent = Activity.class.getDeclaredMethod(
+                    "dispatchTouchEvent", MotionEvent.class);
             module.hook(dispatchTouchEvent)
                     .setId("bilibili-floating-navigation-touch")
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
@@ -88,6 +123,13 @@ final class BilibiliHooks {
                         }
                         return result;
                     });
+        } catch (Throwable throwable) {
+            module.log(Log.WARN, TAG, "Bilibili touch hook unavailable", throwable);
+        }
+    }
+
+    private static void installPauseHook(XposedModule module, Class<?> mainActivity) {
+        try {
             module.hook(mainActivity.getDeclaredMethod("onPause"))
                     .setId("bilibili-floating-navigation-pause")
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
@@ -97,6 +139,13 @@ final class BilibiliHooks {
                         }
                         return chain.proceed();
                     });
+        } catch (Throwable throwable) {
+            module.log(Log.WARN, TAG, "Bilibili pause hook unavailable", throwable);
+        }
+    }
+
+    private static void installFocusHook(XposedModule module, Class<?> mainActivity) {
+        try {
             module.hook(mainActivity.getDeclaredMethod("onWindowFocusChanged", boolean.class))
                     .setId("bilibili-floating-navigation-focus")
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
@@ -107,9 +156,15 @@ final class BilibiliHooks {
                         }
                         return result;
                     });
+        } catch (Throwable throwable) {
+            module.log(Log.WARN, TAG, "Bilibili focus hook unavailable", throwable);
+        }
+    }
 
-            // Hook the two app-owned input callbacks, not ViewGroup.dispatchTouchEvent for every
-            // scrolling row and nested layout in the entire process.
+    /** Optional app internals must not prevent the Activity lifecycle from attaching the dock. */
+    private static void installTabClickHook(XposedModule module, ClassLoader classLoader) {
+        try {
+            // Hook the app callback, not ViewGroup.dispatchTouchEvent for every scrolling row.
             Class<?> tabClick = Class.forName(
                     "com.bilibili.lib.homepage.widget.TabHost$a", false, classLoader);
             module.hook(tabClick.getDeclaredMethod("onClick", View.class))
@@ -123,6 +178,13 @@ final class BilibiliHooks {
                         }
                         return chain.proceed();
                     });
+        } catch (Throwable throwable) {
+            module.log(Log.WARN, TAG, "Bilibili native tab click hook unavailable", throwable);
+        }
+    }
+
+    private static void installPublishTouchHook(XposedModule module, ClassLoader classLoader) {
+        try {
             Class<?> publishView = Class.forName(
                     "com.bilibili.lib.homepage.widget.HomeTabPublishView", false, classLoader);
             module.hook(publishView.getDeclaredMethod("onTouch", View.class, MotionEvent.class))
@@ -136,7 +198,13 @@ final class BilibiliHooks {
                         }
                         return chain.proceed();
                     });
+        } catch (Throwable throwable) {
+            module.log(Log.WARN, TAG, "Bilibili publish touch hook unavailable", throwable);
+        }
+    }
 
+    private static void installHomeInsetsHook(XposedModule module, ClassLoader classLoader) {
+        try {
             // Keep the app's listener authoritative; adjust its bottom inset after it runs.
             Class<?> mainInsets = Class.forName(
                     "tv.danmaku.bili.components.a", false, classLoader);
@@ -165,8 +233,7 @@ final class BilibiliHooks {
                         return result;
                     });
         } catch (Throwable throwable) {
-            INSTALLED.set(false);
-            module.log(Log.ERROR, TAG, "Could not install Bilibili navigation hooks", throwable);
+            module.log(Log.WARN, TAG, "Bilibili home inset hook unavailable", throwable);
         }
     }
 }
