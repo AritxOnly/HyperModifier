@@ -55,8 +55,8 @@ data class ModifierSettings(
     val islandHeight: Float = 160f,
     val islandProgressBar: Boolean = false,
     val superIslandHidePullBar: Boolean = false,
-    val superIslandPullBarBottomMarginEnabled: Boolean = false,
-    val superIslandPullBarBottomMarginDp: Float = 8f,
+    val superIslandContentBottomMarginEnabled: Boolean = false,
+    val superIslandContentBottomMarginDp: Float = 8f,
     val hideAodActions: Boolean = false,
     val hideAodSeamless: Boolean = false,
     val sinkLockscreenNotificationsForFingerprint: Boolean = false,
@@ -197,7 +197,7 @@ object ModifierSettingsPresets {
         islandEnabled = false,
         islandProgressBar = false,
         superIslandHidePullBar = false,
-        superIslandPullBarBottomMarginEnabled = false,
+        superIslandContentBottomMarginEnabled = false,
         hideAodActions = false,
         hideAodSeamless = false,
         sinkLockscreenNotificationsForFingerprint = false,
@@ -309,10 +309,14 @@ object ModifierSettingsStore {
     private const val KEY_ISLAND_HEIGHT = "island_height"
     private const val KEY_ISLAND_PROGRESS = "island_progress"
     private const val KEY_SUPER_ISLAND_HIDE_PULL_BAR = "super_island_hide_pull_bar"
-    private const val KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_ENABLED =
+    private const val LEGACY_KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_ENABLED =
         "super_island_pull_bar_bottom_margin_enabled"
-    private const val KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_DP =
+    private const val LEGACY_KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_DP =
         "super_island_pull_bar_bottom_margin_dp"
+    private const val KEY_SUPER_ISLAND_CONTENT_BOTTOM_MARGIN_ENABLED =
+        "super_island_content_bottom_margin_enabled"
+    private const val KEY_SUPER_ISLAND_CONTENT_BOTTOM_MARGIN_DP =
+        "super_island_content_bottom_margin_dp"
     private const val KEY_HIDE_AOD_ACTIONS = "hide_aod_actions"
     private const val KEY_HIDE_AOD_SEAMLESS = "hide_aod_seamless"
     private const val KEY_SINK_LOCKSCREEN_NOTIFICATIONS_FOR_FINGERPRINT =
@@ -493,11 +497,13 @@ object ModifierSettingsStore {
             islandHeight = prefs.getFloat(KEY_ISLAND_HEIGHT, 160f),
             islandProgressBar = prefs.getBoolean(KEY_ISLAND_PROGRESS, false),
             superIslandHidePullBar = prefs.getBoolean(KEY_SUPER_ISLAND_HIDE_PULL_BAR, false),
-            superIslandPullBarBottomMarginEnabled = prefs.getBoolean(
-                KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_ENABLED, false,
+            superIslandContentBottomMarginEnabled = prefs.getBoolean(
+                KEY_SUPER_ISLAND_CONTENT_BOTTOM_MARGIN_ENABLED,
+                prefs.getBoolean(LEGACY_KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_ENABLED, false),
             ),
-            superIslandPullBarBottomMarginDp = normalizedSuperIslandPullBarBottomMargin(
-                prefs.getFloat(KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_DP, 8f),
+            superIslandContentBottomMarginDp = normalizedSuperIslandContentBottomMargin(
+                prefs.getFloat(KEY_SUPER_ISLAND_CONTENT_BOTTOM_MARGIN_DP,
+                    prefs.getFloat(LEGACY_KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_DP, 8f)),
             ),
             hideAodActions = prefs.getBoolean(KEY_HIDE_AOD_ACTIONS, false),
             hideAodSeamless = prefs.getBoolean(KEY_HIDE_AOD_SEAMLESS, false),
@@ -725,12 +731,12 @@ object ModifierSettingsStore {
             .putBoolean(KEY_ISLAND_PROGRESS, value.islandProgressBar)
             .putBoolean(KEY_SUPER_ISLAND_HIDE_PULL_BAR, value.superIslandHidePullBar)
             .putBoolean(
-                KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_ENABLED,
-                value.superIslandPullBarBottomMarginEnabled,
+                KEY_SUPER_ISLAND_CONTENT_BOTTOM_MARGIN_ENABLED,
+                value.superIslandContentBottomMarginEnabled,
             )
             .putFloat(
-                KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_DP,
-                normalizedSuperIslandPullBarBottomMargin(value.superIslandPullBarBottomMarginDp),
+                KEY_SUPER_ISLAND_CONTENT_BOTTOM_MARGIN_DP,
+                normalizedSuperIslandContentBottomMargin(value.superIslandContentBottomMarginDp),
             )
             .putBoolean(KEY_HIDE_AOD_ACTIONS, value.hideAodActions)
             .putBoolean(KEY_HIDE_AOD_SEAMLESS, value.hideAodSeamless)
@@ -979,12 +985,12 @@ object ModifierSettingsStore {
         putBoolean(KEY_ISLAND_PROGRESS, value.islandProgressBar)
         putBoolean(KEY_SUPER_ISLAND_HIDE_PULL_BAR, value.superIslandHidePullBar)
         putBoolean(
-            KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_ENABLED,
-            value.superIslandPullBarBottomMarginEnabled,
+            KEY_SUPER_ISLAND_CONTENT_BOTTOM_MARGIN_ENABLED,
+            value.superIslandContentBottomMarginEnabled,
         )
         putFloat(
-            KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_DP,
-            normalizedSuperIslandPullBarBottomMargin(value.superIslandPullBarBottomMarginDp),
+            KEY_SUPER_ISLAND_CONTENT_BOTTOM_MARGIN_DP,
+            normalizedSuperIslandContentBottomMargin(value.superIslandContentBottomMarginDp),
         )
         putBoolean(KEY_HIDE_AOD_ACTIONS, value.hideAodActions)
         putBoolean(KEY_HIDE_AOD_SEAMLESS, value.hideAodSeamless)
@@ -1112,6 +1118,6 @@ object ModifierSettingsStore {
     private fun normalizedHeadsUpBottomMargin(margin: Float): Float =
         if (margin.isFinite()) margin.coerceIn(0f, 32f) else 13f
 
-    private fun normalizedSuperIslandPullBarBottomMargin(margin: Float): Float =
+    private fun normalizedSuperIslandContentBottomMargin(margin: Float): Float =
         if (margin.isFinite()) margin.coerceIn(0f, 48f) else 8f
 }

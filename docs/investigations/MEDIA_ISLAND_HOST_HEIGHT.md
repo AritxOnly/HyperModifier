@@ -38,6 +38,12 @@
 恢复；不修改全局 `expanded_island_height_dp` 资源，不改变非媒体事件的请求参数。
 stock 84dp 最小高度仍保留（滑块范围为 96–200dp）。
 
+超级岛内容底边距与横条显隐相互独立。配置内容底边距时，插件展开高度在原内容高度上
+增加该间距，原 `DynamicIslandData.getView()` 高度保持不变；`DynamicIslandExpandedView`
+的 `LightBgView` 底部增加等量 padding，让留白属于岛的背景和触摸区域，而不是移动
+已隐藏的 `mini_window_bar`。普通事件仍沿用原始高度上下限，媒体专属高度继续由播放器
+预设决定；旧的横条底边距设置键只用于迁移保存值。
+
 ## 尚需实机验收
 
 安装新签名包并重启 SystemUI 后重新展开媒体岛：

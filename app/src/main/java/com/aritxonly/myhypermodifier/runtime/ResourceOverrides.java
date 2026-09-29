@@ -63,11 +63,6 @@ final class ResourceOverrides {
                 if (!ModuleSettings.superIslandHidePullBar) return null;
                 dp = 0f;
                 break;
-            case "mini_window_bar_marginBottom":
-            case "mini_window_bar_margin_bottom":
-                if (!ModuleSettings.superIslandPullBarBottomMarginEnabled) return null;
-                dp = ModuleSettings.superIslandPullBarBottomMarginDp;
-                break;
             default:
                 return null;
         }

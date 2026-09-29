@@ -283,6 +283,7 @@ final class PluginHooks {
 
     private static boolean isPluginCornerClass(String className) {
         return MediaIslandHostHooks.CONTENT_CLASS.equals(className)
+                || MediaIslandHostHooks.EXPANDED_CLASS.equals(className)
                 || "miui.systemui.controlcenter.qs.tileview.QSTileItemIconView".equals(className)
                 || "miui.systemui.controlcenter.qs.tileview.QSCardItemView".equals(className)
                 || "miui.systemui.controlcenter.panel.main.recyclerview.ToggleSliderViewHolder".equals(className)
@@ -333,6 +334,8 @@ final class PluginHooks {
             throws Exception {
         if (MediaIslandHostHooks.CONTENT_CLASS.equals(className)) {
             MediaIslandHostHooks.installLoaded(module, loadedClass);
+        } else if (MediaIslandHostHooks.EXPANDED_CLASS.equals(className)) {
+            MediaIslandHostHooks.installExpandedLoaded(module, loadedClass);
         } else if ("miui.systemui.controlcenter.qs.tileview.QSTileItemIconView".equals(className)) {
             hookPluginCornerSetter(loadedClass, "setCornerRadius", ControlCenterSurface.TILE, false);
         } else if ("miui.systemui.controlcenter.qs.tileview.QSCardItemView".equals(className)) {

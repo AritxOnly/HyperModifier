@@ -80,8 +80,8 @@ final class ModuleSettings {
     static volatile int islandHeight = 160;
     static volatile boolean islandProgressBar = false;
     static volatile boolean superIslandHidePullBar = false;
-    static volatile boolean superIslandPullBarBottomMarginEnabled = false;
-    static volatile float superIslandPullBarBottomMarginDp = 8f;
+    static volatile boolean superIslandContentBottomMarginEnabled = false;
+    static volatile float superIslandContentBottomMarginDp = 8f;
     static volatile boolean hideAodActions = false;
     static volatile boolean hideAodSeamless = false;
     static volatile boolean sinkLockscreenNotificationsForFingerprint = false;
@@ -444,13 +444,15 @@ final class ModuleSettings {
             islandHeight = Math.round(values.getFloat("island_height", 160f));
             islandProgressBar = values.getBoolean("island_progress", false);
             superIslandHidePullBar = values.getBoolean("super_island_hide_pull_bar", false);
-            superIslandPullBarBottomMarginEnabled = values.getBoolean(
-                    "super_island_pull_bar_bottom_margin_enabled", false);
-            float requestedSuperIslandPullBarMargin = values.getFloat(
-                    "super_island_pull_bar_bottom_margin_dp", 8f);
-            superIslandPullBarBottomMarginDp = Float.isNaN(requestedSuperIslandPullBarMargin)
-                    || Float.isInfinite(requestedSuperIslandPullBarMargin) ? 8f
-                    : Math.max(0f, Math.min(48f, requestedSuperIslandPullBarMargin));
+            superIslandContentBottomMarginEnabled = values.getBoolean(
+                    "super_island_content_bottom_margin_enabled",
+                    values.getBoolean("super_island_pull_bar_bottom_margin_enabled", false));
+            float requestedSuperIslandContentMargin = values.getFloat(
+                    "super_island_content_bottom_margin_dp",
+                    values.getFloat("super_island_pull_bar_bottom_margin_dp", 8f));
+            superIslandContentBottomMarginDp = Float.isNaN(requestedSuperIslandContentMargin)
+                    || Float.isInfinite(requestedSuperIslandContentMargin) ? 8f
+                    : Math.max(0f, Math.min(48f, requestedSuperIslandContentMargin));
             hideAodActions = values.getBoolean("hide_aod_actions", false);
             hideAodSeamless = values.getBoolean("hide_aod_seamless", false);
             sinkLockscreenNotificationsForFingerprint = values.getBoolean(

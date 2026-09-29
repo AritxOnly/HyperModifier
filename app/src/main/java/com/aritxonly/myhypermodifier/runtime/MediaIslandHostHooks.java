@@ -1,31 +1,44 @@
 package com.aritxonly.myhypermodifier;
 
+import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.Map;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 import io.github.libxposed.api.XposedInterface;
 import io.github.libxposed.api.XposedModule;
 
-/** Keeps the plugin's backdrop/animation geometry aligned with the SystemUI media player. */
+/** Aligns media geometry and reserves bottom space inside expanded Super Island content. */
 final class MediaIslandHostHooks {
     static final String CONTENT_CLASS =
             "miui.systemui.dynamicisland.window.content.DynamicIslandBaseContentView";
+    static final String EXPANDED_CLASS =
+            "miui.systemui.dynamicisland.view.DynamicIslandExpandedView";
     private static final String PLAYER_CLASS =
             "com.android.systemui.statusbar.notification.mediaisland.PlayerIslandConstraintLayout";
     private static final String TAG = "MyHyperModifier";
     private static final Set<Method> INSTALLED = ConcurrentHashMap.newKeySet();
+    private static final Map<View, Integer> ORIGINAL_BOTTOM_PADDING =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     static void install(XposedModule module, ClassLoader loader) {
         try {
             installLoaded(module, Class.forName(CONTENT_CLASS, false, loader));
         } catch (Throwable error) {
-            Log.w(TAG, "Media island plugin geometry hook unavailable", error);
+            Log.w(TAG, "Super Island host geometry hook unavailable", error);
+        }
+        try {
+            installExpandedLoaded(module, Class.forName(EXPANDED_CLASS, false, loader));
+        } catch (Throwable error) {
+            Log.w(TAG, "Super Island content padding hook unavailable", error);
         }
     }
 
@@ -45,38 +58,58 @@ final class MediaIslandHostHooks {
             if (!INSTALLED.add(method)) continue;
             try {
                 module.hook(method)
-                        .setId("media-island-plugin-expanded-size")
+                        .setId("super-island-plugin-expanded-size")
                         .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                         .intercept(chain -> {
                             Object data = chain.getArg(2);
-                            View player = mediaPlayer(data);
-                            if (player == null) return chain.proceed();
                             ModuleSettings.ensureLoaded();
-                            int height = MediaConstraintCustomizer.requestedMediaIslandHeight(
-                                    player.getContext());
-                            if (height <= 0) return chain.proceed();
+                            View content = contentView(data);
+                            if (content == null) return chain.proceed();
+                            View player = findPlayer(content, 0);
+                            int mediaHeight = player == null ? 0
+                                    : MediaConstraintCustomizer.requestedMediaIslandHeight(
+                                            player.getContext());
+                            int margin = contentMarginPx(content);
                             Object host = chain.getThisObject();
+                            if (mediaHeight <= 0 && margin == 0) {
+                                Object result = chain.proceed();
+                                applyBottomPadding(expandedView(host), 0);
+                                return result;
+                            }
                             int stockMaximum = maximum.getInt(host);
                             int previous = actual.getInt(host);
-                            // The stock media branch always supplies the 168dp maximum, not the
-                            // player's measured height. Override this event only. Restore the cap
-                            // so the same host remains stock for 12306 and other future events.
-                            maximum.setInt(host, Math.max(stockMaximum, height));
+                            int requested = mediaHeight > 0 ? mediaHeight : (Integer) chain.getArg(1);
+                            int minimum = minimumExpandedHeight(content);
+                            int baseHeight = SuperIslandContentMargin.contentHeight(
+                                    requested, minimum, stockMaximum,
+                                    mediaHeight > 0 || isPromoted(data));
+                            int hostHeight = SuperIslandContentMargin.hostHeight(baseHeight, margin);
+                            // The stock cap is shared by media and other events. Widen it only
+                            // for this call so the reserved space is not clipped away.
+                            maximum.setInt(host, Math.max(stockMaximum, hostHeight));
                             Object result;
                             try {
-                                result = chain.proceed(new Object[]{chain.getArg(0), height, data});
+                                result = chain.proceed(new Object[]{chain.getArg(0), hostHeight, data});
                             } finally {
                                 maximum.setInt(host, stockMaximum);
                             }
                             int applied = actual.getInt(host);
-                            if (previous != applied) {
+                            if (margin > 0) {
+                                ViewGroup.LayoutParams params = content.getLayoutParams();
+                                if (params != null && params.height != baseHeight) {
+                                    params.height = baseHeight;
+                                    content.setLayoutParams(params);
+                                }
+                            }
+                            applyBottomPadding(expandedView(host), margin);
+                            if (player != null && mediaHeight > 0 && previous != applied) {
                                 Log.i(TAG, "Media island host height: " + previous + " -> "
-                                        + applied + ", requested=" + height
+                                        + applied + ", requested=" + hostHeight
                                         + ", player=" + player.getHeight());
                             }
                             return result;
                         });
-                Log.i(TAG, "Installed media island plugin geometry hook");
+                Log.i(TAG, "Installed Super Island host geometry hook");
             } catch (Throwable error) {
                 INSTALLED.remove(method);
                 throw error;
@@ -84,13 +117,96 @@ final class MediaIslandHostHooks {
         }
     }
 
-    private static View mediaPlayer(Object data) {
+    static void installExpandedLoaded(XposedModule module, Class<?> type) throws Exception {
+        for (Method method : type.getDeclaredMethods()) {
+            if (!method.getName().startsWith("setContentView$")
+                    || method.getParameterCount() != 1
+                    || method.getParameterTypes()[0] != View.class
+                    || !INSTALLED.add(method)) continue;
+            try {
+                module.hook(method)
+                        .setId("super-island-content-bottom-padding")
+                        .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                        .intercept(chain -> {
+                            Object result = chain.proceed();
+                            View expanded = (View) chain.getThisObject();
+                            ModuleSettings.ensureLoaded();
+                            applyBottomPadding(expanded, contentMarginPx(expanded));
+                            return result;
+                        });
+            } catch (Throwable error) {
+                INSTALLED.remove(method);
+                throw error;
+            }
+        }
+    }
+
+    private static View contentView(Object data) {
         if (data == null) return null;
         try {
             Object view = data.getClass().getMethod("getView").invoke(data);
-            return view instanceof View ? findPlayer((View) view, 0) : null;
+            return view instanceof View ? (View) view : null;
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             return null;
+        }
+    }
+
+    private static boolean isPromoted(Object data) {
+        try {
+            Object extras = data.getClass().getMethod("getExtras").invoke(data);
+            return extras instanceof Bundle && ((Bundle) extras).getBoolean("miui.focus.isPromoted");
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    private static int minimumExpandedHeight(View view) {
+        int id = view.getResources().getIdentifier(
+                "expanded_min_height", "dimen", "miui.systemui.plugin");
+        return id == 0 ? 0 : view.getResources().getDimensionPixelSize(id);
+    }
+
+    private static int contentMarginPx(View view) {
+        if (!ModuleSettings.superIslandContentBottomMarginEnabled) return 0;
+        return Math.round(ModuleSettings.superIslandContentBottomMarginDp
+                * view.getResources().getDisplayMetrics().density);
+    }
+
+    private static View expandedView(Object host) {
+        try {
+            Object value = host.getClass().getMethod("getExpandedView").invoke(host);
+            return value instanceof View ? (View) value : null;
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static void applyBottomPadding(View expanded, int margin) {
+        if (expanded == null) return;
+        try {
+            Object value = expanded.getClass().getMethod("getMContainer").invoke(expanded);
+            if (!(value instanceof View)) return;
+            View container = (View) value;
+            Integer original = ORIGINAL_BOTTOM_PADDING.get(container);
+            if (margin > 0) {
+                if (original == null) {
+                    original = container.getPaddingBottom();
+                    ORIGINAL_BOTTOM_PADDING.put(container, original);
+                }
+                int desired = original + margin;
+                if (container.getPaddingBottom() != desired) {
+                    container.setPadding(container.getPaddingLeft(), container.getPaddingTop(),
+                            container.getPaddingRight(), desired);
+                }
+            } else if (original != null) {
+                ORIGINAL_BOTTOM_PADDING.remove(container);
+                if (container.getPaddingBottom() != original) {
+                    container.setPadding(container.getPaddingLeft(), container.getPaddingTop(),
+                            container.getPaddingRight(), original);
+                }
+            }
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            Log.w(TAG, "Super Island content padding unavailable", error);
         }
     }
 

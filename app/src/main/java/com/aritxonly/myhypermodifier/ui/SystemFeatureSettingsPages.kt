@@ -166,21 +166,19 @@ import androidx.core.graphics.ColorUtils
             { update(settings.copy(superIslandHidePullBar = it)) },
         )
         SettingsSwitchItem(
-            "自定义下拉横条底边距",
+            "自定义超级岛内容底边距",
             "保存后重新触发超级岛即可生效",
-            settings.superIslandPullBarBottomMarginEnabled,
-            { update(settings.copy(superIslandPullBarBottomMarginEnabled = it)) },
-            enabled = !settings.superIslandHidePullBar,
+            settings.superIslandContentBottomMarginEnabled,
+            { update(settings.copy(superIslandContentBottomMarginEnabled = it)) },
         )
         SettingsSliderItemWithLabel(
-            "横条底边距",
-            settings.superIslandPullBarBottomMarginDp,
+            "内容底边距",
+            settings.superIslandContentBottomMarginDp,
             0f..48f,
-            { update(settings.copy(superIslandPullBarBottomMarginDp = it)) },
+            { update(settings.copy(superIslandContentBottomMarginDp = it)) },
             steps = 47,
             valueText = { "${settingNumber(it)} dp" },
-            enabled = !settings.superIslandHidePullBar
-                    && settings.superIslandPullBarBottomMarginEnabled,
+            enabled = settings.superIslandContentBottomMarginEnabled,
         )
     }
 }
