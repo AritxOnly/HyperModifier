@@ -1,0 +1,179 @@
+[
+  {
+    "model": "xiaomi-17-ultra",
+    "name": "specs-2432.png",
+    "url": "https://cdn.cnbj1.fds.api.mi-img.com/product-images/new-product-images/xiaomi-17-ultra_64894/images/2432.png",
+    "size": [
+      161,
+      337
+    ],
+    "alpha": [
+      0,
+      255
+    ],
+    "kind": "native",
+    "file": "phone-presets/images/xiaomi-17-ultra.png",
+    "page": "https://www.mi.com/prod/xiaomi-17-ultra",
+    "sha256": "f612651e9557d71c5df4858eb8c37270b631a24cd29f047a03ebeb8c7592d8e4"
+  },
+  {
+    "model": "xiaomi-17-ultra-byleica",
+    "name": "specs-220.png",
+    "url": "https://cdn.cnbj1.fds.api.mi-img.com/product-images/new-product-images/xiaomi-17-ultra-byleica_8068/images/220.png",
+    "size": [
+      160,
+      335
+    ],
+    "alpha": [
+      0,
+      255
+    ],
+    "kind": "native",
+    "file": "phone-presets/images/xiaomi-17-ultra-byleica.png",
+    "page": "https://www.mi.com/prod/xiaomi-17-ultra-byleica",
+    "sha256": "c009ec30966d37ee84b16868eb5e67284e77128b3e15e18265207c2fe1232568"
+  },
+  {
+    "model": "xiaomi-18-fold",
+    "name": "specs-1310.png",
+    "url": "https://cdn.cnbj1.fds.api.mi-img.com/product-images/new-product-images/xiaomi-18-fold_37057/images/1310.png",
+    "size": [
+      193,
+      270
+    ],
+    "alpha": [
+      0,
+      255
+    ],
+    "kind": "native",
+    "file": "phone-presets/images/xiaomi-18-fold.png",
+    "page": "https://www.mi.com/prod/xiaomi-18-fold",
+    "sha256": "e12fbfd18d9b83e6fa07b870998cb00838c719a98d5bd2321a84f0577b011b69"
+  },
+  {
+    "model": "xiaomi-18-pro",
+    "name": "specs-104.png",
+    "url": "https://cdn.cnbj1.fds.api.mi-img.com/product-images/new-product-images/xiaomi-18-pro_35873/images/104.png",
+    "size": [
+      163,
+      337
+    ],
+    "alpha": [
+      0,
+      255
+    ],
+    "kind": "native",
+    "file": "phone-presets/images/xiaomi-18-pro.png",
+    "page": "https://www.mi.com/prod/xiaomi-18-pro",
+    "sha256": "fc8d671ac87d29697e1adfc3b655bb4a52428f69facda246fa1c9fadfdda7e92"
+  },
+  {
+    "model": "xiaomi-18-pro-max",
+    "name": "specs-1311.png",
+    "url": "https://cdn.cnbj1.fds.api.mi-img.com/product-images/new-product-images/xiaomi-18-pro-max_36195/images/1311.png",
+    "size": [
+      163,
+      337
+    ],
+    "alpha": [
+      0,
+      255
+    ],
+    "kind": "native",
+    "file": "phone-presets/images/xiaomi-18-pro-max.png",
+    "page": "https://www.mi.com/prod/xiaomi-18-pro-max",
+    "sha256": "365b1a843abef295a4efd6f098e3960410a7f56048a2e6aa74d664a30430b51b"
+  },
+  {
+    "model": "redmi-k90",
+    "name": "specs-3329.png",
+    "url": "https://cdn.cnbj1.fds.api.mi-img.com/product-images/new-product-images/redmi-k90_70342/images/3329.png",
+    "size": [
+      389,
+      301
+    ],
+    "alpha": [
+      0,
+      255
+    ],
+    "kind": "edit-source",
+    "file": "phone-presets/images/redmi-k90.png",
+    "page": "https://www.mi.com/prod/redmi-k90",
+    "sha256": "8cfadde7f64f6ddcbe309e5046c9e3cd35e4d361e4d8af6dacc75e8f583fdd85"
+  },
+  {
+    "model": "redmi-k90-pro-max",
+    "name": "specs-3074.png",
+    "url": "https://cdn.cnbj1.fds.api.mi-img.com/product-images/new-product-images/redmi-k90-pro-max_55474/images/3074.png",
+    "size": [
+      400,
+      283
+    ],
+    "alpha": [
+      0,
+      255
+    ],
+    "kind": "edit-source",
+    "file": "phone-presets/images/redmi-k90-pro-max.png",
+    "page": "https://www.mi.com/prod/redmi-k90-pro-max",
+    "sha256": "7e19ca3f3b9a5ac40746516e12dbb3ef42e277d0d7ed5dc9750caef0f5e4d7c2"
+  },
+  {
+    "model": "redmi-k100-pro",
+    "name": "specs-3705.png",
+    "url": "https://cdn.cnbj1.fds.api.mi-img.com/product-images/new-product-images/redmi-k100-pro_37609/images/3705.png",
+    "size": [
+      400,
+      389
+    ],
+    "alpha": [
+      0,
+      255
+    ],
+    "kind": "edit-source",
+    "file": "phone-presets/images/redmi-k100-pro.png",
+    "page": "https://www.mi.com/prod/redmi-k100-pro",
+    "sha256": "519a0f7214d2026709145b8aa2ad03c9f9cd8562d11e85619a96881ce8f05a35"
+  },
+  {
+    "model": "redmi-k100-pro-max",
+    "name": "specs-8.png",
+    "url": "https://cdn.cnbj1.fds.api.mi-img.com/product-images/new-product-images/redmi-k100-pro-max_13406/images/8.png",
+    "size": [
+      399,
+      87
+    ],
+    "alpha": [
+      255,
+      255
+    ],
+    "kind": "edit-source",
+    "file": "phone-presets/images/redmi-k100-pro-max.png",
+    "page": "https://www.mi.com/prod/redmi-k100-pro-max",
+    "sha256": "b211298ab071ff58556f6f31f15ca504a09f877cec803b0d8ed28d67eba83d29"
+  },
+  {
+    "model": "xiaomi-17-pro",
+    "url": "https://cdn.cnbj1.fds.api.mi-img.com/product-images/new-product-images/xiaomi-17-pro_28479/images/12985.png",
+    "kind": "edit-source",
+    "file": "phone-presets/images/xiaomi-17-pro.png",
+    "page": "https://www.mi.com/prod/xiaomi-17-pro",
+    "sha256": "b9dc15361b0fd8f71f62f382cde8e44d92ad3aa37b1fd214e6c4488a829fb94f"
+  },
+  {
+    "model": "xiaomi-17-pro-max",
+    "url": "https://cdn.cnbj1.fds.api.mi-img.com/product-images/new-product-images/xiaomi-17-pro-max_87541/images/1337.png",
+    "kind": "edit-source",
+    "file": "phone-presets/images/xiaomi-17-pro-max.png",
+    "page": "https://www.mi.com/prod/xiaomi-17-pro-max",
+    "sha256": "f7d1f3708dcd383284e6f7baacb4c1603bf71c7de6897e29aa2cbd9a68e371c4"
+  },
+  {
+    "model": "xiaomi-17",
+    "url": "user-supplied:/Users/aritxonly/.Trash/xiaomi17.jpg",
+    "kind": "edit-source",
+    "page": "https://www.mi.com/prod/xiaomi-17",
+    "file": "phone-presets/images/xiaomi-17.png",
+    "sha256": "754d84375c6b70de048c2a896829f63b8f0db76adc423ee02b562cae1e1a9a8d"
+  }
+]
