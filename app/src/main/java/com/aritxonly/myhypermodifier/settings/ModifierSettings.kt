@@ -6,15 +6,29 @@ import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import io.github.libxposed.service.XposedService
+import java.util.UUID
 
 data class ModifierSettings(
-    val gestureHandleEnabled: Boolean = true,
-    val gestureHandlePreset: String = GestureHandlePresets.MODULE,
+    val settingsHomeEntryEnabled: Boolean = false,
+    val settingsModulesEntryEnabled: Boolean = false,
+    val settingsHomeEntryPosition: String = ModuleDefaultValues.SETTINGS_HOME_ENTRY_POSITION,
+    val settingsManagerEntryPosition: String = ModuleDefaultValues.SETTINGS_MANAGER_ENTRY_POSITION,
+    val settingsModuleEntries: String = "{}",
+    val aboutPhoneCardsEnabled: Boolean = ModuleDefaultValues.ABOUT_PHONE_CARDS_ENABLED,
+    val aboutPhoneImageSource: String = "auto",
+    val aboutPhonePresetUrl: String = PhonePresetRepository.DEFAULT_URL,
+    val aboutPhoneCustomImage: String = "",
+    val aboutPhoneImageTransforms: String = "{}",
+    val moduleHooksEnabled: Boolean = true,
+    val systemUiCompatibilityMode: Boolean = false,
+    val systemUiRetryGeneration: Int = 0,
+    val gestureHandleEnabled: Boolean = false,
+    val gestureHandlePreset: String = GestureHandlePresets.STOCK,
     val gestureHandleAppModes: Map<String, String> = emptyMap(),
-    val gestureHandleTouchReveal: Boolean = true,
-    val gestureHandleSwipeMotion: Boolean = true,
+    val gestureHandleTouchReveal: Boolean = false,
+    val gestureHandleSwipeMotion: Boolean = false,
     val gestureHandleTouchAreaDp: Float = GestureHandleTouchArea.DEFAULT_DP,
-    val notificationsEnabled: Boolean = false,
+    val notificationsEnabled: Boolean = true,
     val notificationRadius: Float = 28f,
     val hideHeadsUpMiniBar: Boolean = false,
     val headsUpBottomMarginEnabled: Boolean = false,
@@ -36,7 +50,7 @@ data class ModifierSettings(
     val globalBackgroundDimEnabled: Boolean = false,
     val globalBackgroundDimPercent: Float = 20f,
     val controlCenterFollowMiLinkBackgroundMaterial: Boolean = true,
-    val controlCenterEnabled: Boolean = false,
+    val controlCenterEnabled: Boolean = true,
     val controlCenterRadius: Float = 28f,
     val advancedControlCenterCorners: Boolean = false,
     val controlCenterTileRadius: Float = 28f,
@@ -45,28 +59,31 @@ data class ModifierSettings(
     val controlCenterDetailSliderRadius: Float = 28f,
     val controlCenterMediaRadius: Float = 28f,
     val controlCenterExternalEntryRadius: Float = 28f,
-    val volumePanelRadius: Float = 0f,
-    val miLinkMainCardsEnabled: Boolean = false,
-    val miLinkMainCardRadius: Float = 20f,
-    val mediaEnabled: Boolean = false,
+    val volumePanelRadius: Float = ModuleDefaultValues.VOLUME_PANEL_RADIUS,
+    val miLinkMainCardsEnabled: Boolean = ModuleDefaultValues.MI_LINK_MAIN_CARDS_ENABLED,
+    val miLinkMainCardRadius: Float = ModuleDefaultValues.MI_LINK_MAIN_CARD_RADIUS,
+    val mediaEnabled: Boolean = ModuleDefaultValues.MEDIA_ENABLED,
     val expandedHeight: Float = 152f,
     val collapsedHeight: Float = 120f,
     val fullAodHeight: Float = 80f,
-    val islandEnabled: Boolean = false,
+    val islandEnabled: Boolean = ModuleDefaultValues.ISLAND_ENABLED,
     val islandHeight: Float = 160f,
-    val islandProgressBar: Boolean = false,
+    val islandProgressBar: Boolean = ModuleDefaultValues.ISLAND_PROGRESS_BAR,
+    val superIslandWhitelistDisabled: Boolean = false,
     val superIslandHidePullBar: Boolean = false,
     val superIslandContentBottomMarginEnabled: Boolean = false,
     val superIslandContentBottomMarginDp: Float = 8f,
-    val hideAodActions: Boolean = false,
+    val hideAodActions: Boolean = ModuleDefaultValues.HIDE_AOD_ACTIONS,
     val hideAodSeamless: Boolean = false,
     val sinkLockscreenNotificationsForFingerprint: Boolean = false,
     val hideLockscreenFingerprintIcon: Boolean = false,
     val lowerLockscreenPasswordPage: Boolean = false,
     val showLockscreenFingerprintIconOnAod: Boolean = false,
     val forceLockscreenClockColon: Boolean = false,
-    val aodClockWeightEnabled: Boolean = false,
-    val aodClockWeight: Float = 400f,
+    val bypassHyperMusicCoverClockAdjustment: Boolean = false,
+    val progressiveLockscreenClockAvoidance: Boolean = false,
+    val aodClockWeightEnabled: Boolean = ModuleDefaultValues.AOD_CLOCK_WEIGHT_ENABLED,
+    val aodClockWeight: Float = ModuleDefaultValues.AOD_CLOCK_WEIGHT,
     val lockscreenPasswordBackgroundBlurEnabled: Boolean = false,
     /** Absolute value returned by SystemUI's wallpaperBlurRatio coroutine, from 0.0 to 1.0. */
     val lockscreenPasswordBackgroundOpacity: Float = 0f,
@@ -74,15 +91,24 @@ data class ModifierSettings(
     val lockscreenPinKeySoftGlassEnabled: Boolean = false,
     val lockscreenPinKeyGlassExtraRadius: Float = 6f,
     val lockscreenPinKeyGlassVerticalGap: Float = 16f,
+    val statusBarHideMobileTypeOnWifi: Boolean = false,
+    val statusBarHideMobileActivity: Boolean = false,
+    val statusBarHideWifiActivity: Boolean = false,
+    val statusBarHideWifiStandard: Boolean = false,
+    val statusBarMobileActivityOffsetX: Float = 0f,
+    val statusBarMobileActivityOffsetY: Float = 0f,
+    val statusBarWifiActivityOffsetX: Float = 0f,
+    val statusBarWifiActivityOffsetY: Float = 0f,
+    val statusBarNetworkSpeedRightGap: Float = 0f,
     val statusBarNetworkTypeEnabled: Boolean = false,
     val statusBarNetworkTypeSize: Float = 13.5f,
     val statusBarNetworkTypeBold: Boolean = true,
     val statusBarNetworkTypeOffset: Float = 0f,
-    val hyperGlassifyHiddenNavigationLift: Float = 24f,
-    val xiaomiHealthFloatingNavigationEnabled: Boolean = true,
+    val hyperGlassifyHiddenNavigationLift: Float = ModuleDefaultValues.HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT,
+    val xiaomiHealthFloatingNavigationEnabled: Boolean = ModuleDefaultValues.XIAOMI_HEALTH_FLOATING_NAVIGATION_ENABLED,
     val xiaomiHealthMiuixIconsEnabled: Boolean = false,
     val xiaomiHealthMonochromeIconsEnabled: Boolean = true,
-    val marketFloatingNavigationEnabled: Boolean = true,
+    val marketFloatingNavigationEnabled: Boolean = ModuleDefaultValues.MARKET_FLOATING_NAVIGATION_ENABLED,
     val marketMiuixIconsEnabled: Boolean = false,
     val marketMonochromeIconsEnabled: Boolean = true,
     // Application Store badges stay hidden in the glass navigation by design.
@@ -90,18 +116,18 @@ data class ModifierSettings(
     val marketHideGamesTab: Boolean = false,
     val marketHideRankingsTab: Boolean = false,
     val marketHideProfileTab: Boolean = false,
-    val miHomeFloatingNavigationEnabled: Boolean = true,
+    val miHomeFloatingNavigationEnabled: Boolean = ModuleDefaultValues.MI_HOME_FLOATING_NAVIGATION_ENABLED,
     val miHomeMiuixIconsEnabled: Boolean = false,
     val miHomeNavigationBadgesEnabled: Boolean = true,
-    val amapFloatingNavigationEnabled: Boolean = true,
+    val amapFloatingNavigationEnabled: Boolean = ModuleDefaultValues.AMAP_FLOATING_NAVIGATION_ENABLED,
     val amapMiuixIconsEnabled: Boolean = false,
     val amapMonochromeIconsEnabled: Boolean = true,
-    val amapHideLongPressVoiceTabEnabled: Boolean = true,
-    val xiaomiCommunityFloatingNavigationEnabled: Boolean = true,
+    val amapHideLongPressVoiceTabEnabled: Boolean = ModuleDefaultValues.AMAP_HIDE_LONG_PRESS_VOICE_TAB_ENABLED,
+    val xiaomiCommunityFloatingNavigationEnabled: Boolean = ModuleDefaultValues.XIAOMI_COMMUNITY_FLOATING_NAVIGATION_ENABLED,
     val xiaomiCommunityMiuixIconsEnabled: Boolean = false,
     val xiaomiCommunityMonochromeIconsEnabled: Boolean = true,
     val xiaomiCommunityNavigationBadgesEnabled: Boolean = true,
-    val bilibiliFloatingNavigationEnabled: Boolean = true,
+    val bilibiliFloatingNavigationEnabled: Boolean = ModuleDefaultValues.BILIBILI_FLOATING_NAVIGATION_ENABLED,
     val bilibiliNavigationBadgesEnabled: Boolean = true,
     val bilibiliHomeTabVisible: Boolean = true,
     val bilibiliDynamicTabVisible: Boolean = true,
@@ -109,15 +135,15 @@ data class ModifierSettings(
     val bilibiliMallTabVisible: Boolean = true,
     val bilibiliMineTabVisible: Boolean = true,
     val bilibiliPublishButtonVisible: Boolean = true,
-    val spotifyFloatingNavigationEnabled: Boolean = false,
-    val spotifyFavoriteButtonEnabled: Boolean = false,
-    val spotifyShuffleButtonEnabled: Boolean = false,
+    val spotifyFloatingNavigationEnabled: Boolean = ModuleDefaultValues.SPOTIFY_FLOATING_NAVIGATION_ENABLED,
+    val spotifyFavoriteButtonEnabled: Boolean = ModuleDefaultValues.SPOTIFY_FAVORITE_BUTTON_ENABLED,
+    val spotifyShuffleButtonEnabled: Boolean = ModuleDefaultValues.SPOTIFY_SHUFFLE_BUTTON_ENABLED,
     val customMediaConstraintSetEnabled: Boolean = false,
     val customMediaConstraintSetXml: String = "",
     val customMediaIslandConstraintSetEnabled: Boolean = false,
     val customMediaIslandConstraintSetXml: String = "",
-    /** Empty preserves installations made before the shared media preset selector existed. */
-    val mediaLayoutPreset: String = "",
+    /** Missing stored selectors still preserve legacy media installations when loading. */
+    val mediaLayoutPreset: String = ModuleDefaultValues.MEDIA_LAYOUT_PRESET,
     val systemMediaHeight: Float = 168f,
     val compactMediaHeight: Float = 84f,
     val standardMediaHeight: Float = 150f,
@@ -132,8 +158,8 @@ data class ModifierSettings(
 
 /** Explicit presets keep reset behavior independent from persisted values and future migrations. */
 object ModifierSettingsPresets {
-    /** Fresh installs enable HyperGlassify and the rule-based gesture handle module preset. */
-    fun moduleDefault(): ModifierSettings = ModifierSettings(mediaLayoutPreset = MediaLayoutPresets.SYSTEM)
+    /** Restore the preset selected in the module defaults editor. */
+    fun moduleDefault(): ModifierSettings = ModifierSettings()
 
     fun gestureHandlePreset(settings: ModifierSettings, preset: String): ModifierSettings {
         require(GestureHandlePresets.selectable(preset))
@@ -183,6 +209,7 @@ object ModifierSettingsPresets {
      * material alignment remains enabled by the module's default policy.
      */
     fun systemDefault(): ModifierSettings = ModifierSettings(
+        aboutPhoneCardsEnabled = false,
         gestureHandleEnabled = false,
         gestureHandlePreset = GestureHandlePresets.STOCK,
         gestureHandleAppModes = emptyMap(),
@@ -198,6 +225,7 @@ object ModifierSettingsPresets {
         mediaEnabled = false,
         islandEnabled = false,
         islandProgressBar = false,
+        superIslandWhitelistDisabled = false,
         superIslandHidePullBar = false,
         superIslandContentBottomMarginEnabled = false,
         hideAodActions = false,
@@ -207,10 +235,21 @@ object ModifierSettingsPresets {
         lowerLockscreenPasswordPage = false,
         showLockscreenFingerprintIconOnAod = false,
         forceLockscreenClockColon = false,
+        bypassHyperMusicCoverClockAdjustment = false,
+        progressiveLockscreenClockAvoidance = false,
         aodClockWeightEnabled = false,
         lockscreenPasswordBackgroundBlurEnabled = false,
         lockscreenPasswordBackgroundFollowShadeBlend = true,
         lockscreenPinKeySoftGlassEnabled = false,
+        statusBarHideMobileTypeOnWifi = false,
+        statusBarHideMobileActivity = false,
+        statusBarHideWifiActivity = false,
+        statusBarHideWifiStandard = false,
+        statusBarMobileActivityOffsetX = 0f,
+        statusBarMobileActivityOffsetY = 0f,
+        statusBarWifiActivityOffsetX = 0f,
+        statusBarWifiActivityOffsetY = 0f,
+        statusBarNetworkSpeedRightGap = 0f,
         statusBarNetworkTypeEnabled = false,
         xiaomiHealthFloatingNavigationEnabled = false,
         xiaomiHealthMiuixIconsEnabled = false,
@@ -259,6 +298,10 @@ object ModifierSettingsStore {
     private const val TAG = "MyHyperModifier"
     const val PREFS = "modifier_settings"
     const val METHOD_GET = "get_settings"
+    private const val KEY_MODULE_HOOKS_ENABLED = "module_hooks_enabled"
+    private const val KEY_SYSTEM_UI_COMPATIBILITY_MODE = "systemui_compatibility_mode"
+    private const val KEY_SYSTEM_UI_RETRY_GENERATION = "systemui_retry_generation"
+    private const val KEY_DIAGNOSTIC_TOKEN = "diagnostic_token"
     private const val KEY_GESTURE_HANDLE_MODULE_PRESET = "gesture_handle_module_preset"
     private const val KEY_GESTURE_HANDLE_ENABLED = "gesture_handle_enabled"
     private const val KEY_GESTURE_HANDLE_PRESET = "gesture_handle_preset"
@@ -311,6 +354,7 @@ object ModifierSettingsStore {
     private const val KEY_ISLAND = "island_enabled"
     private const val KEY_ISLAND_HEIGHT = "island_height"
     private const val KEY_ISLAND_PROGRESS = "island_progress"
+    private const val KEY_SUPER_ISLAND_WHITELIST_DISABLED = "super_island_whitelist_disabled"
     private const val KEY_SUPER_ISLAND_HIDE_PULL_BAR = "super_island_hide_pull_bar"
     private const val LEGACY_KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_ENABLED =
         "super_island_pull_bar_bottom_margin_enabled"
@@ -328,6 +372,18 @@ object ModifierSettingsStore {
     private const val KEY_LOWER_LOCKSCREEN_PASSWORD_PAGE = "lower_lockscreen_password_page"
     private const val KEY_SHOW_LOCKSCREEN_FINGERPRINT_ICON_ON_AOD =
         "show_lockscreen_fingerprint_icon_on_aod"
+    private const val KEY_BYPASS_HYPER_MUSIC_COVER_CLOCK_ADJUSTMENT = "bypass_hyper_music_cover_clock_adjustment"
+    private const val KEY_PROGRESSIVE_LOCKSCREEN_CLOCK_AVOIDANCE = "progressive_lockscreen_clock_avoidance"
+    private const val KEY_SETTINGS_HOME_ENTRY = "settings_home_entry_enabled"
+    private const val KEY_SETTINGS_MODULES_ENTRY = "settings_modules_entry_enabled"
+    private const val KEY_SETTINGS_ENTRY_POSITION = "settings_home_entry_position"
+    private const val KEY_SETTINGS_MANAGER_POSITION = "settings_manager_entry_position"
+    private const val KEY_SETTINGS_MODULE_ENTRIES = "settings_module_entries"
+    private const val KEY_ABOUT_PHONE_CARDS = "about_phone_cards_enabled"
+    private const val KEY_PHONE_IMAGE_SOURCE = "about_phone_image_source"
+    private const val KEY_PHONE_PRESET_URL = "about_phone_preset_url"
+    private const val KEY_PHONE_CUSTOM_IMAGE = "about_phone_custom_image"
+    private const val KEY_PHONE_IMAGE_TRANSFORMS = "about_phone_image_transforms"
     private const val KEY_FORCE_LOCKSCREEN_CLOCK_COLON = "force_lockscreen_clock_colon"
     private const val KEY_AOD_CLOCK_WEIGHT_ENABLED = "aod_clock_weight_enabled"
     private const val KEY_AOD_CLOCK_WEIGHT = "aod_clock_weight"
@@ -343,6 +399,15 @@ object ModifierSettingsStore {
         "lockscreen_pin_key_glass_extra_radius"
     private const val KEY_LOCKSCREEN_PIN_KEY_GLASS_VERTICAL_GAP =
         "lockscreen_pin_key_glass_vertical_gap"
+    private const val KEY_STATUS_BAR_HIDE_MOBILE_TYPE_ON_WIFI = "status_bar_hide_mobile_on_wifi"
+    private const val KEY_STATUS_BAR_HIDE_MOBILE_ACTIVITY = "status_bar_hide_mobile_activity"
+    private const val KEY_STATUS_BAR_HIDE_WIFI_ACTIVITY = "status_bar_hide_wifi_activity"
+    private const val KEY_STATUS_BAR_HIDE_WIFI_STANDARD = "status_bar_hide_wifi_standard"
+    private const val KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_X = "status_bar_mobile_activity_offset_x"
+    private const val KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_Y = "status_bar_mobile_activity_offset_y"
+    private const val KEY_STATUS_BAR_WIFI_ACTIVITY_OFFSET_X = "status_bar_wifi_activity_offset_x"
+    private const val KEY_STATUS_BAR_WIFI_ACTIVITY_OFFSET_Y = "status_bar_wifi_activity_offset_y"
+    private const val KEY_STATUS_BAR_NETWORK_SPEED_RIGHT_GAP = "status_bar_network_speed_right_gap"
     private const val KEY_STATUS_BAR_NETWORK_TYPE_ENABLED = "status_bar_network_type_enabled"
     private const val KEY_STATUS_BAR_NETWORK_TYPE_SIZE = "status_bar_network_type_size"
     private const val KEY_STATUS_BAR_NETWORK_TYPE_BOLD = "status_bar_network_type_bold"
@@ -420,19 +485,22 @@ object ModifierSettingsStore {
         val migrateGlassDefaults = HeadsUpGlassDefaults.isLegacyDefaultPair(regularGlass, darkGlass)
         val gesturePreset = GestureHandlePresets.fromStored(
             prefs.getString(KEY_GESTURE_HANDLE_PRESET, null),
-            prefs.getBoolean(KEY_GESTURE_HANDLE_MODULE_PRESET, true),
+            prefs.getBoolean(KEY_GESTURE_HANDLE_MODULE_PRESET, false),
         )
         val newModuleDefaults = gesturePreset == GestureHandlePresets.MODULE &&
             !prefs.contains(KEY_GESTURE_HANDLE_APP_MODES)
         return ModifierSettings(
-            gestureHandleEnabled = prefs.getBoolean(KEY_GESTURE_HANDLE_ENABLED, true),
+            moduleHooksEnabled = prefs.getBoolean(KEY_MODULE_HOOKS_ENABLED, true),
+            systemUiCompatibilityMode = prefs.getBoolean(KEY_SYSTEM_UI_COMPATIBILITY_MODE, false),
+            systemUiRetryGeneration = prefs.getInt(KEY_SYSTEM_UI_RETRY_GENERATION, 0),
+            gestureHandleEnabled = prefs.getBoolean(KEY_GESTURE_HANDLE_ENABLED, false),
             gestureHandlePreset = gesturePreset,
             gestureHandleAppModes = GestureHandleRules.decode(prefs.getString(KEY_GESTURE_HANDLE_APP_MODES, "")),
             gestureHandleTouchReveal = prefs.getBoolean(KEY_GESTURE_HANDLE_TOUCH_REVEAL, newModuleDefaults),
             gestureHandleSwipeMotion = prefs.getBoolean(KEY_GESTURE_HANDLE_SWIPE_MOTION, newModuleDefaults),
             gestureHandleTouchAreaDp = GestureHandleTouchArea.normalize(
                 prefs.getFloat(KEY_GESTURE_HANDLE_TOUCH_AREA_DP, GestureHandleTouchArea.DEFAULT_DP)),
-            notificationsEnabled = prefs.getBoolean(KEY_NOTIFICATIONS, false),
+            notificationsEnabled = prefs.getBoolean(KEY_NOTIFICATIONS, true),
             notificationRadius = prefs.getFloat(KEY_NOTIFICATION_RADIUS, 28f),
             hideHeadsUpMiniBar = prefs.getBoolean(KEY_HIDE_HEADS_UP_MINI_BAR, false),
             headsUpBottomMarginEnabled = prefs.getBoolean(KEY_HEADS_UP_BOTTOM_MARGIN_ENABLED, false),
@@ -481,7 +549,7 @@ object ModifierSettingsStore {
                 KEY_CONTROL_CENTER_FOLLOW_MILINK_BACKGROUND_MATERIAL,
                 true,
             ),
-            controlCenterEnabled = prefs.getBoolean(KEY_CONTROL_CENTER, false),
+            controlCenterEnabled = prefs.getBoolean(KEY_CONTROL_CENTER, true),
             controlCenterRadius = prefs.getFloat(KEY_CONTROL_CENTER_RADIUS, 28f),
             advancedControlCenterCorners = prefs.getBoolean(KEY_ADVANCED_CONTROL_CENTER_CORNERS, false),
             controlCenterTileRadius = prefs.getFloat(KEY_CONTROL_CENTER_TILE_RADIUS, 28f),
@@ -490,16 +558,17 @@ object ModifierSettingsStore {
             controlCenterDetailSliderRadius = prefs.getFloat(KEY_CONTROL_CENTER_DETAIL_SLIDER_RADIUS, 28f),
             controlCenterMediaRadius = prefs.getFloat(KEY_CONTROL_CENTER_MEDIA_RADIUS, 28f),
             controlCenterExternalEntryRadius = prefs.getFloat(KEY_CONTROL_CENTER_EXTERNAL_ENTRY_RADIUS, 28f),
-            volumePanelRadius = prefs.getFloat(KEY_VOLUME_PANEL_RADIUS, 0f),
-            miLinkMainCardsEnabled = prefs.getBoolean(KEY_MILINK_MAIN_CARDS, false),
-            miLinkMainCardRadius = prefs.getFloat(KEY_MILINK_MAIN_CARD_RADIUS, 20f),
-            mediaEnabled = prefs.getBoolean(KEY_MEDIA, false),
+            volumePanelRadius = prefs.getFloat(KEY_VOLUME_PANEL_RADIUS, ModuleDefaultValues.VOLUME_PANEL_RADIUS),
+            miLinkMainCardsEnabled = prefs.getBoolean(KEY_MILINK_MAIN_CARDS, ModuleDefaultValues.MI_LINK_MAIN_CARDS_ENABLED),
+            miLinkMainCardRadius = prefs.getFloat(KEY_MILINK_MAIN_CARD_RADIUS, ModuleDefaultValues.MI_LINK_MAIN_CARD_RADIUS),
+            mediaEnabled = prefs.getBoolean(KEY_MEDIA, ModuleDefaultValues.MEDIA_ENABLED),
             expandedHeight = prefs.getFloat(KEY_EXPANDED, 152f),
             collapsedHeight = prefs.getFloat(KEY_COLLAPSED, 120f),
             fullAodHeight = prefs.getFloat(KEY_FULL_AOD, 80f),
-            islandEnabled = prefs.getBoolean(KEY_ISLAND, false),
+            islandEnabled = prefs.getBoolean(KEY_ISLAND, ModuleDefaultValues.ISLAND_ENABLED),
             islandHeight = prefs.getFloat(KEY_ISLAND_HEIGHT, 160f),
-            islandProgressBar = prefs.getBoolean(KEY_ISLAND_PROGRESS, false),
+            islandProgressBar = prefs.getBoolean(KEY_ISLAND_PROGRESS, ModuleDefaultValues.ISLAND_PROGRESS_BAR),
+            superIslandWhitelistDisabled = prefs.getBoolean(KEY_SUPER_ISLAND_WHITELIST_DISABLED, false),
             superIslandHidePullBar = prefs.getBoolean(KEY_SUPER_ISLAND_HIDE_PULL_BAR, false),
             superIslandContentBottomMarginEnabled = prefs.getBoolean(
                 KEY_SUPER_ISLAND_CONTENT_BOTTOM_MARGIN_ENABLED,
@@ -509,7 +578,7 @@ object ModifierSettingsStore {
                 prefs.getFloat(KEY_SUPER_ISLAND_CONTENT_BOTTOM_MARGIN_DP,
                     prefs.getFloat(LEGACY_KEY_SUPER_ISLAND_PULL_BAR_BOTTOM_MARGIN_DP, 8f)),
             ),
-            hideAodActions = prefs.getBoolean(KEY_HIDE_AOD_ACTIONS, false),
+            hideAodActions = prefs.getBoolean(KEY_HIDE_AOD_ACTIONS, ModuleDefaultValues.HIDE_AOD_ACTIONS),
             hideAodSeamless = prefs.getBoolean(KEY_HIDE_AOD_SEAMLESS, false),
             sinkLockscreenNotificationsForFingerprint = prefs.getBoolean(
                 KEY_SINK_LOCKSCREEN_NOTIFICATIONS_FOR_FINGERPRINT,
@@ -521,9 +590,22 @@ object ModifierSettingsStore {
                 KEY_SHOW_LOCKSCREEN_FINGERPRINT_ICON_ON_AOD,
                 false,
             ),
+            settingsHomeEntryEnabled = prefs.getBoolean(KEY_SETTINGS_HOME_ENTRY, false),
+            settingsModulesEntryEnabled = prefs.getBoolean(KEY_SETTINGS_MODULES_ENTRY, false),
+            settingsHomeEntryPosition = SettingsHomeHeaderPolicy.normalizePosition(prefs.getString(KEY_SETTINGS_ENTRY_POSITION, ModuleDefaultValues.SETTINGS_HOME_ENTRY_POSITION)),
+            settingsManagerEntryPosition = SettingsHomeHeaderPolicy.normalizePosition(prefs.getString(KEY_SETTINGS_MANAGER_POSITION,
+                prefs.getString(KEY_SETTINGS_ENTRY_POSITION, ModuleDefaultValues.SETTINGS_MANAGER_ENTRY_POSITION))),
+            settingsModuleEntries = prefs.getString(KEY_SETTINGS_MODULE_ENTRIES, "{}") ?: "{}",
+            aboutPhoneCardsEnabled = prefs.getBoolean(KEY_ABOUT_PHONE_CARDS, ModuleDefaultValues.ABOUT_PHONE_CARDS_ENABLED),
+            aboutPhoneImageSource = prefs.getString(KEY_PHONE_IMAGE_SOURCE, "auto") ?: "auto",
+            aboutPhonePresetUrl = prefs.getString(KEY_PHONE_PRESET_URL, PhonePresetRepository.DEFAULT_URL) ?: PhonePresetRepository.DEFAULT_URL,
+            aboutPhoneCustomImage = prefs.getString(KEY_PHONE_CUSTOM_IMAGE, "") ?: "",
+            aboutPhoneImageTransforms = prefs.getString(KEY_PHONE_IMAGE_TRANSFORMS, "{}") ?: "{}",
             forceLockscreenClockColon = prefs.getBoolean(KEY_FORCE_LOCKSCREEN_CLOCK_COLON, false),
-            aodClockWeightEnabled = prefs.getBoolean(KEY_AOD_CLOCK_WEIGHT_ENABLED, false),
-            aodClockWeight = normalizedAodClockWeight(prefs.getFloat(KEY_AOD_CLOCK_WEIGHT, 400f)),
+            bypassHyperMusicCoverClockAdjustment = prefs.getBoolean(KEY_BYPASS_HYPER_MUSIC_COVER_CLOCK_ADJUSTMENT, false),
+            progressiveLockscreenClockAvoidance = prefs.getBoolean(KEY_PROGRESSIVE_LOCKSCREEN_CLOCK_AVOIDANCE, false),
+            aodClockWeightEnabled = prefs.getBoolean(KEY_AOD_CLOCK_WEIGHT_ENABLED, ModuleDefaultValues.AOD_CLOCK_WEIGHT_ENABLED),
+            aodClockWeight = normalizedAodClockWeight(prefs.getFloat(KEY_AOD_CLOCK_WEIGHT, ModuleDefaultValues.AOD_CLOCK_WEIGHT)),
             lockscreenPasswordBackgroundBlurEnabled = prefs.getBoolean(
                 KEY_LOCKSCREEN_PASSWORD_BACKGROUND_BLUR_ENABLED,
                 false,
@@ -548,43 +630,52 @@ object ModifierSettingsStore {
                 KEY_LOCKSCREEN_PIN_KEY_GLASS_VERTICAL_GAP,
                 16f,
             ).coerceIn(0f, 32f),
+            statusBarHideMobileTypeOnWifi = prefs.getBoolean(KEY_STATUS_BAR_HIDE_MOBILE_TYPE_ON_WIFI, false),
+            statusBarHideMobileActivity = prefs.getBoolean(KEY_STATUS_BAR_HIDE_MOBILE_ACTIVITY, false),
+            statusBarHideWifiActivity = prefs.getBoolean(KEY_STATUS_BAR_HIDE_WIFI_ACTIVITY, false),
+            statusBarHideWifiStandard = prefs.getBoolean(KEY_STATUS_BAR_HIDE_WIFI_STANDARD, false),
+            statusBarMobileActivityOffsetX = prefs.getFloat(KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_X, 0f),
+            statusBarMobileActivityOffsetY = prefs.getFloat(KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_Y, 0f),
+            statusBarWifiActivityOffsetX = prefs.getFloat(KEY_STATUS_BAR_WIFI_ACTIVITY_OFFSET_X, 0f),
+            statusBarWifiActivityOffsetY = prefs.getFloat(KEY_STATUS_BAR_WIFI_ACTIVITY_OFFSET_Y, 0f),
+            statusBarNetworkSpeedRightGap = prefs.getFloat(KEY_STATUS_BAR_NETWORK_SPEED_RIGHT_GAP, 0f),
             statusBarNetworkTypeEnabled = prefs.getBoolean(KEY_STATUS_BAR_NETWORK_TYPE_ENABLED, false),
             statusBarNetworkTypeSize = prefs.getFloat(KEY_STATUS_BAR_NETWORK_TYPE_SIZE, 13.5f),
             statusBarNetworkTypeBold = prefs.getBoolean(KEY_STATUS_BAR_NETWORK_TYPE_BOLD, true),
             statusBarNetworkTypeOffset = prefs.getFloat(KEY_STATUS_BAR_NETWORK_TYPE_OFFSET, 0f),
             hyperGlassifyHiddenNavigationLift = prefs.getFloat(
                 KEY_HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT,
-                24f,
+                ModuleDefaultValues.HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT,
             ).coerceIn(0f, 48f),
             xiaomiHealthFloatingNavigationEnabled = prefs.getBoolean(
                 KEY_XIAOMI_HEALTH_FLOATING_NAVIGATION,
-                true,
+                ModuleDefaultValues.XIAOMI_HEALTH_FLOATING_NAVIGATION_ENABLED,
             ),
             xiaomiHealthMiuixIconsEnabled = prefs.getBoolean(KEY_XIAOMI_HEALTH_MIUIX_ICONS, false),
             xiaomiHealthMonochromeIconsEnabled = prefs.getBoolean(
                 KEY_XIAOMI_HEALTH_MONOCHROME_ICONS,
                 true,
             ),
-            marketFloatingNavigationEnabled = prefs.getBoolean(KEY_MARKET_FLOATING_NAVIGATION, true),
+            marketFloatingNavigationEnabled = prefs.getBoolean(KEY_MARKET_FLOATING_NAVIGATION, ModuleDefaultValues.MARKET_FLOATING_NAVIGATION_ENABLED),
             marketMiuixIconsEnabled = prefs.getBoolean(KEY_MARKET_MIUIX_ICONS, false),
             marketMonochromeIconsEnabled = prefs.getBoolean(KEY_MARKET_MONOCHROME_ICONS, true),
             marketNavigationBadgesEnabled = false,
             marketHideGamesTab = prefs.getBoolean(KEY_MARKET_HIDE_GAMES_TAB, false),
             marketHideRankingsTab = prefs.getBoolean(KEY_MARKET_HIDE_RANKINGS_TAB, false),
             marketHideProfileTab = prefs.getBoolean(KEY_MARKET_HIDE_PROFILE_TAB, false),
-            miHomeFloatingNavigationEnabled = prefs.getBoolean(KEY_MI_HOME_FLOATING_NAVIGATION, true),
+            miHomeFloatingNavigationEnabled = prefs.getBoolean(KEY_MI_HOME_FLOATING_NAVIGATION, ModuleDefaultValues.MI_HOME_FLOATING_NAVIGATION_ENABLED),
             miHomeMiuixIconsEnabled = prefs.getBoolean(KEY_MI_HOME_MIUIX_ICONS, false),
             miHomeNavigationBadgesEnabled = prefs.getBoolean(KEY_MI_HOME_NAVIGATION_BADGES, true),
-            amapFloatingNavigationEnabled = prefs.getBoolean(KEY_AMAP_FLOATING_NAVIGATION, true),
+            amapFloatingNavigationEnabled = prefs.getBoolean(KEY_AMAP_FLOATING_NAVIGATION, ModuleDefaultValues.AMAP_FLOATING_NAVIGATION_ENABLED),
             amapMiuixIconsEnabled = prefs.getBoolean(KEY_AMAP_MIUIX_ICONS, false),
             amapMonochromeIconsEnabled = prefs.getBoolean(KEY_AMAP_MONOCHROME_ICONS, true),
             amapHideLongPressVoiceTabEnabled = prefs.getBoolean(
                 KEY_AMAP_HIDE_LONG_PRESS_VOICE_TAB,
-                true,
+                ModuleDefaultValues.AMAP_HIDE_LONG_PRESS_VOICE_TAB_ENABLED,
             ),
             xiaomiCommunityFloatingNavigationEnabled = prefs.getBoolean(
                 KEY_XIAOMI_COMMUNITY_FLOATING_NAVIGATION,
-                true,
+                ModuleDefaultValues.XIAOMI_COMMUNITY_FLOATING_NAVIGATION_ENABLED,
             ),
             xiaomiCommunityMiuixIconsEnabled = prefs.getBoolean(
                 KEY_XIAOMI_COMMUNITY_MIUIX_ICONS,
@@ -598,7 +689,7 @@ object ModifierSettingsStore {
                 KEY_XIAOMI_COMMUNITY_NAVIGATION_BADGES,
                 true,
             ),
-            bilibiliFloatingNavigationEnabled = prefs.getBoolean(KEY_BILIBILI_FLOATING_NAVIGATION_ENABLED, true),
+            bilibiliFloatingNavigationEnabled = prefs.getBoolean(KEY_BILIBILI_FLOATING_NAVIGATION_ENABLED, ModuleDefaultValues.BILIBILI_FLOATING_NAVIGATION_ENABLED),
             bilibiliNavigationBadgesEnabled = prefs.getBoolean(KEY_BILIBILI_NAVIGATION_BADGES_ENABLED, true),
             bilibiliHomeTabVisible = prefs.getBoolean(KEY_BILIBILI_HOME_TAB_VISIBLE, true),
             bilibiliFollowTabVisible = prefs.getBoolean(KEY_BILIBILI_FOLLOW_TAB_VISIBLE, true),
@@ -606,9 +697,9 @@ object ModifierSettingsStore {
             bilibiliMallTabVisible = prefs.getBoolean(KEY_BILIBILI_MALL_TAB_VISIBLE, true),
             bilibiliMineTabVisible = prefs.getBoolean(KEY_BILIBILI_MINE_TAB_VISIBLE, true),
             bilibiliPublishButtonVisible = prefs.getBoolean(KEY_BILIBILI_PUBLISH_BUTTON_VISIBLE, true),
-            spotifyFloatingNavigationEnabled = prefs.getBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, false),
-            spotifyFavoriteButtonEnabled = prefs.getBoolean(KEY_SPOTIFY_FAVORITE_BUTTON, false),
-            spotifyShuffleButtonEnabled = prefs.getBoolean(KEY_SPOTIFY_SHUFFLE_BUTTON, false),
+            spotifyFloatingNavigationEnabled = prefs.getBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, ModuleDefaultValues.SPOTIFY_FLOATING_NAVIGATION_ENABLED),
+            spotifyFavoriteButtonEnabled = prefs.getBoolean(KEY_SPOTIFY_FAVORITE_BUTTON, ModuleDefaultValues.SPOTIFY_FAVORITE_BUTTON_ENABLED),
+            spotifyShuffleButtonEnabled = prefs.getBoolean(KEY_SPOTIFY_SHUFFLE_BUTTON, ModuleDefaultValues.SPOTIFY_SHUFFLE_BUTTON_ENABLED),
             customMediaConstraintSetEnabled = prefs.getBoolean(KEY_CUSTOM_MEDIA_CONSTRAINT_SET, false),
             customMediaConstraintSetXml = prefs.getString(KEY_CUSTOM_MEDIA_CONSTRAINT_SET_XML, "").orEmpty(),
             customMediaIslandConstraintSetEnabled = prefs.getBoolean(
@@ -620,7 +711,7 @@ object ModifierSettingsStore {
             mediaLayoutPreset = prefs.getString(KEY_MEDIA_LAYOUT_PRESET,
                 if (prefs.contains(KEY_MEDIA) || prefs.contains(KEY_ISLAND)
                     || prefs.contains(KEY_CUSTOM_MEDIA_CONSTRAINT_SET)) ""
-                else MediaLayoutPresets.SYSTEM).orEmpty(),
+                else ModuleDefaultValues.MEDIA_LAYOUT_PRESET).orEmpty(),
             systemMediaHeight = prefs.getFloat(KEY_SYSTEM_MEDIA_HEIGHT, 168f),
             compactMediaHeight = prefs.getFloat(KEY_COMPACT_MEDIA_HEIGHT, 84f),
             standardMediaHeight = prefs.getFloat(KEY_STANDARD_MEDIA_HEIGHT, 150f),
@@ -637,8 +728,14 @@ object ModifierSettingsStore {
     fun save(context: Context, value: ModifierSettings) {
         val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val presetChanged = preferences.getString(KEY_GESTURE_HANDLE_PRESET, null) != value.gestureHandlePreset
+        val safetyGateChanged = preferences.getBoolean(KEY_MODULE_HOOKS_ENABLED, true) != value.moduleHooksEnabled ||
+            preferences.getBoolean(KEY_SYSTEM_UI_COMPATIBILITY_MODE, false) != value.systemUiCompatibilityMode ||
+            preferences.getInt(KEY_SYSTEM_UI_RETRY_GENERATION, 0) != value.systemUiRetryGeneration
         val editor = preferences.edit()
         editor
+            .putBoolean(KEY_MODULE_HOOKS_ENABLED, value.moduleHooksEnabled)
+            .putBoolean(KEY_SYSTEM_UI_COMPATIBILITY_MODE, value.systemUiCompatibilityMode)
+            .putInt(KEY_SYSTEM_UI_RETRY_GENERATION, value.systemUiRetryGeneration)
             .putBoolean(KEY_GESTURE_HANDLE_ENABLED, value.gestureHandleEnabled)
             .putString(KEY_GESTURE_HANDLE_PRESET, value.gestureHandlePreset)
             .putBoolean(KEY_GESTURE_HANDLE_MODULE_PRESET,
@@ -734,6 +831,7 @@ object ModifierSettingsStore {
             .putBoolean(KEY_ISLAND, value.islandEnabled)
             .putFloat(KEY_ISLAND_HEIGHT, value.islandHeight)
             .putBoolean(KEY_ISLAND_PROGRESS, value.islandProgressBar)
+            .putBoolean(KEY_SUPER_ISLAND_WHITELIST_DISABLED, value.superIslandWhitelistDisabled)
             .putBoolean(KEY_SUPER_ISLAND_HIDE_PULL_BAR, value.superIslandHidePullBar)
             .putBoolean(
                 KEY_SUPER_ISLAND_CONTENT_BOTTOM_MARGIN_ENABLED,
@@ -755,7 +853,19 @@ object ModifierSettingsStore {
                 KEY_SHOW_LOCKSCREEN_FINGERPRINT_ICON_ON_AOD,
                 value.showLockscreenFingerprintIconOnAod,
             )
+            .putBoolean(KEY_SETTINGS_HOME_ENTRY, value.settingsHomeEntryEnabled)
+            .putBoolean(KEY_SETTINGS_MODULES_ENTRY, value.settingsModulesEntryEnabled)
+            .putString(KEY_SETTINGS_ENTRY_POSITION, SettingsHomeHeaderPolicy.normalizePosition(value.settingsHomeEntryPosition))
+            .putString(KEY_SETTINGS_MANAGER_POSITION, SettingsHomeHeaderPolicy.normalizePosition(value.settingsManagerEntryPosition))
+            .putString(KEY_SETTINGS_MODULE_ENTRIES, value.settingsModuleEntries)
+            .putBoolean(KEY_ABOUT_PHONE_CARDS, value.aboutPhoneCardsEnabled)
+            .putString(KEY_PHONE_IMAGE_SOURCE, value.aboutPhoneImageSource)
+            .putString(KEY_PHONE_PRESET_URL, value.aboutPhonePresetUrl)
+            .putString(KEY_PHONE_CUSTOM_IMAGE, value.aboutPhoneCustomImage)
+            .putString(KEY_PHONE_IMAGE_TRANSFORMS, value.aboutPhoneImageTransforms)
             .putBoolean(KEY_FORCE_LOCKSCREEN_CLOCK_COLON, value.forceLockscreenClockColon)
+            .putBoolean(KEY_BYPASS_HYPER_MUSIC_COVER_CLOCK_ADJUSTMENT, value.bypassHyperMusicCoverClockAdjustment)
+            .putBoolean(KEY_PROGRESSIVE_LOCKSCREEN_CLOCK_AVOIDANCE, value.progressiveLockscreenClockAvoidance)
             .putBoolean(KEY_AOD_CLOCK_WEIGHT_ENABLED, value.aodClockWeightEnabled)
             .putFloat(KEY_AOD_CLOCK_WEIGHT, normalizedAodClockWeight(value.aodClockWeight))
             .putBoolean(
@@ -782,6 +892,15 @@ object ModifierSettingsStore {
                 KEY_LOCKSCREEN_PIN_KEY_GLASS_VERTICAL_GAP,
                 value.lockscreenPinKeyGlassVerticalGap,
             )
+            .putBoolean(KEY_STATUS_BAR_HIDE_MOBILE_TYPE_ON_WIFI, value.statusBarHideMobileTypeOnWifi)
+            .putBoolean(KEY_STATUS_BAR_HIDE_MOBILE_ACTIVITY, value.statusBarHideMobileActivity)
+            .putBoolean(KEY_STATUS_BAR_HIDE_WIFI_ACTIVITY, value.statusBarHideWifiActivity)
+            .putBoolean(KEY_STATUS_BAR_HIDE_WIFI_STANDARD, value.statusBarHideWifiStandard)
+            .putFloat(KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_X, value.statusBarMobileActivityOffsetX)
+            .putFloat(KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_Y, value.statusBarMobileActivityOffsetY)
+            .putFloat(KEY_STATUS_BAR_WIFI_ACTIVITY_OFFSET_X, value.statusBarWifiActivityOffsetX)
+            .putFloat(KEY_STATUS_BAR_WIFI_ACTIVITY_OFFSET_Y, value.statusBarWifiActivityOffsetY)
+            .putFloat(KEY_STATUS_BAR_NETWORK_SPEED_RIGHT_GAP, value.statusBarNetworkSpeedRightGap)
             .putBoolean(KEY_STATUS_BAR_NETWORK_TYPE_ENABLED, value.statusBarNetworkTypeEnabled)
             .putFloat(KEY_STATUS_BAR_NETWORK_TYPE_SIZE, value.statusBarNetworkTypeSize)
             .putBoolean(KEY_STATUS_BAR_NETWORK_TYPE_BOLD, value.statusBarNetworkTypeBold)
@@ -862,9 +981,9 @@ object ModifierSettingsStore {
             .putString(KEY_COMPACT_MEDIA_ISLAND_XML, value.compactMediaIslandXml)
             .putString(KEY_STANDARD_MEDIA_XML, value.standardMediaXml)
             .putString(KEY_STANDARD_MEDIA_ISLAND_XML, value.standardMediaIslandXml)
-        // A preset switch must survive leaving this Activity immediately after selection.
-        if (presetChanged) {
-            if (!editor.commit()) Log.w(TAG, "Could not persist gesture handle preset")
+        // Recovery switches and preset changes must survive an immediate process restart.
+        if (presetChanged || safetyGateChanged) {
+            if (!editor.commit()) Log.w(TAG, "Could not persist critical module settings")
         } else {
             editor.apply()
         }
@@ -882,13 +1001,40 @@ object ModifierSettingsStore {
         syncRemotePreferences(context)
     }
 
+    internal fun cachedPhonePreset(context: Context, key: String): String {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return if (prefs.getString("about_phone_preset_image_key", "") == key)
+            prefs.getString("about_phone_preset_image", "").orEmpty() else ""
+    }
+
+    internal fun cachePhonePreset(context: Context, key: String, image: String) {
+        if (cachedPhonePreset(context, key) == image) return
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        check(prefs.edit().putString("about_phone_preset_image_key", key)
+            .putString("about_phone_preset_image", image).commit()) { "无法保存图片缓存。" }
+        syncRemotePreferences(context)
+    }
+
     fun onXposedServiceDied() {
         remoteService = null
     }
 
+    @Synchronized
+    fun ensureDiagnosticToken(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getString(KEY_DIAGNOSTIC_TOKEN, null).isNullOrEmpty()) return
+        if (!prefs.edit().putString(KEY_DIAGNOSTIC_TOKEN, UUID.randomUUID().toString()).commit()) {
+            Log.w(TAG, "Could not initialize Hook diagnostic token")
+        }
+    }
+
+    fun diagnosticToken(context: Context): String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .getString(KEY_DIAGNOSTIC_TOKEN, "").orEmpty()
+
     private fun syncRemotePreferences(context: Context) {
         val service = remoteService ?: return
         try {
+            ensureDiagnosticToken(context)
             val source = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             // Preserve the actual framework scope for offline UI and SystemUI classification.
             source.edit().putString(KEY_GESTURE_HANDLE_SCOPE_PACKAGES, service.scope.joinToString("\n")).apply()
@@ -922,6 +1068,9 @@ object ModifierSettingsStore {
             .lineSequence().filter { it.isNotBlank() }.toSet()
 
     fun toBundle(value: ModifierSettings) = Bundle().apply {
+        putBoolean(KEY_MODULE_HOOKS_ENABLED, value.moduleHooksEnabled)
+        putBoolean(KEY_SYSTEM_UI_COMPATIBILITY_MODE, value.systemUiCompatibilityMode)
+        putInt(KEY_SYSTEM_UI_RETRY_GENERATION, value.systemUiRetryGeneration)
         putBoolean(KEY_GESTURE_HANDLE_ENABLED, value.gestureHandleEnabled)
         putString(KEY_GESTURE_HANDLE_PRESET, value.gestureHandlePreset)
         putBoolean(KEY_GESTURE_HANDLE_MODULE_PRESET,
@@ -989,6 +1138,7 @@ object ModifierSettingsStore {
         putBoolean(KEY_ISLAND, value.islandEnabled)
         putFloat(KEY_ISLAND_HEIGHT, value.islandHeight)
         putBoolean(KEY_ISLAND_PROGRESS, value.islandProgressBar)
+        putBoolean(KEY_SUPER_ISLAND_WHITELIST_DISABLED, value.superIslandWhitelistDisabled)
         putBoolean(KEY_SUPER_ISLAND_HIDE_PULL_BAR, value.superIslandHidePullBar)
         putBoolean(
             KEY_SUPER_ISLAND_CONTENT_BOTTOM_MARGIN_ENABLED,
@@ -1010,7 +1160,19 @@ object ModifierSettingsStore {
             KEY_SHOW_LOCKSCREEN_FINGERPRINT_ICON_ON_AOD,
             value.showLockscreenFingerprintIconOnAod,
         )
+        putBoolean(KEY_SETTINGS_HOME_ENTRY, value.settingsHomeEntryEnabled)
+        putBoolean(KEY_SETTINGS_MODULES_ENTRY, value.settingsModulesEntryEnabled)
+        putString(KEY_SETTINGS_ENTRY_POSITION, SettingsHomeHeaderPolicy.normalizePosition(value.settingsHomeEntryPosition))
+        putString(KEY_SETTINGS_MANAGER_POSITION, SettingsHomeHeaderPolicy.normalizePosition(value.settingsManagerEntryPosition))
+        putString(KEY_SETTINGS_MODULE_ENTRIES, value.settingsModuleEntries)
+        putBoolean(KEY_ABOUT_PHONE_CARDS, value.aboutPhoneCardsEnabled)
+        putString(KEY_PHONE_IMAGE_SOURCE, value.aboutPhoneImageSource)
+        putString(KEY_PHONE_PRESET_URL, value.aboutPhonePresetUrl)
+        putString(KEY_PHONE_CUSTOM_IMAGE, value.aboutPhoneCustomImage)
+        putString(KEY_PHONE_IMAGE_TRANSFORMS, value.aboutPhoneImageTransforms)
         putBoolean(KEY_FORCE_LOCKSCREEN_CLOCK_COLON, value.forceLockscreenClockColon)
+        putBoolean(KEY_BYPASS_HYPER_MUSIC_COVER_CLOCK_ADJUSTMENT, value.bypassHyperMusicCoverClockAdjustment)
+        putBoolean(KEY_PROGRESSIVE_LOCKSCREEN_CLOCK_AVOIDANCE, value.progressiveLockscreenClockAvoidance)
         putBoolean(KEY_AOD_CLOCK_WEIGHT_ENABLED, value.aodClockWeightEnabled)
         putFloat(KEY_AOD_CLOCK_WEIGHT, normalizedAodClockWeight(value.aodClockWeight))
         putBoolean(
@@ -1037,6 +1199,15 @@ object ModifierSettingsStore {
             KEY_LOCKSCREEN_PIN_KEY_GLASS_VERTICAL_GAP,
             value.lockscreenPinKeyGlassVerticalGap,
         )
+        putBoolean(KEY_STATUS_BAR_HIDE_MOBILE_TYPE_ON_WIFI, value.statusBarHideMobileTypeOnWifi)
+        putBoolean(KEY_STATUS_BAR_HIDE_MOBILE_ACTIVITY, value.statusBarHideMobileActivity)
+        putBoolean(KEY_STATUS_BAR_HIDE_WIFI_ACTIVITY, value.statusBarHideWifiActivity)
+        putBoolean(KEY_STATUS_BAR_HIDE_WIFI_STANDARD, value.statusBarHideWifiStandard)
+        putFloat(KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_X, value.statusBarMobileActivityOffsetX)
+        putFloat(KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_Y, value.statusBarMobileActivityOffsetY)
+        putFloat(KEY_STATUS_BAR_WIFI_ACTIVITY_OFFSET_X, value.statusBarWifiActivityOffsetX)
+        putFloat(KEY_STATUS_BAR_WIFI_ACTIVITY_OFFSET_Y, value.statusBarWifiActivityOffsetY)
+        putFloat(KEY_STATUS_BAR_NETWORK_SPEED_RIGHT_GAP, value.statusBarNetworkSpeedRightGap)
         putBoolean(KEY_STATUS_BAR_NETWORK_TYPE_ENABLED, value.statusBarNetworkTypeEnabled)
         putFloat(KEY_STATUS_BAR_NETWORK_TYPE_SIZE, value.statusBarNetworkTypeSize)
         putBoolean(KEY_STATUS_BAR_NETWORK_TYPE_BOLD, value.statusBarNetworkTypeBold)
@@ -1119,7 +1290,7 @@ object ModifierSettingsStore {
     }
 
     private fun normalizedAodClockWeight(weight: Float): Float =
-        if (weight.isFinite()) weight.coerceIn(100f, 700f) else 400f
+        if (weight.isFinite()) weight.coerceIn(100f, 700f) else ModuleDefaultValues.AOD_CLOCK_WEIGHT
 
     private fun normalizedHeadsUpBottomMargin(margin: Float): Float =
         if (margin.isFinite()) margin.coerceIn(0f, 32f) else 13f

@@ -69,6 +69,7 @@ final class MarketHooks {
         } catch (Throwable throwable) {
             INSTALLED.set(false);
             module.log(Log.ERROR, TAG, "Could not install Market navigation hooks", throwable);
+            HookDiagnostics.failure("com.xiaomi.market", "小米应用商店悬浮导航", throwable);
         }
     }
 }

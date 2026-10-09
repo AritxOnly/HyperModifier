@@ -51,7 +51,7 @@ class BilibiliNavigationPolicyTest {
     }
 
     @Test fun systemPresetDisablesReplacementAndModuleScopeIncludesOfficialApp() {
-        assertTrue(ModifierSettingsPresets.moduleDefault().bilibiliFloatingNavigationEnabled)
+        assertFalse(ModifierSettingsPresets.moduleDefault().bilibiliFloatingNavigationEnabled)
         assertFalse(ModifierSettingsPresets.systemDefault().bilibiliFloatingNavigationEnabled)
         assertTrue(ModuleScopePackage.PACKAGES.contains("tv.danmaku.bili"))
     }

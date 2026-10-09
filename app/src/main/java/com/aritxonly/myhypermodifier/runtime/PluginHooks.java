@@ -235,6 +235,7 @@ final class PluginHooks {
         } catch (Throwable throwable) {
             PLUGIN_FACTORY_HOOK_INSTALLED.set(false);
             Log.w(TAG, "SystemUI plugin loader factory hook unavailable", throwable);
+            HookDiagnostics.failure(SYSTEM_UI, "插件加载器", throwable);
         }
     }
 
@@ -278,6 +279,7 @@ final class PluginHooks {
                     });
         } catch (Throwable throwable) {
             Log.w(TAG, "MiLink Fusion Device Center card hook unavailable", throwable);
+            if (miLinkMainCardsEnabled) HookDiagnostics.failure(MILINK, "MiLink 卡片圆角", throwable);
         }
     }
 

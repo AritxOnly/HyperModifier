@@ -5,12 +5,15 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
     <queries>
+        <package android:name="org.lsposed.manager" />
+        <package android:name="com.android.shell" />
         <package android:name="com.mi.health" />
         <package android:name="com.xiaomi.market" />
         <package android:name="com.xiaomi.smarthome" />
         <package android:name="com.autonavi.minimap" />
         <package android:name="com.xiaomi.vipaccount" />
         <package android:name="tv.danmaku.bili" />
+        <package android:name="com.spotify.music" />
     </queries>
 
     <application
@@ -25,6 +28,13 @@
             android:authorities="com.aritxonly.myhypermodifier.settings"
             android:exported="true"
             android:grantUriPermissions="false" />
+        <receiver
+            android:name=".HookDiagnosticReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.aritxonly.myhypermodifier.HOOK_DIAGNOSTIC" />
+            </intent-filter>
+        </receiver>
         <activity
             android:name=".SettingsActivity"
             android:icon="@drawable/ic_launcher_mhm"
@@ -35,6 +45,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Settings may invoke this fixed request; ordinary apps may not. -->
+        <activity
+            android:name=".ManagerLaunchActivity"
+            android:exported="true"
+            android:permission="android.permission.WRITE_SECURE_SETTINGS"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <activity
             android:name=".DetailSettingsActivity"
             android:exported="false" />

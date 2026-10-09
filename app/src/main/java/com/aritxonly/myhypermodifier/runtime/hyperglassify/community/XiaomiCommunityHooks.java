@@ -89,6 +89,7 @@ final class XiaomiCommunityHooks {
         } catch (Throwable throwable) {
             INSTALLED.set(false);
             module.log(Log.ERROR, TAG, "Could not install Xiaomi Community navigation hooks", throwable);
+            HookDiagnostics.failure("com.xiaomi.vipaccount", "小米社区悬浮导航", throwable);
         }
     }
 }

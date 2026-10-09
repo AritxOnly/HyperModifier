@@ -59,6 +59,7 @@ final class BilibiliHooks {
         } catch (Throwable throwable) {
             INSTALLED.set(false);
             module.log(Log.ERROR, TAG, "Could not install Bilibili navigation hooks", throwable);
+            HookDiagnostics.failure("tv.danmaku.bili", "哔哩哔哩悬浮导航", throwable);
         }
     }
 

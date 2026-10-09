@@ -47,9 +47,11 @@ final class AodClockWeightHooks {
                         }
                         return chain.proceed();
                     });
+            HookDiagnostics.available("com.android.systemui", "息屏时钟字重");
         } catch (Throwable throwable) {
             INSTALLED.set(false);
             module.log(Log.WARN, TAG, "AllInOne AOD clock weight hook unavailable", throwable);
+            HookDiagnostics.failure("com.android.systemui", "息屏时钟字重", throwable);
         }
     }
 

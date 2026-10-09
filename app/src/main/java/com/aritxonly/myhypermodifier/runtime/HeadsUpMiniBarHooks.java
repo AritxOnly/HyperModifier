@@ -46,9 +46,12 @@ final class HeadsUpMiniBarHooks {
             if (REFRESH_REGISTERED.compareAndSet(false, true)) {
                 ModuleSettings.onLoaded(HeadsUpMiniBarHooks::refreshTrackedBars);
             }
+            HookDiagnostics.available("com.android.systemui", "悬浮通知迷你栏");
         } catch (Throwable throwable) {
             INSTALLED.set(false);
             module.log(Log.WARN, TAG, "Heads-up mini-window bar hook unavailable", throwable);
+            HookDiagnostics.failure(
+                    "com.android.systemui", "悬浮通知迷你栏", throwable);
         }
     }
 

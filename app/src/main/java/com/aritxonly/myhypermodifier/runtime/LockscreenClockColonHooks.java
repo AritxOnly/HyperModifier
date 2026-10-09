@@ -30,9 +30,12 @@ final class LockscreenClockColonHooks {
                         return ModuleSettings.forceLockscreenClockColon
                                 ? Boolean.TRUE : chain.proceed();
                     });
+            HookDiagnostics.available("com.android.systemui", "锁屏时钟冒号");
         } catch (Throwable throwable) {
             INSTALLED.set(false);
             module.log(Log.WARN, TAG, "Lockscreen clock colon hook unavailable", throwable);
+            HookDiagnostics.failure(
+                    "com.android.systemui", "锁屏时钟冒号", throwable);
         }
     }
 }

@@ -75,9 +75,12 @@ final class HeadsUpBottomMarginHooks {
             if (REFRESH_REGISTERED.compareAndSet(false, true)) {
                 ModuleSettings.onLoaded(HeadsUpBottomMarginHooks::refreshTrackedRows);
             }
+            HookDiagnostics.available("com.android.systemui", "悬浮通知底部间距");
         } catch (Throwable throwable) {
             INSTALLED.set(false);
             module.log(Log.WARN, TAG, "Heads-up bottom margin hook unavailable", throwable);
+            HookDiagnostics.failure(
+                    SYSTEM_UI_PACKAGE, "悬浮通知底部间距", throwable);
         }
     }
 
@@ -133,6 +136,8 @@ final class HeadsUpBottomMarginHooks {
                     });
         } catch (Throwable throwable) {
             module.log(Log.WARN, TAG, "Heads-up layout refresh hook unavailable", throwable);
+            HookDiagnostics.failure(
+                    SYSTEM_UI_PACKAGE, "悬浮通知布局刷新", throwable);
         }
     }
 

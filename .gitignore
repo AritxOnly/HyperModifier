@@ -39,3 +39,4 @@ google-services.json
 
 # Android Profiling
 *.hprof
+power-captures/

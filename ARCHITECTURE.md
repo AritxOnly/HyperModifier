@@ -25,7 +25,7 @@ app/src/main/java/com/aritxonly/
             ├── amap/                   Amap LiteTabBar / SurfaceView adapter
             ├── community/              Xiaomi Community BottomNavView adapter
             ├── bilibili/               Official Bilibili TabHost / publish-touch adapter
-            └── spotify/                Dormant Spotify experiment (not shipped in 1.3.8 scope)
+            └── spotify/                Spotify MediaSession actions, shared floating tabs and native player capsule
 ```
 
 ## Dependency direction

@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "presets": [
+    {
+      "id": "xiaomi-17",
+      "name": "小米 17",
+      "file": "images/xiaomi-17.png",
+      "sha256": "6101590c372078eb96a930b9785e0526473e7eab70dfc99e7921d214df9f4dd2"
+    },
+    {
+      "id": "xiaomi-17-pro",
+      "name": "小米 17 Pro",
+      "file": "images/xiaomi-17-pro.png",
+      "sha256": "b9dc15361b0fd8f71f62f382cde8e44d92ad3aa37b1fd214e6c4488a829fb94f"
+    },
+    {
+      "id": "xiaomi-17-pro-max",
+      "name": "小米 17 Pro Max",
+      "file": "images/xiaomi-17-pro-max.png",
+      "sha256": "f7d1f3708dcd383284e6f7baacb4c1603bf71c7de6897e29aa2cbd9a68e371c4"
+    },
+    {
+      "id": "xiaomi-17-ultra",
+      "name": "小米 17 Ultra",
+      "file": "images/xiaomi-17-ultra.png",
+      "sha256": "f612651e9557d71c5df4858eb8c37270b631a24cd29f047a03ebeb8c7592d8e4"
+    },
+    {
+      "id": "xiaomi-17-ultra-byleica",
+      "name": "小米 17 Ultra Leica",
+      "file": "images/xiaomi-17-ultra-byleica.png",
+      "sha256": "c009ec30966d37ee84b16868eb5e67284e77128b3e15e18265207c2fe1232568"
+    },
+    {
+      "id": "redmi-k90",
+      "name": "REDMI K90",
+      "file": "images/redmi-k90.png",
+      "sha256": "8cfadde7f64f6ddcbe309e5046c9e3cd35e4d361e4d8af6dacc75e8f583fdd85"
+    },
+    {
+      "id": "redmi-k90-pro-max",
+      "name": "REDMI K90 Pro Max",
+      "file": "images/redmi-k90-pro-max.png",
+      "sha256": "7e19ca3f3b9a5ac40746516e12dbb3ef42e277d0d7ed5dc9750caef0f5e4d7c2"
+    },
+    {
+      "id": "xiaomi-18-fold",
+      "name": "小米 18 Fold",
+      "file": "images/xiaomi-18-fold.png",
+      "sha256": "e12fbfd18d9b83e6fa07b870998cb00838c719a98d5bd2321a84f0577b011b69"
+    },
+    {
+      "id": "xiaomi-18-pro",
+      "name": "小米 18 Pro",
+      "file": "images/xiaomi-18-pro.png",
+      "sha256": "fc8d671ac87d29697e1adfc3b655bb4a52428f69facda246fa1c9fadfdda7e92"
+    },
+    {
+      "id": "xiaomi-18-pro-max",
+      "name": "小米 18 Pro Max",
+      "file": "images/xiaomi-18-pro-max.png",
+      "sha256": "365b1a843abef295a4efd6f098e3960410a7f56048a2e6aa74d664a30430b51b"
+    },
+    {
+      "id": "redmi-k100-pro",
+      "name": "REDMI K100 Pro",
+      "file": "images/redmi-k100-pro.png",
+      "sha256": "519a0f7214d2026709145b8aa2ad03c9f9cd8562d11e85619a96881ce8f05a35"
+    },
+    {
+      "id": "redmi-k100-pro-max",
+      "name": "REDMI K100 Pro Max",
+      "file": "images/redmi-k100-pro-max.png",
+      "sha256": "b211298ab071ff58556f6f31f15ca504a09f877cec803b0d8ed28d67eba83d29"
+    }
+  ]
+}

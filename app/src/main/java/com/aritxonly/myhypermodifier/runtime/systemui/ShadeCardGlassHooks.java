@@ -56,6 +56,12 @@ final class ShadeCardGlassHooks {
 
     private ShadeCardGlassHooks() {}
 
+    private static String processPackage() {
+        String name = android.app.Application.getProcessName();
+        return name != null && name.startsWith("miui.systemui.plugin")
+                ? "miui.systemui.plugin" : "com.android.systemui";
+    }
+
     static void install(XposedModule module) {
         if (disableShadeGlassHooks) return;
         if (SETTINGS_OBSERVER_INSTALLED.compareAndSet(false, true)) onChanged(ShadeCardGlassHooks::refresh);
@@ -108,9 +114,11 @@ final class ShadeCardGlassHooks {
                         return result;
                     });
             Log.i("MyHyperModifier", "Shared notification/Control Center card glass hook installed");
+            HookDiagnostics.available(processPackage(), "通知及控制中心玻璃卡片");
         } catch (Throwable error) {
             INSTALLED.set(false);
             Log.w("MyHyperModifier", "Shared card glass hook unavailable", error);
+            HookDiagnostics.failure(processPackage(), "通知及控制中心玻璃卡片", error);
         }
     }
 
@@ -155,9 +163,11 @@ final class ShadeCardGlassHooks {
                                 original, shadeCardBackgroundBlurPercent)});
                     });
             Log.i("MyHyperModifier", "Card blur hook installed: " + name);
+            HookDiagnostics.available(processPackage(), glass ? "卡片 Glass 模糊" : "卡片背景模糊");
         } catch (Throwable error) {
             installed.set(false);
             Log.w("MyHyperModifier", "Card blur API unavailable: " + name, error);
+            HookDiagnostics.failure(processPackage(), glass ? "卡片 Glass 模糊" : "卡片背景模糊", error);
         }
     }
 

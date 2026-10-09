@@ -160,9 +160,16 @@ fun SettingsSliderItemWithLabel(
     steps: Int = 0,
     enabled: Boolean = true,
     valueText: (Float) -> String = { "${it.toInt()} dp" },
+    onLabelClick: (() -> Unit)? = null,
 ) {
     Column(modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth().then(
+                if (onLabelClick != null) Modifier.clickable(enabled = enabled, onClick = onLabelClick)
+                else Modifier,
+            ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
                 text = label,
                 style = MiuixTheme.textStyles.body1,

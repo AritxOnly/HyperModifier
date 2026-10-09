@@ -132,6 +132,8 @@ fun MiuixFloatingTabBar(
     backdrop: LayerBackdrop? = LocalAdvancedMaterialBackdrop.current,
     recipe: GlassMaterialRecipe? = null,
     tint: Color? = null,
+    /** Use the full parent width instead of compact panel/item width caps. */
+    fillAvailableWidth: Boolean = false,
 ) {
     if (items.isEmpty()) return
 
@@ -173,12 +175,12 @@ fun MiuixFloatingTabBar(
 
     BoxWithConstraints(
         modifier = modifier
-            .widthIn(
+            .then(if (fillAvailableWidth) Modifier else Modifier.widthIn(
                 max = minOf(
                     MiuixFloatingTabBarDefaults.MaximumWidth,
                     MiuixFloatingTabBarDefaults.MaximumItemWidth * items.size,
                 ),
-            )
+            ))
             .fillMaxWidth()
             .height(MiuixFloatingTabBarDefaults.Height),
     ) {

@@ -40,8 +40,8 @@ android {
         applicationId = "com.aritxonly.myhypermodifier"
         minSdk = 33
         targetSdk = 35
-        versionCode = 37
-        versionName = "1.4.3"
+        versionCode = 38
+        versionName = "1.5.0"
     }
 
     signingConfigs {
@@ -77,6 +77,7 @@ android {
 }
 
 dependencies {
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
     compileOnly("io.github.libxposed:api:102.0.0")
     implementation("io.github.libxposed:service:102.0.0")
     implementation("androidx.activity:activity-compose:1.10.1")
@@ -89,6 +90,7 @@ dependencies {
     implementation("androidx.compose.material3:material3:1.5.0-alpha22")
     implementation("com.materialkolor:material-kolor:4.1.1")
     implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4-rc01")
+    implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4-rc01")
     implementation("top.yukonga.miuix.kmp:miuix-blur-android:0.9.4-rc01")
     implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4-rc01")
     implementation("io.github.kyant0:shapes:1.2.0")

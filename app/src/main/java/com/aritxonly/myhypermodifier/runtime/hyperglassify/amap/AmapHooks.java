@@ -95,6 +95,7 @@ final class AmapHooks {
         } catch (Throwable throwable) {
             INSTALLED.set(false);
             module.log(Log.ERROR, TAG, "Could not install Amap navigation hooks", throwable);
+            HookDiagnostics.failure("com.autonavi.minimap", "高德地图悬浮导航", throwable);
         }
     }
 }

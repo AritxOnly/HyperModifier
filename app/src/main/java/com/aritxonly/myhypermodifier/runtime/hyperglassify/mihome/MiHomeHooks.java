@@ -111,6 +111,7 @@ final class MiHomeHooks {
         } catch (Throwable throwable) {
             INSTALLED.set(false);
             module.log(Log.ERROR, TAG, "Could not install Mi Home navigation hooks", throwable);
+            HookDiagnostics.failure("com.xiaomi.smarthome", "米家悬浮导航", throwable);
         }
     }
 

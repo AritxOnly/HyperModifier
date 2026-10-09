@@ -102,8 +102,11 @@ final class GestureHandleHooks {
             } catch (NoSuchMethodException ignored) {
                 // OS3 has no NavigationHandle lifecycle overrides.
             }
+            HookDiagnostics.available("com.android.systemui", "手势提示线绘制");
         } catch (Throwable error) {
             module.log(Log.WARN, TAG, "Gesture handle draw hook unavailable", error);
+            HookDiagnostics.failure(
+                    "com.android.systemui", "手势提示线绘制", error);
         }
         try {
             Class<?> observer = Class.forName(TOP_OBSERVER, false, classLoader);
@@ -123,6 +126,8 @@ final class GestureHandleHooks {
             }
         } catch (Throwable error) {
             module.log(Log.WARN, TAG, "Gesture handle foreground hook unavailable", error);
+            HookDiagnostics.failure(
+                    "com.android.systemui", "手势提示线前台识别", error);
         }
         try {
             // Landscape quick-switch uses an overriding draw method rather than the base pill.

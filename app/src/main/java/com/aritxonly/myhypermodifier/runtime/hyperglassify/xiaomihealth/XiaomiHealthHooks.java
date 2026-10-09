@@ -70,6 +70,7 @@ final class XiaomiHealthHooks {
         } catch (Throwable throwable) {
             INSTALLED.set(false);
             module.log(Log.ERROR, TAG, "Could not install Xiaomi Health navigation hooks", throwable);
+            HookDiagnostics.failure("com.mi.health", "小米健康悬浮导航", throwable);
         }
     }
 }

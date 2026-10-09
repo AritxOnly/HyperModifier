@@ -1,6 +1,8 @@
 # 项目文档
 
-- [1.4.3 更新日志](../RELEASE_NOTES_v1.4.3.md)
+- [1.5.0 更新日志](../RELEASE_NOTES_v1.5.0.md)
+- [1.5.0 功能测试 TODO](testing/TEST_TODO_v1.5.0.md)
+- [1.4.3 历史更新日志](../RELEASE_NOTES_v1.4.3.md)
 - [1.4.2 历史更新日志](../RELEASE_NOTES_v1.4.2.md)
 - [1.4.1 历史更新日志](../RELEASE_NOTES_v1.4.1.md)
 - [1.4.0 历史更新日志](releases/RELEASE_NOTES_v1.4.0.md)

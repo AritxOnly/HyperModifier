@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -41,6 +43,14 @@ import java.text.Collator
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.ArrowUpDown
+import top.yukonga.miuix.kmp.basic.DropdownImpl
+import top.yukonga.miuix.kmp.basic.ListPopupColumn
+import top.yukonga.miuix.kmp.basic.PopupPositionProvider
+import top.yukonga.miuix.kmp.theme.LocalDismissState
+import top.yukonga.miuix.kmp.window.WindowListPopup
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.Button
@@ -76,7 +86,10 @@ internal fun GestureHandleSettingsPage(
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var apps by remember { mutableStateOf<List<GestureHandleApp>?>(null) }
     var loadFailed by remember { mutableStateOf(false) }
+    var refreshing by remember { mutableStateOf(false) }
+    var loadingApps by remember { mutableStateOf(true) }
     var loadAttempt by remember { mutableStateOf(0) }
+    fun refreshApps() { if (!loadingApps) { refreshing = true; loadingApps = true; loadAttempt++ } }
     var selectedPackage by rememberSaveable { mutableStateOf<String?>(null) }
     var presetAction by rememberSaveable { mutableStateOf<GestureHandlePresetAction?>(null) }
     var pendingPreset by rememberSaveable { mutableStateOf<String?>(null) }
@@ -84,8 +97,13 @@ internal fun GestureHandleSettingsPage(
     val currentPresetLabel = selectedPreset?.let(::gestureHandlePresetLabel) ?: "自定义"
     LaunchedEffect(context, loadAttempt) {
         loadFailed = false
-        apps = withContext(Dispatchers.IO) { runCatching { loadVisibleApps(context) }.getOrNull() }
-        loadFailed = apps == null
+        loadingApps = true
+        try {
+            val loaded = withContext(Dispatchers.IO) { loadVisibleApps(context) }
+            apps = loaded
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { loadFailed = true }
+        finally { loadingApps = false; refreshing = false }
     }
     LaunchedEffect(scroll) {
         snapshotFlow {
@@ -99,152 +117,164 @@ internal fun GestureHandleSettingsPage(
                 it.packageName.contains(query.trim(), ignoreCase = true)
         }
     }
-    LazyColumn(
-        state = scroll,
-        // Insets belong to the scrollable content, so the viewport and backdrop extend
-        // beneath the top bar and system navigation area throughout the scroll.
-        modifier = Modifier.fillMaxSize().consumeWindowInsets(padding),
-        contentPadding = PaddingValues(
-            start = padding.calculateStartPadding(layoutDirection) + 16.dp,
-            top = padding.calculateTopPadding(),
-            end = padding.calculateEndPadding(layoutDirection) + 16.dp,
-            bottom = padding.calculateBottomPadding() + 82.dp,
-        ),
-    ) {
-        item {
-            SettingsSection {
-                SettingsSwitchItem(
-                    "启用手势提示线修改",
-                    "关闭后由系统控制手势提示线，保留下面的预设和应用规则。",
-                    settings.gestureHandleEnabled,
-                    { update(settings.copy(gestureHandleEnabled = it)) },
-                )
-            }
-            SettingsSection {
-                SettingItem(
-                    "选择预设", "",
-                    trailingContent = {
-                        Text(
-                            "当前：$currentPresetLabel",
-                            color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+    RefreshableSettingsContent(padding, refreshing, ::refreshApps) {
+        LazyColumn(
+            state = scroll,
+            // Insets belong to the scrollable content, so the viewport and backdrop extend
+            // beneath the top bar and system navigation area throughout the scroll.
+            modifier = Modifier.fillMaxSize().consumeWindowInsets(padding),
+            contentPadding = PaddingValues(
+                start = padding.calculateStartPadding(layoutDirection) + 16.dp,
+                top = padding.calculateTopPadding(),
+                end = padding.calculateEndPadding(layoutDirection) + 16.dp,
+                bottom = padding.calculateBottomPadding() + 82.dp,
+            ),
+        ) {
+            item {
+                SettingsSection {
+                    SettingsSwitchItem(
+                        "启用手势提示线修改",
+                        "关闭后由系统控制手势提示线，保留下面的预设和应用规则。",
+                        settings.gestureHandleEnabled,
+                        { update(settings.copy(gestureHandleEnabled = it)) },
+                    )
+                }
+                SettingsSection {
+                    SettingItem(
+                        "选择预设", "",
+                        trailingContent = {
+                            Text(
+                                "当前：$currentPresetLabel",
+                                color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                            )
+                        },
+                        onClick = {
+                            focus.clearFocus()
+                            keyboard?.hide()
+                            pendingPreset = selectedPreset?.takeIf(GestureHandlePresets::selectable)
+                            presetAction = GestureHandlePresetAction.Choose
+                        },
+                    )
+                    SettingsSwitchItem("触摸时显示 3 秒", "", settings.gestureHandleTouchReveal,
+                        { update(settings.copy(gestureHandleTouchReveal = it)) })
+                    SettingsSwitchItem("滑动时跟随", "", settings.gestureHandleSwipeMotion,
+                        { update(settings.copy(gestureHandleSwipeMotion = it)) })
+                    SettingsSliderItemWithLabel(
+                        "底部响应距离", settings.gestureHandleTouchAreaDp,
+                        0f..GestureHandleTouchArea.MAX_DP,
+                        { update(settings.copy(gestureHandleTouchAreaDp = it.roundToInt().toFloat())) },
+                        steps = GestureHandleTouchArea.MAX_DP.toInt() - 1,
+                        valueText = { "${it.roundToInt()} dp" },
+                    )
+                }
+                SearchBar(
+                    inputField = {
+                        InputField(
+                            query = query,
+                            onQueryChange = { query = it },
+                            onSearch = { focus.clearFocus(); keyboard?.hide() },
+                            expanded = searchExpanded,
+                            onExpandedChange = { searchExpanded = it },
+                            label = "搜索应用名称或包名",
                         )
                     },
-                    onClick = {
-                        focus.clearFocus()
-                        keyboard?.hide()
-                        pendingPreset = selectedPreset?.takeIf(GestureHandlePresets::selectable)
-                        presetAction = GestureHandlePresetAction.Choose
+                    expanded = searchExpanded,
+                    onExpandedChange = { searchExpanded = it },
+                    outsideEndAction = {
+                        TextButton("取消", { searchExpanded = false; query = ""; focus.clearFocus(); keyboard?.hide() })
                     },
-                )
-                SettingsSwitchItem("触摸时显示 3 秒", "", settings.gestureHandleTouchReveal,
-                    { update(settings.copy(gestureHandleTouchReveal = it)) })
-                SettingsSwitchItem("滑动时跟随", "", settings.gestureHandleSwipeMotion,
-                    { update(settings.copy(gestureHandleSwipeMotion = it)) })
-                SettingsSliderItemWithLabel(
-                    "底部响应距离", settings.gestureHandleTouchAreaDp,
-                    0f..GestureHandleTouchArea.MAX_DP,
-                    { update(settings.copy(gestureHandleTouchAreaDp = it.roundToInt().toFloat())) },
-                    steps = GestureHandleTouchArea.MAX_DP.toInt() - 1,
-                    valueText = { "${it.roundToInt()} dp" },
-                )
-            }
-            SearchBar(
-                inputField = {
-                    InputField(
-                        query = query,
-                        onQueryChange = { query = it },
-                        onSearch = { focus.clearFocus(); keyboard?.hide() },
-                        expanded = searchExpanded,
-                        onExpandedChange = { searchExpanded = it },
-                        label = "搜索应用名称或包名",
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                ) {
+                    Text(
+                        "${filtered.size} 个匹配应用",
+                        style = MiuixTheme.textStyles.footnote1,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                     )
-                },
-                expanded = searchExpanded,
-                onExpandedChange = { searchExpanded = it },
-                outsideEndAction = {
-                    TextButton("取消", { searchExpanded = false; query = ""; focus.clearFocus(); keyboard?.hide() })
-                },
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            ) {
+                }
                 Text(
-                    "${filtered.size} 个匹配应用",
+                    "应用列表（包含系统应用）",
                     style = MiuixTheme.textStyles.footnote1,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    color = MiuixTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                 )
             }
-            Text(
-                "应用列表（包含系统应用）",
-                style = MiuixTheme.textStyles.footnote1,
-                color = MiuixTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-            )
-        }
-        if (apps == null) {
-            item {
-                SettingsSection {
-                    SettingItem(
-                        if (loadFailed) "应用列表加载失败" else "正在加载应用…",
-                        if (loadFailed) "" else "筛选具有可见 Activity 页面的应用",
-                        onClick = if (loadFailed) ({ loadAttempt++ }) else null,
-                    )
-                }
-            }
-        } else if (filtered.isEmpty()) {
-            item { SettingsSection { SettingItem("没有匹配的应用", "尝试其他名称或包名") } }
-        }
-        if (filtered.isNotEmpty()) item {
-            SettingsSection {
-                filtered.forEach { app ->
-                    key(app.packageName) {
+            if (apps == null || loadFailed) {
+                item {
+                    SettingsSection {
                         SettingItem(
-                            app.label,
-                            "",
-                            leadingContent = {
-                                app.icon?.let { Image(it, contentDescription = null, modifier = Modifier.size(40.dp)) }
-                            },
-                            trailingContent = {
-                                Text(
-                                    gestureHandleModeLabel(effectiveMode(settings, app, scope)),
-                                    color = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                                )
-                            },
-                            onClick = { focus.clearFocus(); keyboard?.hide(); selectedPackage = app.packageName },
+                            if (loadFailed) "应用列表加载失败" else "正在加载应用…",
+                            if (loadFailed) "" else "筛选具有可见 Activity 页面的应用",
+                            onClick = if (loadFailed) (::refreshApps) else null,
                         )
                     }
                 }
+            } else if (filtered.isEmpty()) {
+                item { SettingsSection { SettingItem("没有匹配的应用", "尝试其他名称或包名") } }
             }
-        }
-    }
-    selectedPackage?.let { packageName ->
-        val app = apps.orEmpty().firstOrNull { it.packageName == packageName }
-        fun select(mode: String?) {
-            val modes = settings.gestureHandleAppModes.toMutableMap()
-            if (mode == null) modes.remove(packageName) else modes[packageName] = mode
-            update(settings.copy(gestureHandleAppModes = modes.toMap()))
-            selectedPackage = null
-        }
-        val effective = effectiveMode(settings, app, scope)
-        DeadlinerMiuixDialog(true, app?.label ?: packageName, "当前模式：${gestureHandleModeLabel(effective)}", { selectedPackage = null }) {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
-                listOf(
-                    GestureHandleRules.SHOW,
-                    GestureHandleRules.HIDE,
-                    GestureHandleRules.IMMERSIVE,
-                ).forEach { mode ->
-                    SettingsCheckboxItem(
-                        gestureHandleModeLabel(mode), "",
-                        effective == mode,
-                        { select(mode) },
-                    )
-                }
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    TextButton("跟随系统", { select(GestureHandleRules.SYSTEM) }, modifier = Modifier.fillMaxWidth())
-                    TextButton("恢复预设", { select(null) }, modifier = Modifier.fillMaxWidth())
-                    TextButton("取消", { selectedPackage = null }, modifier = Modifier.fillMaxWidth())
+            if (filtered.isNotEmpty()) item {
+                SettingsSection {
+                    filtered.forEach { app ->
+                        key(app.packageName) {
+                            val effective = effectiveMode(settings, app, scope)
+                            Box {
+                                SettingItem(
+                                    app.label,
+                                    "",
+                                    leadingContent = {
+                                        app.icon?.let { Image(it, contentDescription = null, modifier = Modifier.size(40.dp)) }
+                                    },
+                                    trailingContent = {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            Text(
+                                                gestureHandleModeLabel(effective),
+                                                color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                            )
+                                            Icon(
+                                                imageVector = MiuixIcons.Basic.ArrowUpDown,
+                                                contentDescription = null,
+                                                tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                            )
+                                        }
+                                    },
+                                    onClick = { focus.clearFocus(); keyboard?.hide(); selectedPackage = app.packageName },
+                                )
+                                WindowListPopup(
+                                    show = selectedPackage == app.packageName,
+                                    alignment = PopupPositionProvider.Align.End,
+                                    onDismissRequest = { selectedPackage = null },
+                                ) {
+                                    val dismiss = LocalDismissState.current
+                                    ListPopupColumn {
+                                        val modes = listOf(
+                                            GestureHandleRules.SHOW,
+                                            GestureHandleRules.HIDE,
+                                            GestureHandleRules.IMMERSIVE,
+                                            GestureHandleRules.SYSTEM,
+                                            null,
+                                        )
+                                        modes.forEachIndexed { index, mode ->
+                                            DropdownImpl(
+                                                text = if (mode == null) "恢复预设" else gestureHandleModeLabel(mode),
+                                                optionSize = modes.size,
+                                                isSelected = mode != null && mode == (effective ?: GestureHandleRules.SYSTEM),
+                                                index = index,
+                                                onSelectedIndexChange = {
+                                                    val rules = settings.gestureHandleAppModes.toMutableMap()
+                                                    if (mode == null) rules.remove(app.packageName) else rules[app.packageName] = mode
+                                                    update(settings.copy(gestureHandleAppModes = rules.toMap()))
+                                                    dismiss?.invoke()
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -301,7 +331,7 @@ private fun effectiveMode(settings: ModifierSettings, app: GestureHandleApp?, sc
 
 internal fun gestureHandlePresetLabel(preset: String) = when (preset) {
     GestureHandlePresets.MODULE -> "模块预设"
-    GestureHandlePresets.IMMERSIVE -> "全沉浸"
+    GestureHandlePresets.IMMERSIVE -> "全自动隐藏"
     GestureHandlePresets.HIDE -> "全隐藏"
     GestureHandlePresets.SHOW -> "全显示"
     GestureHandlePresets.STOCK -> "跟随系统"
@@ -311,7 +341,7 @@ internal fun gestureHandlePresetLabel(preset: String) = when (preset) {
 private fun gestureHandleModeLabel(mode: String?) = when (mode) {
     GestureHandleRules.SHOW -> "显示"
     GestureHandleRules.HIDE -> "隐藏"
-    GestureHandleRules.IMMERSIVE -> "沉浸"
+    GestureHandleRules.IMMERSIVE -> "自动隐藏"
     else -> "跟随系统"
 }
 

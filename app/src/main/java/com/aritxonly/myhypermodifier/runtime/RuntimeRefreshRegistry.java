@@ -172,6 +172,8 @@ final class RuntimeRefreshRegistry {
      */
     static void refreshViewsAfterSettingsLoad() {
         GestureHandleHooks.refresh();
+        StatusBarNetworkVisibilityHooks.refresh();
+        StatusBarNetworkSpeedSpacingHooks.refresh();
         // Player Island is constructed before remote preferences are often available. Its main
         // and dummy backgrounds must both be remeasured after the actual height arrives.
         refreshMediaIslandRoots();

@@ -129,6 +129,7 @@ internal data class ViewBackdropSnapshot(
 internal class ViewBackdropSampler(
     private val source: View,
     private val excludedView: View? = null,
+    private val useHardwareCanvasSampling: Boolean = false,
     private val revealMiHomeMaterialCardFallbacks: Boolean = false,
     private val pixelCopyWindow: Window? = null,
     private val usePixelCopySampling: () -> Boolean = { false },
@@ -136,6 +137,7 @@ internal class ViewBackdropSampler(
     private val allowSoftwareFallback: Boolean = true,
     private val matchDisplayRefreshRate: Boolean = false,
     private val sampleOnSourceFrame: Boolean = false,
+    private val captureAfterDraw: Boolean = false,
     private val pixelCopyRetryDelayMs: Long = PIXEL_COPY_RETRY_DELAY_MS,
     private val onSnapshotChanged: (ViewBackdropSnapshot?) -> Unit,
 ) {
@@ -157,6 +159,10 @@ internal class ViewBackdropSampler(
     private var samplingContextGeneration = 0L
     private var disposed = false
     private var active = true
+    private var hardwareInFlight = false
+    private var hardwareFailureLogged = false
+    private var hardwareSuccessLogged = false
+    private val hardwareCapture = if (useHardwareCanvasSampling) HardwareViewBackdropCapture() else null
     private val hyperCardClassCache = mutableMapOf<Class<*>, Boolean>()
     private val miHomeMaterialCardClassCache = mutableMapOf<Class<*>, Boolean>()
     private val miHomeMaterialPaintCache = mutableMapOf<Class<*>, MiHomeMaterialPaintAccessor?>()
@@ -184,6 +190,7 @@ internal class ViewBackdropSampler(
     fun setNavigationBounds(value: ViewBackdropBounds) {
         if (bounds == value) return
         bounds = value
+        samplingContextGeneration += 1
         requestCaptureBurst(INITIAL_CAPTURE_BURST_MS)
     }
 
@@ -199,7 +206,36 @@ internal class ViewBackdropSampler(
     }
 
     fun onFrame() {
+        if (captureAfterDraw) {
+            if (!disposed && active && bounds != null && source.isAttachedToWindow &&
+                !captureScheduled && !hardwareInFlight) {
+                val interval = maxOf(minimumCaptureIntervalMs,
+                    BackdropCaptureCadence.intervalMs(source.display?.refreshRate ?: Float.NaN))
+                if (lastCaptureStartedAt == Long.MIN_VALUE ||
+                    SystemClock.uptimeMillis() - lastCaptureStartedAt >= interval) {
+                    // Let the host finish its traversal/display-list recording first.
+                    // Do not synchronously redraw it or wait for the GPU in pre-draw.
+                    captureScheduled = true
+                    handler.post(captureRunnable)
+                }
+            }
+            return
+        }
         if (active && (sampleOnSourceFrame || SystemClock.uptimeMillis() < keepCapturingUntil)) {
+            if (useHardwareCanvasSampling && sampleOnSourceFrame && !disposed && bounds != null) {
+                val interval = maxOf(minimumCaptureIntervalMs,
+                    if (matchDisplayRefreshRate) BackdropCaptureCadence.intervalMs(
+                        source.display?.refreshRate ?: Float.NaN) else CAPTURE_INTERVAL_MS)
+                if (lastCaptureStartedAt == Long.MIN_VALUE ||
+                    SystemClock.uptimeMillis() - lastCaptureStartedAt >= interval) {
+                    // Capture this drawing frame instead of waiting for a posted
+                    // callback after the frame. Unchanged samples don't invalidate UI.
+                    handler.removeCallbacks(captureRunnable)
+                    captureScheduled = false
+                    capture()
+                    return
+                }
+            }
             requestCapture()
         }
     }
@@ -221,6 +257,10 @@ internal class ViewBackdropSampler(
 
     fun requestCapture() {
         if (disposed || !active || bounds == null || !source.isAttachedToWindow) return
+        if (captureAfterDraw) {
+            source.postInvalidateOnAnimation()
+            return
+        }
         if (pixelCopyInFlight) {
             // PixelCopy cannot be cancelled. Remember that the visible content advanced while
             // this request was in flight, then capture the latest frame as soon as it completes.
@@ -257,6 +297,7 @@ internal class ViewBackdropSampler(
 
     fun dispose() {
         disposed = true
+        hardwareCapture?.close()
         handler.removeCallbacks(captureRunnable)
         captureScheduled = false
         if (source.viewTreeObserver.isAlive) {
@@ -300,6 +341,44 @@ internal class ViewBackdropSampler(
             ).roundToInt()
 
         val now = SystemClock.uptimeMillis()
+        if (useHardwareCanvasSampling) {
+            if (hardwareInFlight) return
+            lastCaptureStartedAt = now
+            val contextGeneration = samplingContextGeneration
+            hardwareInFlight = true
+            try {
+                checkNotNull(hardwareCapture).capture(source, sourceRect, SAMPLE_SCALE) onCaptured@{ result ->
+                    hardwareInFlight = false
+                    if (disposed || !active) return@onCaptured
+                    if (contextGeneration != samplingContextGeneration) {
+                        requestCapture()
+                        return@onCaptured
+                    }
+                    result.fold(onSuccess = { bitmap ->
+                        if (!hardwareSuccessLogged) {
+                            Log.i("MyHyperModifier", "Hardware backdrop captured asynchronously: ${bitmap.width}x${bitmap.height}")
+                            hardwareSuccessLogged = true
+                        }
+                        publishIfChanged(bitmap, sourceRect.width(), sourceRect.height(),
+                            alignmentOffsetX, alignmentOffsetY)
+                    }, onFailure = { error ->
+                        if (!hardwareFailureLogged) {
+                            Log.w("MyHyperModifier", "Hardware backdrop capture failed", error)
+                            hardwareFailureLogged = true
+                        }
+                        retryInitialCapture()
+                    })
+                }
+            } catch (error: Exception) {
+                hardwareInFlight = false
+                if (!hardwareFailureLogged) {
+                    Log.w("MyHyperModifier", "Hardware backdrop capture failed", error)
+                    hardwareFailureLogged = true
+                }
+                retryInitialCapture()
+            }
+            return
+        }
         if (pixelCopyWindow != null && usePixelCopySampling() &&
             now >= pixelCopyFallbackUntil &&
             requestPixelCopy(

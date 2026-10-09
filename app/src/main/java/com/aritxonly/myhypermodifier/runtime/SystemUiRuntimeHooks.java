@@ -174,39 +174,71 @@ final class SystemUiRuntimeHooks {
         if (!SYSTEM_UI_HOOKS_INSTALLED.compareAndSet(false, true)) {
             return;
         }
-        try {
-            // This class is present in the target build and is the password-page control point.
-            // Register it before optional media/island classes so their startup timing can never
-            // suppress the credential hook.
-            if (LOCKSCREEN_PASSWORD_BACKGROUND_EXPERIMENT_ENABLED) {
-                new LockscreenHooks(module).installLockscreenBouncerBlurCompatHook(classLoader);
-                new LockscreenHooks(module).installLockscreenPasswordWallpaperRatioHook(classLoader);
-            }
-            installSystemUiHookForLoadedClass(
-                    "androidx.constraintlayout.widget.ConstraintSet",
-                    Class.forName("androidx.constraintlayout.widget.ConstraintSet", false, classLoader));
-            installSystemUiHookForLoadedClass(
-                    "com.android.systemui.statusbar.notification.mediacontrol.MiuiMediaViewControllerImpl",
-                    Class.forName("com.android.systemui.statusbar.notification.mediacontrol."
-                            + "MiuiMediaViewControllerImpl", false, classLoader));
-            installSystemUiHookForLoadedClass(PLAYER_ISLAND_CONSTRAINT_LAYOUT,
-                    Class.forName(PLAYER_ISLAND_CONSTRAINT_LAYOUT, false, classLoader));
-            installSystemUiHookForLoadedClass(MIUI_ISLAND_MEDIA_VIEW_BINDER,
-                    Class.forName(MIUI_ISLAND_MEDIA_VIEW_BINDER, false, classLoader));
-            installHeadsUpGlassEffectHooks(classLoader);
-            installGlobalBackgroundBlurHook();
-            installControlCenterMiLinkBackgroundMaterialHook(classLoader);
-            BackgroundDimHooks.installSystemUi(module, classLoader);
-            new LockscreenHooks(module).installLockscreenNotificationHooks(classLoader);
-            new LockscreenHooks(module).installLockscreenFingerprintHooks(classLoader);
-            new LockscreenHooks(module).installLockscreenCredentialHooks(classLoader);
-            StatusBarNetworkType.install(module, classLoader);
-        } catch (Throwable throwable) {
-            // Do not consume the one-shot marker if a boot-time class is not visible yet. The
-            // class-load observer can then install its hook when the real class appears.
-            SYSTEM_UI_HOOKS_INSTALLED.set(false);
-            throw throwable;
+        // Each target is independent. One OS-specific missing class must not suppress the
+        // remaining hooks; the class-load observer can still install it when it appears later.
+        if (LOCKSCREEN_PASSWORD_BACKGROUND_EXPERIMENT_ENABLED) {
+            tryInstallSystemUiPart("锁屏密码背景模糊", () ->
+                    new LockscreenHooks(module).installLockscreenBouncerBlurCompatHook(classLoader));
+            tryInstallSystemUiPart("锁屏密码壁纸", () ->
+                    new LockscreenHooks(module).installLockscreenPasswordWallpaperRatioHook(classLoader));
         }
+        boolean retryLateClasses = !tryInstallKnownClass(
+                "androidx.constraintlayout.widget.ConstraintSet", classLoader);
+        retryLateClasses |= !tryInstallKnownClass(
+                "com.android.systemui.statusbar.notification.mediacontrol."
+                        + "MiuiMediaViewControllerImpl", classLoader);
+        retryLateClasses |= !tryInstallKnownClass(PLAYER_ISLAND_CONSTRAINT_LAYOUT, classLoader);
+        retryLateClasses |= !tryInstallKnownClass(MIUI_ISLAND_MEDIA_VIEW_BINDER, classLoader);
+        tryInstallSystemUiPart("悬浮通知玻璃效果", () -> installHeadsUpGlassEffectHooks(classLoader));
+        tryInstallSystemUiPart("全局背景模糊", this::installGlobalBackgroundBlurHook);
+        tryInstallSystemUiPart("控制中心 MiLink 背景", () ->
+                installControlCenterMiLinkBackgroundMaterialHook(classLoader));
+        tryInstallSystemUiPart("全局背景压暗", () -> BackgroundDimHooks.installSystemUi(module, classLoader));
+        tryInstallSystemUiPart("锁屏通知", () -> new LockscreenHooks(module).installLockscreenNotificationHooks(classLoader));
+        tryInstallSystemUiPart("锁屏指纹", () -> new LockscreenHooks(module).installLockscreenFingerprintHooks(classLoader));
+        tryInstallSystemUiPart("锁屏凭据", () -> new LockscreenHooks(module).installLockscreenCredentialHooks(classLoader));
+        tryInstallSystemUiPart("状态栏信号隐藏", () -> StatusBarNetworkVisibilityHooks.install(module, classLoader));
+        tryInstallSystemUiPart("实时网速右侧距离", () -> StatusBarNetworkSpeedSpacingHooks.install(module, classLoader));
+        tryInstallSystemUiPart("状态栏网络类型", () -> StatusBarNetworkType.install(module, classLoader));
+        if (retryLateClasses) SYSTEM_UI_HOOKS_INSTALLED.set(false);
+    }
+
+    @FunctionalInterface
+    private interface PartInstall { void run() throws Throwable; }
+
+    private boolean tryInstallSystemUiPart(String feature, PartInstall install) {
+        return tryInstallSystemUiPart(feature, true, install);
+    }
+
+    private boolean tryInstallSystemUiPart(String feature, boolean reportFailure, PartInstall install) {
+        try {
+            install.run();
+            return true;
+        } catch (Throwable error) {
+            if (error instanceof VirtualMachineError || error instanceof ThreadDeath) throw (Error) error;
+            if (reportFailure) HookDiagnostics.failure(SYSTEM_UI, feature, error);
+            else Log.w(TAG, "Optional SystemUI hook unavailable: " + feature, error);
+            return false;
+        }
+    }
+
+    private boolean tryInstallKnownClass(String className, ClassLoader classLoader) {
+        return tryInstallSystemUiPart(className.substring(className.lastIndexOf('.') + 1),
+                shouldReportKnownClassFailure(className), () ->
+                installSystemUiHookForLoadedClass(className,
+                        Class.forName(className, false, classLoader)));
+    }
+
+    private static boolean shouldReportKnownClassFailure(String className) {
+        if ("androidx.constraintlayout.widget.ConstraintSet".equals(className)) {
+            return mediaEnabled || islandEnabled || customMediaConstraintSetEnabled
+                    || customMediaIslandConstraintSetEnabled;
+        }
+        if (PLAYER_ISLAND_CONSTRAINT_LAYOUT.equals(className)
+                || MIUI_ISLAND_MEDIA_VIEW_BINDER.equals(className)) {
+            return islandEnabled || superIslandHidePullBar || superIslandContentBottomMarginEnabled;
+        }
+        return mediaEnabled || hideAodActions || hideAodSeamless;
     }
 
     /** Installs only methods declared by a class that has already been returned by loadClass. */
@@ -254,6 +286,8 @@ final class SystemUiRuntimeHooks {
             }
         } catch (Throwable throwable) {
             Log.w(TAG, "SystemUI class hook unavailable: " + className, throwable);
+            if (shouldReportKnownClassFailure(className)) HookDiagnostics.failure(
+                    SYSTEM_UI, className.substring(className.lastIndexOf('.') + 1), throwable);
         }
     }
 
@@ -290,6 +324,8 @@ final class SystemUiRuntimeHooks {
                     });
         } catch (Throwable throwable) {
             Log.w(TAG, "Heads-up glass hook unavailable: " + className, throwable);
+            if (headsUpGlassParametersEnabled) HookDiagnostics.failure(
+                    SYSTEM_UI, "悬浮通知玻璃效果", throwable);
         }
     }
 
@@ -339,6 +375,8 @@ final class SystemUiRuntimeHooks {
         } catch (Throwable throwable) {
             GLOBAL_BACKGROUND_BLUR_HOOK_INSTALLED.set(false);
             Log.w(TAG, "Global background blur hook unavailable", throwable);
+            if (globalGlassBlurEnabled) HookDiagnostics.failure(
+                    SYSTEM_UI, "全局背景模糊", throwable);
         }
     }
 
@@ -607,6 +645,7 @@ final class SystemUiRuntimeHooks {
         } catch (Throwable throwable) {
             MILINK_FUSION_BACKGROUND_BLUR_HOOK_INSTALLED.set(false);
             Log.w(TAG, "MiLink Fusion Device Center blur hook unavailable", throwable);
+            HookDiagnostics.failure(MILINK, "MiLink 背景模糊", throwable);
         }
     }
 

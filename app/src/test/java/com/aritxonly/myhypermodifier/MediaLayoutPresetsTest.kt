@@ -5,12 +5,12 @@ import org.junit.Test
 
 class MediaLayoutPresetsTest {
     @Test fun newInstallationAndLegacySettingsSelectExpectedPreset() {
-        assertEquals(MediaLayoutPresets.SYSTEM,
+        assertEquals(MediaLayoutPresets.STANDARD,
             MediaLayoutPresets.selected(ModifierSettingsPresets.moduleDefault()))
         assertEquals(MediaLayoutPresets.STANDARD,
-            MediaLayoutPresets.selected(ModifierSettings(islandEnabled = true)))
+            MediaLayoutPresets.selected(ModifierSettings(mediaLayoutPreset = "", islandEnabled = true)))
         assertEquals(MediaLayoutPresets.CUSTOM,
-            MediaLayoutPresets.selected(ModifierSettings(customMediaIslandConstraintSetEnabled = true)))
+            MediaLayoutPresets.selected(ModifierSettings(mediaLayoutPreset = "", customMediaIslandConstraintSetEnabled = true)))
     }
 
     @Test fun defaultHeightsAreIndependent() {

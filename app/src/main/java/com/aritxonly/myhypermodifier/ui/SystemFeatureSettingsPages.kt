@@ -8,6 +8,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.widget.Toast
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -51,6 +53,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -86,7 +89,6 @@ import java.util.concurrent.TimeUnit
 import java.util.Locale
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
@@ -158,16 +160,24 @@ import androidx.core.graphics.ColorUtils
             enabled = settings.islandEnabled,
         )
     }
+    SettingsSection(topLabel = "超级岛权限") {
+        SettingsSwitchItem(
+            "关闭超级岛白名单",
+            "需勾选系统界面与小米服务框架，首次启用后重启设备",
+            settings.superIslandWhitelistDisabled,
+            { update(settings.copy(superIslandWhitelistDisabled = it)) },
+        )
+    }
     SettingsSection(topLabel = "超级岛交互") {
         SettingsSwitchItem(
             "隐藏下拉横条",
-            "对所有超级岛生效；同时移除横条的触控/模糊占位",
+            "",
             settings.superIslandHidePullBar,
             { update(settings.copy(superIslandHidePullBar = it)) },
         )
         SettingsSwitchItem(
-            "自定义超级岛内容底边距",
-            "保存后重新触发超级岛即可生效",
+            "自定义内容底边距",
+            "",
             settings.superIslandContentBottomMarginEnabled,
             { update(settings.copy(superIslandContentBottomMarginEnabled = it)) },
         )
@@ -186,10 +196,24 @@ import androidx.core.graphics.ColorUtils
 @Composable internal fun LockscreenSettingsPage(padding: PaddingValues, settings: ModifierSettings, update: (ModifierSettings) -> Unit, onScroll: (Float) -> Unit) = SettingsScrollPage(padding, onScroll) {
     SettingsSection(topLabel = "锁屏时钟") {
         SettingsSwitchItem(
-            "强制显示时钟冒号",
-            "24 小时制下也显示时钟冒号",
+            "24 小时制显示时钟冒号",
+            "",
             settings.forceLockscreenClockColon,
             { update(settings.copy(forceLockscreenClockColon = it)) },
+        )
+        SettingsSwitchItem(
+            "绕过 HyperMusicCover 时钟避让",
+            "恢复原生通知避让，保留音乐封面模式",
+            settings.bypassHyperMusicCoverClockAdjustment,
+            { update(settings.copy(bypassHyperMusicCoverClockAdjustment = it)) },
+            enabled = android.os.Build.VERSION.SDK_INT >= 34,
+        )
+        SettingsSwitchItem(
+            "时钟渐进避让通知",
+            "适用于 AllInOne 时钟，保留音乐封面模式",
+            settings.progressiveLockscreenClockAvoidance,
+            { update(settings.copy(progressiveLockscreenClockAvoidance = it)) },
+            enabled = android.os.Build.VERSION.SDK_INT >= 34,
         )
     }
     SettingsSection(topLabel = "息屏时钟") {
@@ -212,7 +236,7 @@ import androidx.core.graphics.ColorUtils
     SettingsSection(topLabel = "锁屏通知") {
         SettingsSwitchItem(
             "锁屏通知下沉",
-            "开启后，锁屏通知将下沉到指纹图标下方",
+            "移至指纹图标下方",
             settings.sinkLockscreenNotificationsForFingerprint,
             { update(settings.copy(sinkLockscreenNotificationsForFingerprint = it)) },
         )
@@ -271,6 +295,69 @@ import androidx.core.graphics.ColorUtils
 }
 
 @Composable internal fun StatusBarSettingsPage(padding: PaddingValues, settings: ModifierSettings, update: (ModifierSettings) -> Unit, onScroll: (Float) -> Unit) = SettingsScrollPage(padding, onScroll) {
+    SettingsSection(topLabel = "状态栏信号") {
+        SettingsSwitchItem(
+            "Wi-Fi 下隐藏信号角标",
+            "隐藏移动信号左上角的 4G/5G 标识",
+            settings.statusBarHideMobileTypeOnWifi,
+            { update(settings.copy(statusBarHideMobileTypeOnWifi = it)) },
+        )
+        SettingsSwitchItem(
+            "隐藏移动网络上下行箭头",
+            "",
+            settings.statusBarHideMobileActivity,
+            { update(settings.copy(statusBarHideMobileActivity = it)) },
+        )
+        SettingsSwitchItem(
+            "隐藏 Wi-Fi 上下行箭头",
+            "",
+            settings.statusBarHideWifiActivity,
+            { update(settings.copy(statusBarHideWifiActivity = it)) },
+        )
+        SettingsSwitchItem(
+            "隐藏 Wi-Fi 网络制式",
+            "隐藏 Wi-Fi 图标旁的制式数字，例如 Wi-Fi 7 的 7",
+            settings.statusBarHideWifiStandard,
+            { update(settings.copy(statusBarHideWifiStandard = it)) },
+        )
+    }
+    SettingsSection(topLabel = "移动网络上下行箭头位置") {
+        NetworkActivityOffsetSetting(
+            "水平偏移（正值向右）",
+            settings.statusBarMobileActivityOffsetX,
+            { update(settings.copy(statusBarMobileActivityOffsetX = it)) },
+            enabled = !settings.statusBarHideMobileActivity,
+        )
+        NetworkActivityOffsetSetting(
+            "垂直偏移（正值向下）",
+            settings.statusBarMobileActivityOffsetY,
+            { update(settings.copy(statusBarMobileActivityOffsetY = it)) },
+            enabled = !settings.statusBarHideMobileActivity,
+        )
+    }
+    SettingsSection(topLabel = "Wi-Fi上下行箭头位置") {
+        NetworkActivityOffsetSetting(
+            "水平偏移（正值向右）",
+            settings.statusBarWifiActivityOffsetX,
+            { update(settings.copy(statusBarWifiActivityOffsetX = it)) },
+            enabled = !settings.statusBarHideWifiActivity,
+        )
+        NetworkActivityOffsetSetting(
+            "垂直偏移（正值向下）",
+            settings.statusBarWifiActivityOffsetY,
+            { update(settings.copy(statusBarWifiActivityOffsetY = it)) },
+            enabled = !settings.statusBarHideWifiActivity,
+        )
+    }
+    SettingsSection(topLabel = "实时网速") {
+        NetworkActivityOffsetSetting(
+            label = "与右侧的距离（正值增大）",
+            value = settings.statusBarNetworkSpeedRightGap,
+            onValueChange = { update(settings.copy(statusBarNetworkSpeedRightGap = it)) },
+            limit = 2f,
+            step = 0.1f,
+        )
+    }
     SettingsSection(topLabel = "状态栏网络类型") {
         SettingsSwitchItem(
             "独立 4G/5G 标识",
@@ -459,6 +546,19 @@ internal fun AboutSettingsPage(padding: PaddingValues, onScroll: (Float) -> Unit
     val scroll = rememberScrollState()
     var checkingForUpdate by remember { mutableStateOf(false) }
     var updateResult by remember { mutableStateOf<UpdateCheckResult?>(null) }
+    var powerAnalysisVisible by rememberSaveable { mutableStateOf(false) }
+    var apiTapCount by remember { mutableStateOf(0) }
+    var lastApiTapAt by remember { mutableStateOf(0L) }
+    fun onApiTap() {
+        if (powerAnalysisVisible) return
+        val now = SystemClock.elapsedRealtime()
+        apiTapCount = if (now - lastApiTapAt > 2_000L) 1 else apiTapCount + 1
+        lastApiTapAt = now
+        if (apiTapCount >= 5) {
+            powerAnalysisVisible = true
+            Toast.makeText(context, "性能分析已显示", Toast.LENGTH_SHORT).show()
+        }
+    }
     val progress by remember(scroll) { derivedStateOf { (scroll.value / 320f).coerceIn(0f, 1f) } }
     LaunchedEffect(progress) { onScroll(progress) }
     fun checkForUpdate() {
@@ -491,13 +591,16 @@ internal fun AboutSettingsPage(padding: PaddingValues, onScroll: (Float) -> Unit
             AboutAppHeader()
             SettingsSection(topLabel = "版本信息", containerAlpha = 0.5f + progress * 0.5f) {
                 SettingItem("版本号", "v${BuildConfig.VERSION_NAME}")
-                SettingItem("LSPosed API", "API 102")
+                SettingItem("LSPosed API", "API 102", onClick = ::onApiTap)
                 SettingItem(
                     "检查更新",
                     if (checkingForUpdate) "正在检查 GitHub Release…" else "检查 GitHub 上的最新稳定版本",
                     enabled = !checkingForUpdate,
                     onClick = ::checkForUpdate,
                 )
+            }
+            if (powerAnalysisVisible) {
+                PowerAnalysisSection(containerAlpha = 0.5f + progress * 0.5f)
             }
             SettingsSection(topLabel = "致谢", containerAlpha = 0.5f + progress * 0.5f) {
                 SettingItem("HyperBlackScreen", "功能参考与适配贡献 · 酷安@不愧是小睦")
@@ -507,7 +610,7 @@ internal fun AboutSettingsPage(padding: PaddingValues, onScroll: (Float) -> Unit
                 SettingItem("设计参考：Deadliner", "AritxOnly 开发 · 点击查看项目", onClick = { context.openWebPage("https://github.com/AritxOnly/Deadliner") })
             }
             SettingsSection(topLabel = "使用的库", containerAlpha = 0.5f + progress * 0.5f) {
-                SettingItem("LSPosed API", "模块运行时 API 102")
+                SettingItem("LSPosed API", "模块运行时 API 102", onClick = ::onApiTap)
                 SettingItem("MIUIX Compose", "HyperOS 风格组件、图标与模糊效果")
                 SettingItem("Jetpack Compose", "Android 声明式界面")
                 SettingItem("Material Kolor", "预设色与 HyperOS 背景配色")
@@ -571,7 +674,13 @@ private fun UpdateCheckDialog(
 }
 
 @Composable private fun AboutAppHeader() = Column(Modifier.fillMaxWidth().height(404.dp).padding(top = 180.dp, bottom = 28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    Card(cornerRadius = 24.dp) { Image(painter = painterResource(R.drawable.ic_launcher_mhm), contentDescription = null, modifier = Modifier.size(96.dp).clip(RoundedCornerShape(24.dp)), contentScale = ContentScale.Fit) }
+    // Compose's painterResource cannot load the launcher's v26 adaptive-icon variant.
+    Image(
+        painter = painterResource(R.drawable.ic_about_hypermodifier),
+        contentDescription = null,
+        modifier = Modifier.size(96.dp),
+        contentScale = ContentScale.Fit,
+    )
     Text("HyperModifier", style = MiuixTheme.textStyles.title1, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
     Text("v${BuildConfig.VERSION_NAME}", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
 }
@@ -604,6 +713,7 @@ internal fun RestartScopeDialogContent(
     restartXiaomiCommunity: Boolean,
     restartBilibili: Boolean,
     restartSpotify: Boolean,
+    restartSettings: Boolean,
     restartSystem: Boolean,
     onSystemUiChange: (Boolean) -> Unit,
     onPluginChange: (Boolean) -> Unit,
@@ -615,6 +725,7 @@ internal fun RestartScopeDialogContent(
     onXiaomiCommunityChange: (Boolean) -> Unit,
     onBilibiliChange: (Boolean) -> Unit,
     onSpotifyChange: (Boolean) -> Unit,
+    onSettingsChange: (Boolean) -> Unit,
     onSystemChange: (Boolean) -> Unit,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
@@ -642,6 +753,7 @@ internal fun RestartScopeDialogContent(
                 restartXiaomiCommunity = restartXiaomiCommunity,
                 restartBilibili = restartBilibili,
                 restartSpotify = restartSpotify,
+                restartSettings = restartSettings,
                 restartSystem = restartSystem,
                 onSystemUiChange = onSystemUiChange,
                 onPluginChange = onPluginChange,
@@ -653,6 +765,7 @@ internal fun RestartScopeDialogContent(
                 onXiaomiCommunityChange = onXiaomiCommunityChange,
                 onBilibiliChange = onBilibiliChange,
                 onSpotifyChange = onSpotifyChange,
+                onSettingsChange = onSettingsChange,
                 onSystemChange = onSystemChange,
             )
         }
@@ -672,6 +785,7 @@ internal fun RestartScopeDialogContent(
     restartXiaomiCommunity: Boolean,
     restartBilibili: Boolean,
     restartSpotify: Boolean,
+    restartSettings: Boolean,
     restartSystem: Boolean,
     onSystemUiChange: (Boolean) -> Unit,
     onPluginChange: (Boolean) -> Unit,
@@ -683,9 +797,15 @@ internal fun RestartScopeDialogContent(
     onXiaomiCommunityChange: (Boolean) -> Unit,
     onBilibiliChange: (Boolean) -> Unit,
     onSpotifyChange: (Boolean) -> Unit,
+    onSettingsChange: (Boolean) -> Unit,
     onSystemChange: (Boolean) -> Unit,
 ) = Column(Modifier.padding(top = 8.dp)) {
     val editable = state == ScopeRestartState.Ready
+    SettingItem(
+        "系统设置", "",
+        enabled = editable && !restartSystem,
+        trailingContent = { DeadlinerCheckbox(restartSettings, onSettingsChange, enabled = editable && !restartSystem) },
+    )
     SettingItem(
         "系统界面",
         "",
@@ -753,6 +873,12 @@ internal fun RestartScopeDialogContent(
         },
     )
     SettingItem(
+        "Spotify",
+        "",
+        enabled = editable && !restartSystem,
+        trailingContent = { DeadlinerCheckbox(restartSpotify, onSpotifyChange, enabled = editable && !restartSystem) },
+    )
+    SettingItem(
         "哔哩哔哩",
         "",
         enabled = editable && !restartSystem,
@@ -800,6 +926,7 @@ internal fun restartSelectedScope(
     bilibili: Boolean,
     spotify: Boolean,
     system: Boolean,
+    systemSettings: Boolean = false,
     onCompleted: (Boolean) -> Unit,
 ) {
     Thread {
@@ -809,7 +936,7 @@ internal fun restartSelectedScope(
         val command = when {
             system -> "reboot"
             systemUi || plugin || miLink || xiaomiHealth || market || miHome || amap ||
-                xiaomiCommunity || bilibili || spotify -> buildList {
+                xiaomiCommunity || bilibili || spotify || systemSettings -> buildList {
                 if (systemUi || plugin) add("killall com.android.systemui")
                 if (miLink) add("am force-stop com.milink.service")
                 if (xiaomiHealth) add("am force-stop com.mi.health")
@@ -819,6 +946,7 @@ internal fun restartSelectedScope(
                 if (xiaomiCommunity) add("am force-stop com.xiaomi.vipaccount")
                 if (bilibili) add("am force-stop tv.danmaku.bili")
                 if (spotify) add("am force-stop com.spotify.music")
+                if (systemSettings) add("am force-stop com.android.settings")
             }.joinToString("; ")
             else -> ""
         }

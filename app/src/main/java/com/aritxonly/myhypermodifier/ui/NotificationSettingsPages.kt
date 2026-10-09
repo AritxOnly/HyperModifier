@@ -113,16 +113,16 @@ internal fun NotificationControlCenterSettingsPage(
 ) = SettingsScrollPage(padding, onScroll) {
     SettingsSection(topLabel = "材质兼容性") {
         SettingsSwitchItem(
-            "停用通知/控制中心玻璃材质 Hook",
-            "与 HyperLight 等模块共用时可开启。停用卡片配方与共享 Glass 模糊；保留圆角、背景模糊和压暗。切换后需重启 SystemUI；参数不会丢失。",
+            "停用卡片玻璃 Hook",
+            "与 HyperLight 等材质模块冲突时开启，需重启 SystemUI",
             settings.disableShadeGlassHooks,
             { update(settings.copy(disableShadeGlassHooks = it)) },
         )
     }
     SettingsSection(topLabel = "卡片柔光玻璃") {
         NavigationSettingItem(
-            title = "通知/控制中心卡片柔光玻璃",
-            summary = if (settings.disableShadeGlassHooks) "玻璃材质 Hook 已停用，已保存参数仍可查看" else "调整卡片柔光玻璃配方；共享模糊统一在全局材质模糊中设置",
+            title = "卡片柔光玻璃",
+            summary = if (settings.disableShadeGlassHooks) "玻璃 Hook 已停用" else "",
             onClick = onOpenCardGlassSettings,
         )
     }
@@ -137,7 +137,7 @@ internal fun NotificationControlCenterSettingsPage(
     SettingsSection(topLabel = "控制中心圆角细节") {
         SettingsSwitchItem(
             "独立圆角",
-            "分别调整各区域的圆角",
+            "",
             settings.advancedControlCenterCorners,
             { update(settings.copy(advancedControlCenterCorners = it)) },
             enabled = settings.controlCenterEnabled,
@@ -182,13 +182,13 @@ internal fun HeadsUpNotificationsSettingsPage(
     SettingsSection(topLabel = "悬浮通知小窗") {
         SettingsSwitchItem(
             "隐藏底部提示横条",
-            "保留下滑打开小窗的手势",
+            "",
             settings.hideHeadsUpMiniBar,
             { update(settings.copy(hideHeadsUpMiniBar = it)) },
         )
         SettingsSwitchItem(
-            "自定义底部边距",
-            "适用于可下滑打开小窗的通知",
+            "自定义小窗通知底边距",
+            "",
             settings.headsUpBottomMarginEnabled,
             { update(settings.copy(headsUpBottomMarginEnabled = it)) },
         )
@@ -229,7 +229,7 @@ internal fun HeadsUpGlassSettingsPage(
     SettingsSection(topLabel = "使用方式") {
         SettingsSwitchItem(
             label = "启用自定义参数",
-            supportingText = "只调整柔光玻璃配方；共享模糊由全局材质模糊页面独立控制",
+            supportingText = "",
             checked = scope.enabled(settings),
             onCheckedChange = { update(scope.setEnabled(settings, it)) },
             enabled = scope != GlassParameterScope.ShadeCards || !settings.disableShadeGlassHooks,
@@ -773,19 +773,19 @@ internal fun SpotifySettingsPage(
     SettingsSection(topLabel = "Spotify") {
         SettingsSwitchItem(
             "柔光玻璃悬浮底栏",
-            "",
+            "悬浮 Tab 上方显示 Capsule 播放组件；修改后强停并重开 Spotify",
             settings.spotifyFloatingNavigationEnabled,
             { update(settings.copy(spotifyFloatingNavigationEnabled = it)) },
         )
         SettingsSwitchItem(
             "系统媒体控制中显示收藏按钮",
-            "",
+            "仅在内容支持收藏时显示；修改后重启 Spotify 和系统界面",
             settings.spotifyFavoriteButtonEnabled,
             { update(settings.copy(spotifyFavoriteButtonEnabled = it)) },
         )
         SettingsSwitchItem(
             "系统媒体控制中显示随机播放按钮",
-            "",
+            "使用 Spotify 原生状态图标；修改后重启 Spotify 和系统界面",
             settings.spotifyShuffleButtonEnabled,
             { update(settings.copy(spotifyShuffleButtonEnabled = it)) },
         )
@@ -793,7 +793,7 @@ internal fun SpotifySettingsPage(
     SettingsSection(topLabel = "兼容性") {
         SettingItem(
             "当前适配版本",
-            "9.1.80.2221",
+            "9.1.84.2231（布局适配待实机确认）",
         )
     }
 }

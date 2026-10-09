@@ -8,6 +8,8 @@ import io.github.libxposed.service.XposedServiceHelper
 class HyperModifierApplication : Application(), XposedServiceHelper.OnServiceListener {
     override fun onCreate() {
         super.onCreate()
+        ModifierSettingsStore.ensureDiagnosticToken(this)
+        HookDiagnosticCleanupWorker.schedule(this)
         XposedServiceHelper.registerListener(this)
     }
 

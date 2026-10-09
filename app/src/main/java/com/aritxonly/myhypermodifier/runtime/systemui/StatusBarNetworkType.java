@@ -49,8 +49,9 @@ final class StatusBarNetworkType {
                         return ModuleSettings.statusBarNetworkTypeEnabled && result instanceof Boolean
                                 && !((Boolean) result) ? true : result;
                     });
-        } catch (Throwable ignored) {
-            // Internal pipelines change across HyperOS releases; stock visibility is safe.
+            HookDiagnostics.available(SYSTEM_UI, "网络类型显示");
+        } catch (Throwable error) {
+            HookDiagnostics.failure(SYSTEM_UI, "网络类型显示", error);
         }
     }
 
@@ -58,7 +59,10 @@ final class StatusBarNetworkType {
         try {
             Class<?> textViewClass = Class.forName(TYPE_TEXT_VIEW, false, classLoader);
             Method attached = findDeclaredMethod(textViewClass, "onAttachedToWindow");
-            if (attached == null) return;
+            if (attached == null) {
+                HookDiagnostics.unavailable(SYSTEM_UI, "网络类型文字样式", "缺少 onAttachedToWindow 入口");
+                return;
+            }
             module.hook(attached)
                     .setId("status-bar-network-type-style")
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
@@ -68,8 +72,9 @@ final class StatusBarNetworkType {
                         if (view instanceof TextView) apply((TextView) view);
                         return result;
                     });
-        } catch (Throwable ignored) {
-            // The visibility hook remains useful on ROMs that use a different text view class.
+            HookDiagnostics.available(SYSTEM_UI, "网络类型文字样式");
+        } catch (Throwable error) {
+            HookDiagnostics.failure(SYSTEM_UI, "网络类型文字样式", error);
         }
     }
 

@@ -41,10 +41,10 @@ class GestureHandlePresetsTest {
     }
 
     @Test fun globalDefaultsUseMatchingGestureHandlePreset() {
-        assertEquals(GestureHandlePresets.MODULE, ModifierSettingsPresets.moduleDefault().gestureHandlePreset)
+        assertEquals(GestureHandlePresets.STOCK, ModifierSettingsPresets.moduleDefault().gestureHandlePreset)
         assertTrue(ModifierSettingsPresets.moduleDefault().gestureHandleAppModes.isEmpty())
-        assertTrue(ModifierSettingsPresets.moduleDefault().gestureHandleTouchReveal)
-        assertTrue(ModifierSettingsPresets.moduleDefault().gestureHandleSwipeMotion)
+        assertFalse(ModifierSettingsPresets.moduleDefault().gestureHandleTouchReveal)
+        assertFalse(ModifierSettingsPresets.moduleDefault().gestureHandleSwipeMotion)
         assertEquals(GestureHandlePresets.STOCK, ModifierSettingsPresets.systemDefault().gestureHandlePreset)
         assertTrue(ModifierSettingsPresets.systemDefault().gestureHandleAppModes.isEmpty())
         assertFalse(ModifierSettingsPresets.systemDefault().gestureHandleTouchReveal)

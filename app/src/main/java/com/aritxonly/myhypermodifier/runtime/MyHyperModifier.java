@@ -53,8 +53,10 @@ import static com.aritxonly.myhypermodifier.ReflectiveAccess.*;
  */
 public final class MyHyperModifier extends XposedModule {
     private static final String TAG = "MyHyperModifier";
+    private static final String SETTINGS = "com.android.settings";
     private static final String SYSTEM_UI = "com.android.systemui";
     private static final String SYSTEM_UI_PLUGIN = "miui.systemui.plugin";
+    private static final String XMSF = "com.xiaomi.xmsf";
     private static final String MILINK = "com.milink.service";
     private static final String MILINK_FUSION_ACTIVITY =
             "com.miui.circulate.world.CirculateWorldActivity";
@@ -63,6 +65,7 @@ public final class MyHyperModifier extends XposedModule {
     private static final String MI_HOME = "com.xiaomi.smarthome";
     private static final String AMAP = "com.autonavi.minimap";
     private static final String BILIBILI = "tv.danmaku.bili";
+    private static final String SPOTIFY = "com.spotify.music";
     private static final String XIAOMI_COMMUNITY = "com.xiaomi.vipaccount";
 
     // Entry-point lifecycle state; domain-specific state belongs to the extracted collaborators.
@@ -73,6 +76,8 @@ public final class MyHyperModifier extends XposedModule {
     private static final AtomicBoolean SETTINGS_REFRESH_LISTENER_INSTALLED = new AtomicBoolean();
     private static final AtomicBoolean EAGER_TARGET_SETTINGS = new AtomicBoolean();
     private static final AtomicBoolean SYSTEM_UI_RUNTIME_ENTRY_LOGGED = new AtomicBoolean();
+    private static final AtomicBoolean EARLY_SYSTEM_UI_HOOKS_INSTALLED = new AtomicBoolean();
+    private static final AtomicBoolean EARLY_PLUGIN_HOOKS_INSTALLED = new AtomicBoolean();
 
     /**
      * PackageReady is late enough on HyperOS for the plugin factory and several first-frame
@@ -83,39 +88,41 @@ public final class MyHyperModifier extends XposedModule {
     public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
         String packageName = param.getPackageName();
         if (!SYSTEM_UI.equals(packageName) && !SYSTEM_UI_PLUGIN.equals(packageName)
-                && !MILINK.equals(packageName)) return;
+                && !MILINK.equals(packageName) && !XMSF.equals(packageName)) return;
+        logSpotifyEntry(packageName, "before settings");
         try {
             connectRemoteSettings();
+            logSpotifyEntry(packageName, "after settings");
+            if (!ModuleSettings.moduleHooksEnabled || systemUiCompatibilityFor(packageName)) return;
             EAGER_TARGET_SETTINGS.set(SYSTEM_UI.equals(packageName)
-                    || SYSTEM_UI_PLUGIN.equals(packageName) || MILINK.equals(packageName));
-            installSettingsLoader();
+                    || SYSTEM_UI_PLUGIN.equals(packageName) || MILINK.equals(packageName) || XMSF.equals(packageName));
             ClassLoader classLoader = param.getDefaultClassLoader();
-            if (SYSTEM_UI.equals(packageName) || SYSTEM_UI_PLUGIN.equals(packageName)) {
-                ShadeCardGlassHooks.install(this);
-            }
+            if (!installSafely(packageName, "设置加载器", this::installSettingsLoader)) return;
             if (SYSTEM_UI.equals(packageName)) {
-                GestureHandleHooks.install(this, classLoader);
-                HeadsUpMiniBarHooks.install(this, classLoader);
-                HeadsUpBottomMarginHooks.install(this, classLoader);
-                AodClockWeightHooks.install(this, classLoader);
-                LockscreenClockColonHooks.install(this, classLoader);
-                // This is intentionally before every plugin-factory, media and heads-up hook.
-                // A missing cosmetic class must never suppress the password-page control point.
-                if (LOCKSCREEN_PASSWORD_BACKGROUND_EXPERIMENT_ENABLED) {
-                    lockscreenHooks().installLockscreenBouncerBlurCompatHook(classLoader);
-                    lockscreenHooks().installLockscreenPasswordWallpaperRatioHook(classLoader);
+                Application application = currentApplication();
+                if (application != null) HookDiagnostics.attach(application);
+                if (SystemUiCrashGuard.start(param.getApplicationInfo(), ModuleSettings.systemUiRetryGeneration)) {
+                    HookDiagnostics.unavailable(packageName, "自动兼容模式", SystemUiCrashGuard.compatibilityDetail());
+                    return;
                 }
-                pluginHooks().installSystemUiPluginLoaderFactoryHook(classLoader);
-                pluginHooks().installSystemUiPluginClassLoaderResolver();
-                systemUiHooks().installSystemUiHooks(classLoader);
+                startEarlySystemUiHooks(classLoader);
             } else if (SYSTEM_UI_PLUGIN.equals(packageName)) {
-                pluginHooks().installSystemUiPluginCornerHooks(classLoader);
-                systemUiHooks().installGlobalBackgroundBlurHook();
+                Application application = currentApplication();
+                if (application != null) HookDiagnostics.attach(application);
+                if (SystemUiCrashGuard.start(param.getApplicationInfo(), ModuleSettings.systemUiRetryGeneration)) {
+                    HookDiagnostics.unavailable(packageName, "自动兼容模式", SystemUiCrashGuard.compatibilityDetail());
+                    return;
+                }
+                startEarlyPluginHooks(classLoader);
+            } else if (XMSF.equals(packageName)) {
+                installSafely(packageName, "超级岛焦点认证", () -> SuperIslandWhitelistHooks.installXmsf(this, classLoader));
             } else if (MILINK.equals(packageName)) {
-                systemUiHooks().installMiLinkFusionBackgroundBlurHook(classLoader);
+                installSafely(packageName, "MiLink 背景模糊", () ->
+                        systemUiHooks().installMiLinkFusionBackgroundBlurHook(classLoader));
             }
         } catch (Throwable throwable) {
             log(Log.ERROR, TAG, "Could not install early hooks for " + packageName, throwable);
+            HookDiagnostics.failure(packageName, "提前注入", throwable);
         }
     }
 
@@ -126,18 +133,29 @@ public final class MyHyperModifier extends XposedModule {
                 && !MILINK.equals(packageName) && !XIAOMI_HEALTH.equals(packageName)
                 && !MARKET.equals(packageName) && !MI_HOME.equals(packageName)
                 && !AMAP.equals(packageName) && !XIAOMI_COMMUNITY.equals(packageName)
-                && !BILIBILI.equals(packageName)) {
+                && !BILIBILI.equals(packageName) && !SPOTIFY.equals(packageName) && !XMSF.equals(packageName) && !SETTINGS.equals(packageName)) {
             return;
         }
 
+        logSpotifyEntry(packageName, "before settings");
         try {
             connectRemoteSettings();
+            logSpotifyEntry(packageName, "after settings");
+            if (!ModuleSettings.moduleHooksEnabled || systemUiCompatibilityFor(packageName)) return;
+            Application application = currentApplication();
+            if (application != null) HookDiagnostics.attach(application);
+            if (SYSTEM_UI.equals(packageName) || SYSTEM_UI_PLUGIN.equals(packageName)) {
+                if (SystemUiCrashGuard.start(param.getApplicationInfo(), ModuleSettings.systemUiRetryGeneration)) {
+                    HookDiagnostics.unavailable(packageName, "自动兼容模式", SystemUiCrashGuard.compatibilityDetail());
+                    return;
+                }
+            }
             boolean eagerTarget = SYSTEM_UI.equals(packageName)
-                    || SYSTEM_UI_PLUGIN.equals(packageName) || MILINK.equals(packageName);
+                    || SYSTEM_UI_PLUGIN.equals(packageName) || MILINK.equals(packageName) || XMSF.equals(packageName);
             if (eagerTarget) {
                 EAGER_TARGET_SETTINGS.set(true);
             }
-            installSettingsLoader();
+            if (!installSafely(packageName, "设置加载器", this::installSettingsLoader)) return;
             if (eagerTarget) {
                 // SystemUI and MiLink need the saved blur percentage before their first frame.
                 // If Application is not attached yet, the attach hook performs this read.
@@ -145,65 +163,104 @@ public final class MyHyperModifier extends XposedModule {
             } else {
                 ModuleSettings.ensureLoaded();
             }
+            if (SETTINGS.equals(packageName)) {
+                installSafely(packageName, "设置主页入口", () -> SettingsHomeHooks.install(this, param.getClassLoader()));
+                installSafely(packageName, "关于手机", () -> AboutPhoneHooks.install(this, param.getClassLoader()));
+                HookDiagnostics.ready(packageName);
+                return;
+            }
+            if (XMSF.equals(packageName)) {
+                installSafely(packageName, "超级岛焦点认证", () -> SuperIslandWhitelistHooks.installXmsf(this, param.getClassLoader()));
+                HookDiagnostics.ready(packageName);
+                return;
+            }
             if (XIAOMI_HEALTH.equals(packageName)) {
-                XiaomiHealthHooks.install(this, param.getClassLoader());
+                installSafely(packageName, "小米健康", () -> XiaomiHealthHooks.install(this, param.getClassLoader()));
+                HookDiagnostics.ready(packageName);
                 log(Log.INFO, TAG, "Installed for " + packageName);
                 return;
             }
             if (MARKET.equals(packageName)) {
-                MarketHooks.install(this, param.getClassLoader());
+                installSafely(packageName, "小米应用商店", () -> MarketHooks.install(this, param.getClassLoader()));
+                HookDiagnostics.ready(packageName);
                 log(Log.INFO, TAG, "Installed for " + packageName);
                 return;
             }
             if (MI_HOME.equals(packageName)) {
-                MiHomeHooks.install(this, param.getClassLoader());
+                installSafely(packageName, "米家", () -> MiHomeHooks.install(this, param.getClassLoader()));
+                HookDiagnostics.ready(packageName);
                 log(Log.INFO, TAG, "Installed for " + packageName);
                 return;
             }
             if (AMAP.equals(packageName)) {
-                AmapHooks.install(this, param.getClassLoader());
+                installSafely(packageName, "高德地图", () -> AmapHooks.install(this, param.getClassLoader()));
+                HookDiagnostics.ready(packageName);
+                log(Log.INFO, TAG, "Installed for " + packageName);
+                return;
+            }
+            if (SPOTIFY.equals(packageName)) {
+                installSafely(packageName, "Spotify 媒体按钮", () -> SpotifyHooks.install(this, param.getClassLoader()));
+                HookDiagnostics.ready(packageName);
                 log(Log.INFO, TAG, "Installed for " + packageName);
                 return;
             }
             if (BILIBILI.equals(packageName)) {
-                BilibiliHooks.install(this, param.getClassLoader());
+                installSafely(packageName, "哔哩哔哩", () -> BilibiliHooks.install(this, param.getClassLoader()));
+                HookDiagnostics.ready(packageName);
                 log(Log.INFO, TAG, "Installed for " + packageName);
                 return;
             }
             if (XIAOMI_COMMUNITY.equals(packageName)) {
-                XiaomiCommunityHooks.install(this, param.getClassLoader());
+                installSafely(packageName, "小米社区", () -> XiaomiCommunityHooks.install(this, param.getClassLoader()));
+                HookDiagnostics.ready(packageName);
                 log(Log.INFO, TAG, "Installed for " + packageName);
                 return;
             }
-            installResourceValueHooks();
+            installSafely(packageName, "资源覆盖", this::installResourceValueHooks);
             if (SYSTEM_UI.equals(packageName) || SYSTEM_UI_PLUGIN.equals(packageName)) {
-                ShadeCardGlassHooks.install(this);
+                installSafely(packageName, "卡片玻璃效果", () -> ShadeCardGlassHooks.install(this));
             }
             if (SYSTEM_UI.equals(packageName)) {
-                GestureHandleHooks.install(this, param.getClassLoader());
-                HeadsUpMiniBarHooks.install(this, param.getClassLoader());
-                HeadsUpBottomMarginHooks.install(this, param.getClassLoader());
-                AodClockWeightHooks.install(this, param.getClassLoader());
-                LockscreenClockColonHooks.install(this, param.getClassLoader());
+                if (SYSTEM_UI.equals(packageName)) installSafely(packageName, "超级岛白名单", () ->
+                        SuperIslandWhitelistHooks.installSystemUi(this, param.getClassLoader()));
+                installSafely(packageName, "Spotify 媒体卡片", () -> SpotifyMediaCardHooks.install(this, param.getClassLoader()));
+                installSafely(packageName, "手势提示线", () -> GestureHandleHooks.install(this, param.getClassLoader()));
+                installSafely(packageName, "悬浮通知迷你栏", () -> HeadsUpMiniBarHooks.install(this, param.getClassLoader()));
+                installSafely(packageName, "悬浮通知底部间距", () -> HeadsUpBottomMarginHooks.install(this, param.getClassLoader()));
+                installSafely(packageName, "息屏时钟字重", () -> AodClockWeightHooks.install(this, param.getClassLoader()));
+                installSafely(packageName, "锁屏时钟冒号", () -> LockscreenClockColonHooks.install(this, param.getClassLoader()));
+                installSafely(packageName, "绕过 HyperMusicCover 时钟避让", () -> HyperMusicCoverClockHooks.install(this, param.getClassLoader()));
+                installSafely(packageName, "锁屏时钟渐进避让通知", () -> LockscreenClockAvoidanceHooks.install(this, param.getClassLoader()));
                 if (LOCKSCREEN_PASSWORD_BACKGROUND_EXPERIMENT_ENABLED) {
-                    lockscreenHooks().installLockscreenBouncerBlurCompatHook(param.getClassLoader());
-                    lockscreenHooks().installLockscreenPasswordWallpaperRatioHook(param.getClassLoader());
+                    installSafely(packageName, "锁屏密码背景模糊", () ->
+                            lockscreenHooks().installLockscreenBouncerBlurCompatHook(param.getClassLoader()));
+                    installSafely(packageName, "锁屏密码壁纸", () ->
+                            lockscreenHooks().installLockscreenPasswordWallpaperRatioHook(param.getClassLoader()));
                 }
-                pluginHooks().installSystemUiPluginLoaderFactoryHook(param.getClassLoader());
-                pluginHooks().installSystemUiPluginClassLoaderResolver();
-                systemUiHooks().installSystemUiHooks(param.getClassLoader());
+                installSafely(packageName, "插件加载器", () ->
+                        pluginHooks().installSystemUiPluginLoaderFactoryHook(param.getClassLoader()));
+                installSafely(packageName, "插件类加载器", () ->
+                        pluginHooks().installSystemUiPluginClassLoaderResolver());
+                installSafely(packageName, "SystemUI", () ->
+                        systemUiHooks().installSystemUiHooks(param.getClassLoader()));
             } else if (SYSTEM_UI_PLUGIN.equals(packageName)) {
-                pluginHooks().installSystemUiPluginCornerHooks(param.getClassLoader());
-                systemUiHooks().installGlobalBackgroundBlurHook();
+                installSafely(packageName, "控制中心圆角", () ->
+                        pluginHooks().installSystemUiPluginCornerHooks(param.getClassLoader()));
+                installSafely(packageName, "全局背景模糊", () ->
+                        systemUiHooks().installGlobalBackgroundBlurHook());
             } else if (MILINK.equals(packageName)) {
                 // Fusion Device Center runs in MiLink's isolated :ui process. Both renderer
                 // variants pass through BlurControllerImpl.setBlurRatio.
-                systemUiHooks().installMiLinkFusionBackgroundBlurHook(param.getClassLoader());
-                pluginHooks().installMiLinkFusionCardHooks(param.getClassLoader());
+                installSafely(packageName, "MiLink 背景模糊", () ->
+                        systemUiHooks().installMiLinkFusionBackgroundBlurHook(param.getClassLoader()));
+                installSafely(packageName, "MiLink 卡片", () ->
+                        pluginHooks().installMiLinkFusionCardHooks(param.getClassLoader()));
             }
+            HookDiagnostics.ready(packageName);
             log(Log.INFO, TAG, "Installed for " + packageName);
         } catch (Throwable throwable) {
             log(Log.ERROR, TAG, "Could not install hooks for " + packageName, throwable);
+            HookDiagnostics.failure(packageName, "注入入口", throwable);
         }
     }
 
@@ -211,39 +268,130 @@ public final class MyHyperModifier extends XposedModule {
      * Reads the module's own SharedPreferences through LSPosed rather than Android package IPC.
      * Target packages cannot reliably discover our package/provider on current HyperOS builds.
      */
+    /** Emit before the gates as well: an enabled module can still skip runtime installation. */
+    private static void logSpotifyEntry(String packageName, String stage) {
+        if (!SPOTIFY.equals(packageName) && !SYSTEM_UI.equals(packageName)) return;
+        Log.i(TAG, "Spotify hook bootstrap: package=" + packageName + ", stage=" + stage
+                + ", build=" + BuildConfig.VERSION_NAME + "/" + BuildConfig.VERSION_CODE
+                + ", enabled=" + ModuleSettings.moduleHooksEnabled
+                + ", compatibility=" + systemUiCompatibilityFor(packageName)
+                + ", settings=" + ModuleSettings.loadStatus());
+    }
+
     private void connectRemoteSettings() {
         ModuleSettings.setRemotePreferences(getRemotePreferences("modifier_settings"));
     }
 
+    private static boolean systemUiCompatibilityFor(String packageName) {
+        return (SYSTEM_UI.equals(packageName) || SYSTEM_UI_PLUGIN.equals(packageName))
+                && (ModuleSettings.systemUiCompatibilityMode
+                    || SystemUiCrashGuard.isAutomaticCompatibilityActive());
+    }
+
+    private static Application currentApplication() {
+        try {
+            Class<?> activityThread = Class.forName("android.app.ActivityThread");
+            Object application = activityThread.getMethod("currentApplication").invoke(null);
+            return application instanceof Application ? (Application) application : null;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    @FunctionalInterface
+    private interface HookInstall {
+        void run() throws Throwable;
+    }
+
+    private static boolean installSafely(String packageName, String feature, HookInstall install) {
+        try {
+            install.run();
+            return true;
+        } catch (Throwable error) {
+            if (error instanceof VirtualMachineError || error instanceof ThreadDeath) throw (Error) error;
+            HookDiagnostics.failure(packageName, feature, error);
+            return false;
+        }
+    }
+
+    private void startEarlySystemUiHooks(ClassLoader classLoader) {
+        if (!ModuleSettings.moduleHooksEnabled || systemUiCompatibilityFor(SYSTEM_UI)) return;
+        if (classLoader == null || !EARLY_SYSTEM_UI_HOOKS_INSTALLED.compareAndSet(false, true)) return;
+        installSafely(SYSTEM_UI, "超级岛白名单", () -> SuperIslandWhitelistHooks.installSystemUi(this, classLoader));
+        installSafely(SYSTEM_UI, "卡片玻璃效果", () -> ShadeCardGlassHooks.install(this));
+        installSafely(SYSTEM_UI, "手势提示线", () -> GestureHandleHooks.install(this, classLoader));
+        installSafely(SYSTEM_UI, "悬浮通知迷你栏", () -> HeadsUpMiniBarHooks.install(this, classLoader));
+        installSafely(SYSTEM_UI, "悬浮通知底部间距", () -> HeadsUpBottomMarginHooks.install(this, classLoader));
+        installSafely(SYSTEM_UI, "息屏时钟字重", () -> AodClockWeightHooks.install(this, classLoader));
+        installSafely(SYSTEM_UI, "锁屏时钟冒号", () -> LockscreenClockColonHooks.install(this, classLoader));
+        installSafely(SYSTEM_UI, "绕过 HyperMusicCover 时钟避让", () -> HyperMusicCoverClockHooks.install(this, classLoader));
+        installSafely(SYSTEM_UI, "锁屏时钟渐进避让通知", () -> LockscreenClockAvoidanceHooks.install(this, classLoader));
+        if (LOCKSCREEN_PASSWORD_BACKGROUND_EXPERIMENT_ENABLED) {
+            installSafely(SYSTEM_UI, "锁屏密码背景模糊", () ->
+                    lockscreenHooks().installLockscreenBouncerBlurCompatHook(classLoader));
+            installSafely(SYSTEM_UI, "锁屏密码壁纸", () ->
+                    lockscreenHooks().installLockscreenPasswordWallpaperRatioHook(classLoader));
+        }
+        installSafely(SYSTEM_UI, "插件加载器", () ->
+                pluginHooks().installSystemUiPluginLoaderFactoryHook(classLoader));
+        installSafely(SYSTEM_UI, "插件类加载器", () ->
+                pluginHooks().installSystemUiPluginClassLoaderResolver());
+        installSafely(SYSTEM_UI, "SystemUI", () -> systemUiHooks().installSystemUiHooks(classLoader));
+        HookDiagnostics.ready(SYSTEM_UI);
+    }
+
+    private void startEarlyPluginHooks(ClassLoader classLoader) {
+        if (!ModuleSettings.moduleHooksEnabled || systemUiCompatibilityFor(SYSTEM_UI_PLUGIN)) return;
+        if (classLoader == null || !EARLY_PLUGIN_HOOKS_INSTALLED.compareAndSet(false, true)) return;
+        installSafely(SYSTEM_UI_PLUGIN, "卡片玻璃效果", () -> ShadeCardGlassHooks.install(this));
+        installSafely(SYSTEM_UI_PLUGIN, "控制中心圆角", () ->
+                pluginHooks().installSystemUiPluginCornerHooks(classLoader));
+        installSafely(SYSTEM_UI_PLUGIN, "全局背景模糊", () ->
+                systemUiHooks().installGlobalBackgroundBlurHook());
+        HookDiagnostics.ready(SYSTEM_UI_PLUGIN);
+    }
+
     /** Reads saved appearance options after the target process receives its base context. */
-    private void installSettingsLoader() throws NoSuchMethodException {
+    private void installSettingsLoader() throws Throwable {
         if (!SETTINGS_HOOK_INSTALLED.compareAndSet(false, true)) return;
         if (SETTINGS_REFRESH_LISTENER_INSTALLED.compareAndSet(false, true)) {
             ModuleSettings.onLoaded(RuntimeRefreshRegistry::refreshViewsAfterSettingsLoad);
         }
-        hook(ContextWrapper.class.getDeclaredMethod("attachBaseContext", Context.class))
+        try {
+            hook(ContextWrapper.class.getDeclaredMethod("attachBaseContext", Context.class))
                 .setId("settings-loader")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .intercept(chain -> {
                     Context context = (Context) chain.getArg(0);
                     if (!EAGER_TARGET_SETTINGS.get()) {
                         markLoaded(context);
-                        return chain.proceed();
+                        Object result = chain.proceed();
+                        if (chain.getThisObject() instanceof Application) HookDiagnostics.attach(context);
+                        return result;
                     }
                     Object result = chain.proceed();
                     logSystemUiRuntimeEntry(context);
                     ModuleSettings.loadImmediately(context);
+                    if (chain.getThisObject() instanceof Application) {
+                        HookDiagnostics.attach(context);
+                    }
                     return result;
                 });
+        } catch (Throwable error) {
+            SETTINGS_HOOK_INSTALLED.set(false);
+            throw error;
+        }
 
         // PackageReady is delivered after Application.attach() on some HyperOS builds.  onCreate
         // is still ahead of Control Center view inflation and is the reliable settings hand-off.
         if (APPLICATION_SETTINGS_HOOK_INSTALLED.compareAndSet(false, true)) {
-            hook(Application.class.getDeclaredMethod("onCreate"))
+            try {
+                hook(Application.class.getDeclaredMethod("onCreate"))
                     .setId("application-settings-loader")
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
                         Context application = (Context) chain.getThisObject();
+                        HookDiagnostics.attach(application);
                         if (!EAGER_TARGET_SETTINGS.get()) {
                             markLoaded(application);
                             return chain.proceed();
@@ -253,6 +401,12 @@ public final class MyHyperModifier extends XposedModule {
                         ModuleSettings.loadImmediately(application);
                         return result;
                     });
+            } catch (Throwable error) {
+                APPLICATION_SETTINGS_HOOK_INSTALLED.set(false);
+                Application application = currentApplication();
+                HookDiagnostics.failure(application == null ? "unknown" : application.getPackageName(),
+                        "Application 设置刷新", error);
+            }
         }
     }
 

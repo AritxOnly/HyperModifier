@@ -1,11 +1,14 @@
 # HyperModifier
 
+- [1.5.0 更新日志](RELEASE_NOTES_v1.5.0.md)
+- [1.5.0 功能测试 TODO](docs/testing/TEST_TODO_v1.5.0.md)
+
 The source ownership and dependency rules are documented in
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
-API 102 (`io.github.libxposed:api:102.0.0`) LSPosed module for HyperOS SystemUI, MiLink, Xiaomi Health, Xiaomi Market, Mi Home, Amap, Xiaomi Community, and official Bilibili.
+API 102 (`io.github.libxposed:api:102.0.0`) LSPosed module for HyperOS SystemUI, MiLink, Xiaomi Health, Xiaomi Market, Mi Home, Amap, Xiaomi Community, official Bilibili, Spotify, and Android Settings.
 
-It is scoped to `com.android.systemui`, `miui.systemui.plugin`, `com.milink.service`, `com.mi.health`, `com.xiaomi.market`, `com.xiaomi.smarthome`, `com.autonavi.minimap`, `com.xiaomi.vipaccount`, and `tv.danmaku.bili`. The implementation was
+It is scoped to `com.android.systemui`, `miui.systemui.plugin`, `com.milink.service`, `com.mi.health`, `com.xiaomi.market`, `com.xiaomi.smarthome`, `com.autonavi.minimap`, `com.xiaomi.vipaccount`, `tv.danmaku.bili`, `com.spotify.music`, `com.xiaomi.xmsf`, and `com.android.settings`. The implementation was
 matched against the decoded `reference/MiuiSystemUI.apk`,
 `reference/MiuiSystemUI.bak.apk`, `reference/MIUISystemUIPlugin.apk`, Xiaomi Health 3.59.1 APK,
 Xiaomi Market 4.125.11 APK, `reference/米家_11.8.605.APK`, Amap 17.00.0.2005,
@@ -33,7 +36,7 @@ Xiaomi Community 6.6.9, and Bilibili 9.13.0 (`reference/哔哩哔哩.apk`).
   Existing blur values are preserved. An absent global enable key inherits the old card recipe switch.
   Recipe presets no longer reset shared blur. Card JSON v3 exports the recipe only; v1/v2 still import
   their recipes without applying legacy blur fields. The separate heads-up radius hook is removed.
-- MiLink Fusion Device Center card radius: `20dp`.
+- MiLink Fusion Device Center card radius defaults to `28dp` in v1.5.0.
 - “全局背景材质” offers a shared `0–100%` background dim slider for the notification shade,
   Control Center, and MiLink Fusion Device Center. Custom dim is off by default (editable value
   `20%`). It replaces native blend colors with black SRC_OVER on the existing background surface,
@@ -75,6 +78,26 @@ Xiaomi Community 6.6.9, and Bilibili 9.13.0 (`reference/哔哩哔哩.apk`).
   The “选择预设” dialog also exports the current preset and overrides to the clipboard or a JSON file.
   Hooks run only in SystemUI; hiding the hint preserves gesture handling and navigation
   insets. Configure the SystemUI scope and restart it once after installing the updated module.
+- Fresh installations use the v1.5.0 imported defaults: notification/Control Center corners,
+  24dp volume corners, 28dp MiLink cards, standard media and Island progress, hidden AOD media
+  actions, AOD clock weight 200, Settings device cards, and all seven app floating bars. Spotify
+  favorite/shuffle actions and Amap voice-tab hiding are enabled; shared navigation lift is 2dp.
+  Gesture overrides and settings-home entries remain opt-in. Saved values take precedence.
+  `ModuleDefaultValues` shares changed defaults between the companion app and runtime hooks.
+- “兼容与恢复” provides a module-wide Hook switch and a SystemUI compatibility mode that skips
+  SystemUI and its plugin while retaining other app hooks. Changes take effect when the affected
+  processes restart. If SystemUI starts three times within 20 seconds without a
+  stable run, the module skips its UI hooks on the third start and keeps that mode
+  until “重试 SystemUI Hook” is selected. The guard records each start at
+  `PackageLoaded`, before early plugin and first-frame hooks are installed, so those hooks keep
+  their original installation timing. A stable 20-second run resets the attempt count.
+  Hook installation failures are isolated by feature. The page shows the latest installation
+  result for instrumented card-glass, heads-up, gesture-drawing, lockscreen-clock, and network-type
+  hooks; a later successful installation supersedes an old failure. Installation confirms the
+  entry point, while the rendered effect still needs device verification. Logs retain at most
+  120 records and, by default, expire after seven days. A daily WorkManager cleanup and incoming
+  reports prune expired records; automatic expiration can be disabled. Full exception details remain in the `MyHyperModifier` system log. Diagnostic
+  delivery runs off the target process's main thread and does not affect successful Hook callbacks.
 - Xiaomi Health's four-tab native navigation can be replaced with the module's Compose soft-glass
   floating bar while keeping the app's own selected/unselected icons, tab selection, and fragment
   routing. Its page content extends behind a transparent system navigation bar, while the floating
