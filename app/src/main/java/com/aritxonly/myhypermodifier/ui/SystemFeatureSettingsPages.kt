@@ -193,16 +193,19 @@ import androidx.core.graphics.ColorUtils
     }
 }
 
-@Composable internal fun LockscreenSettingsPage(padding: PaddingValues, settings: ModifierSettings, update: (ModifierSettings) -> Unit, onScroll: (Float) -> Unit) = SettingsScrollPage(padding, onScroll) {
+@Composable internal fun DesktopSettingsPage(padding: PaddingValues, settings: ModifierSettings, update: (ModifierSettings) -> Unit, onScroll: (Float) -> Unit) = SettingsScrollPage(padding, onScroll) {
     SettingsSection(topLabel = "桌面时钟") {
         SettingsSwitchItem(
             "24 小时制隐藏小时前导零",
-            "HyperOS 4 MAML 时钟，09:03 → 9:03；需勾选系统桌面与系统界面作用域，更新模块后重启桌面",
+            "HyperOS 4 MAML 时钟，09:03 → 9:03；需勾选系统桌面与系统界面作用域，更新模块后重启手机",
             settings.hideDesktopClockLeadingZero,
             { update(settings.copy(hideDesktopClockLeadingZero = it)) },
             enabled = android.os.Build.VERSION.SDK_INT >= 36,
         )
     }
+}
+
+@Composable internal fun LockscreenSettingsPage(padding: PaddingValues, settings: ModifierSettings, update: (ModifierSettings) -> Unit, onScroll: (Float) -> Unit) = SettingsScrollPage(padding, onScroll) {
     SettingsSection(topLabel = "锁屏时钟") {
         SettingsSwitchItem(
             "24 小时制隐藏小时前导零",
@@ -780,6 +783,7 @@ internal fun Context.openDetailSettings(destination: SettingsDestination, mediaP
 internal fun RestartScopeDialogContent(
     state: ScopeRestartState,
     restartSystemUi: Boolean,
+    restartLauncher: Boolean,
     restartPlugin: Boolean,
     restartMiLink: Boolean,
     restartXiaomiHealth: Boolean,
@@ -792,6 +796,7 @@ internal fun RestartScopeDialogContent(
     restartSettings: Boolean,
     restartSystem: Boolean,
     onSystemUiChange: (Boolean) -> Unit,
+    onLauncherChange: (Boolean) -> Unit,
     onPluginChange: (Boolean) -> Unit,
     onMiLinkChange: (Boolean) -> Unit,
     onXiaomiHealthChange: (Boolean) -> Unit,
@@ -820,6 +825,7 @@ internal fun RestartScopeDialogContent(
             RestartScopeChoices(
                 state = state,
                 restartSystemUi = restartSystemUi,
+                restartLauncher = restartLauncher,
                 restartPlugin = restartPlugin,
                 restartMiLink = restartMiLink,
                 restartXiaomiHealth = restartXiaomiHealth,
@@ -832,6 +838,7 @@ internal fun RestartScopeDialogContent(
                 restartSettings = restartSettings,
                 restartSystem = restartSystem,
                 onSystemUiChange = onSystemUiChange,
+                onLauncherChange = onLauncherChange,
                 onPluginChange = onPluginChange,
                 onMiLinkChange = onMiLinkChange,
                 onXiaomiHealthChange = onXiaomiHealthChange,
@@ -852,6 +859,7 @@ internal fun RestartScopeDialogContent(
 @Composable private fun RestartScopeChoices(
     state: ScopeRestartState,
     restartSystemUi: Boolean,
+    restartLauncher: Boolean,
     restartPlugin: Boolean,
     restartMiLink: Boolean,
     restartXiaomiHealth: Boolean,
@@ -864,6 +872,7 @@ internal fun RestartScopeDialogContent(
     restartSettings: Boolean,
     restartSystem: Boolean,
     onSystemUiChange: (Boolean) -> Unit,
+    onLauncherChange: (Boolean) -> Unit,
     onPluginChange: (Boolean) -> Unit,
     onMiLinkChange: (Boolean) -> Unit,
     onXiaomiHealthChange: (Boolean) -> Unit,
@@ -887,6 +896,11 @@ internal fun RestartScopeDialogContent(
         "",
         enabled = editable && !restartSystem,
         trailingContent = { DeadlinerCheckbox(restartSystemUi, onSystemUiChange, enabled = editable && !restartSystem) },
+    )
+    SettingItem(
+        "系统桌面", "",
+        enabled = editable && !restartSystem,
+        trailingContent = { DeadlinerCheckbox(restartLauncher, onLauncherChange, enabled = editable && !restartSystem) },
     )
     SettingItem(
         "控制中心组件",
@@ -1003,6 +1017,7 @@ internal fun restartSelectedScope(
     spotify: Boolean,
     system: Boolean,
     systemSettings: Boolean = false,
+    launcher: Boolean = false,
     onCompleted: (Boolean) -> Unit,
 ) {
     Thread {
@@ -1012,8 +1027,9 @@ internal fun restartSelectedScope(
         val command = when {
             system -> "reboot"
             systemUi || plugin || miLink || xiaomiHealth || market || miHome || amap ||
-                xiaomiCommunity || bilibili || spotify || systemSettings -> buildList {
+                xiaomiCommunity || bilibili || spotify || systemSettings || launcher -> buildList {
                 if (systemUi || plugin) add("killall com.android.systemui")
+                if (launcher) add("killall com.miui.home")
                 if (miLink) add("am force-stop com.milink.service")
                 if (xiaomiHealth) add("am force-stop com.mi.health")
                 if (market) add("am force-stop com.xiaomi.market")
