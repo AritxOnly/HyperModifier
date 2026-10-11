@@ -194,7 +194,22 @@ import androidx.core.graphics.ColorUtils
 }
 
 @Composable internal fun LockscreenSettingsPage(padding: PaddingValues, settings: ModifierSettings, update: (ModifierSettings) -> Unit, onScroll: (Float) -> Unit) = SettingsScrollPage(padding, onScroll) {
+    SettingsSection(topLabel = "桌面时钟") {
+        SettingsSwitchItem(
+            "24 小时制隐藏小时前导零",
+            "HyperOS 4 MAML 时钟，09:03 → 9:03；需勾选系统桌面与系统界面作用域，更新模块后重启桌面",
+            settings.hideDesktopClockLeadingZero,
+            { update(settings.copy(hideDesktopClockLeadingZero = it)) },
+            enabled = android.os.Build.VERSION.SDK_INT >= 36,
+        )
+    }
     SettingsSection(topLabel = "锁屏时钟") {
+        SettingsSwitchItem(
+            "24 小时制隐藏小时前导零",
+            "适用于 AllInOne 时钟，09:03 显示为 9:03；分钟仍保留两位",
+            settings.hideLockscreenClockLeadingZero,
+            { update(settings.copy(hideLockscreenClockLeadingZero = it)) },
+        )
         SettingsSwitchItem(
             "24 小时制显示时钟冒号",
             "",
@@ -214,6 +229,44 @@ import androidx.core.graphics.ColorUtils
             settings.progressiveLockscreenClockAvoidance,
             { update(settings.copy(progressiveLockscreenClockAvoidance = it)) },
             enabled = android.os.Build.VERSION.SDK_INT >= 34,
+        )
+    }
+    SettingsSection(topLabel = "HyperMusicCover 扩展") {
+        SettingsSwitchItem(
+            "全屏岛展开时下沉通知并隐藏指纹",
+            "音乐、导航、计时等全屏岛生效；展开全部卡片时恢复避让。首次启用请重启系统界面，需要 HMC",
+            settings.hmcExpandedFingerprint,
+            { update(settings.copy(hmcExpandedFingerprint = it)) },
+            enabled = android.os.Build.VERSION.SDK_INT >= 34,
+        )
+        SettingsSwitchItem(
+            "自定义封面时钟字体高度",
+            "直接设置原生字体高度，需 AllInOne 字体支持和 HMC；首次启用请重启系统界面",
+            settings.hmcClockFontHeightEnabled,
+            { update(settings.copy(hmcClockFontHeightEnabled = it)) },
+            enabled = android.os.Build.VERSION.SDK_INT >= 34,
+        )
+        HyperMusicCoverFontHeightSetting(
+            value = settings.hmcClockFontHeight,
+            onValueChange = { update(settings.copy(hmcClockFontHeight = it)) },
+            enabled = settings.hmcClockFontHeightEnabled && !settings.hmcClockFontRatioEnabled && android.os.Build.VERSION.SDK_INT >= 34,
+        )
+        SettingsSwitchItem(
+            "按宽高比调整字体",
+            "联动原生字体宽度、高度和字号；关闭后恢复上面的高度设置",
+            settings.hmcClockFontRatioEnabled,
+            { update(settings.copy(hmcClockFontRatioEnabled = it)) },
+            enabled = settings.hmcClockFontHeightEnabled && android.os.Build.VERSION.SDK_INT >= 34,
+        )
+        HyperMusicCoverFontHeightSetting(
+            value = settings.hmcClockFontRatio,
+            onValueChange = { update(settings.copy(hmcClockFontRatio = it)) },
+            enabled = settings.hmcClockFontHeightEnabled && settings.hmcClockFontRatioEnabled && android.os.Build.VERSION.SDK_INT >= 34,
+            label = "字形宽高比",
+            defaultValue = 2.4f,
+            summary = "每组数字的宽／高，越大越扁；默认 2.4",
+            inputSummary = "以两位数字 00 的轮廓为基准，保持数字宽度并调整高度。输入大于 0 的数值，超出范围时采用字体可达的最接近形态。",
+            positiveOnly = true,
         )
     }
     SettingsSection(topLabel = "息屏时钟") {
@@ -349,11 +402,34 @@ import androidx.core.graphics.ColorUtils
             enabled = !settings.statusBarHideWifiActivity,
         )
     }
-    SettingsSection(topLabel = "实时网速") {
+    SettingsSection(topLabel = "移动信号左右边距") {
         NetworkActivityOffsetSetting(
-            label = "与右侧的距离（正值增大）",
-            value = settings.statusBarNetworkSpeedRightGap,
-            onValueChange = { update(settings.copy(statusBarNetworkSpeedRightGap = it)) },
+            label = "左边距（正值增加）",
+            value = settings.statusBarMobileMarginLeft,
+            onValueChange = { update(settings.copy(statusBarMobileMarginLeft = it)) },
+            limit = 2f,
+            step = 0.1f,
+        )
+        NetworkActivityOffsetSetting(
+            label = "右边距（正值增加）",
+            value = settings.statusBarMobileMarginRight,
+            onValueChange = { update(settings.copy(statusBarMobileMarginRight = it)) },
+            limit = 2f,
+            step = 0.1f,
+        )
+    }
+    SettingsSection(topLabel = "实时网速左右边距") {
+        NetworkActivityOffsetSetting(
+            label = "左边距（正值增加）",
+            value = settings.statusBarNetworkSpeedMarginLeft,
+            onValueChange = { update(settings.copy(statusBarNetworkSpeedMarginLeft = it)) },
+            limit = 2f,
+            step = 0.1f,
+        )
+        NetworkActivityOffsetSetting(
+            label = "右边距（正值增加）",
+            value = settings.statusBarNetworkSpeedMarginRight,
+            onValueChange = { update(settings.copy(statusBarNetworkSpeedMarginRight = it)) },
             limit = 2f,
             step = 0.1f,
         )

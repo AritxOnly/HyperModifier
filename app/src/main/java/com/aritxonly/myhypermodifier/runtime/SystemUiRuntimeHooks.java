@@ -198,7 +198,7 @@ final class SystemUiRuntimeHooks {
         tryInstallSystemUiPart("锁屏指纹", () -> new LockscreenHooks(module).installLockscreenFingerprintHooks(classLoader));
         tryInstallSystemUiPart("锁屏凭据", () -> new LockscreenHooks(module).installLockscreenCredentialHooks(classLoader));
         tryInstallSystemUiPart("状态栏信号隐藏", () -> StatusBarNetworkVisibilityHooks.install(module, classLoader));
-        tryInstallSystemUiPart("实时网速右侧距离", () -> StatusBarNetworkSpeedSpacingHooks.install(module, classLoader));
+        tryInstallSystemUiPart("状态栏信号及网速边距", () -> StatusBarNetworkMarginsHooks.install(module, classLoader));
         tryInstallSystemUiPart("状态栏网络类型", () -> StatusBarNetworkType.install(module, classLoader));
         if (retryLateClasses) SYSTEM_UI_HOOKS_INSTALLED.set(false);
     }

@@ -80,7 +80,14 @@ data class ModifierSettings(
     val lowerLockscreenPasswordPage: Boolean = false,
     val showLockscreenFingerprintIconOnAod: Boolean = false,
     val forceLockscreenClockColon: Boolean = false,
+    val hideLockscreenClockLeadingZero: Boolean = false,
+    val hideDesktopClockLeadingZero: Boolean = false,
     val bypassHyperMusicCoverClockAdjustment: Boolean = false,
+    val hmcExpandedFingerprint: Boolean = false,
+    val hmcClockFontHeightEnabled: Boolean = false,
+    val hmcClockFontHeight: Float = 28f,
+    val hmcClockFontRatioEnabled: Boolean = false,
+    val hmcClockFontRatio: Float = 2.4f,
     val progressiveLockscreenClockAvoidance: Boolean = false,
     val aodClockWeightEnabled: Boolean = ModuleDefaultValues.AOD_CLOCK_WEIGHT_ENABLED,
     val aodClockWeight: Float = ModuleDefaultValues.AOD_CLOCK_WEIGHT,
@@ -99,7 +106,10 @@ data class ModifierSettings(
     val statusBarMobileActivityOffsetY: Float = 0f,
     val statusBarWifiActivityOffsetX: Float = 0f,
     val statusBarWifiActivityOffsetY: Float = 0f,
-    val statusBarNetworkSpeedRightGap: Float = 0f,
+    val statusBarNetworkSpeedMarginRight: Float = 0f,
+    val statusBarMobileMarginLeft: Float = 0f,
+    val statusBarMobileMarginRight: Float = 0f,
+    val statusBarNetworkSpeedMarginLeft: Float = 0f,
     val statusBarNetworkTypeEnabled: Boolean = false,
     val statusBarNetworkTypeSize: Float = 13.5f,
     val statusBarNetworkTypeBold: Boolean = true,
@@ -235,7 +245,14 @@ object ModifierSettingsPresets {
         lowerLockscreenPasswordPage = false,
         showLockscreenFingerprintIconOnAod = false,
         forceLockscreenClockColon = false,
+        hideLockscreenClockLeadingZero = false,
+        hideDesktopClockLeadingZero = false,
         bypassHyperMusicCoverClockAdjustment = false,
+        hmcExpandedFingerprint = false,
+        hmcClockFontHeightEnabled = false,
+        hmcClockFontHeight = 28f,
+        hmcClockFontRatioEnabled = false,
+        hmcClockFontRatio = 2.4f,
         progressiveLockscreenClockAvoidance = false,
         aodClockWeightEnabled = false,
         lockscreenPasswordBackgroundBlurEnabled = false,
@@ -249,7 +266,10 @@ object ModifierSettingsPresets {
         statusBarMobileActivityOffsetY = 0f,
         statusBarWifiActivityOffsetX = 0f,
         statusBarWifiActivityOffsetY = 0f,
-        statusBarNetworkSpeedRightGap = 0f,
+        statusBarNetworkSpeedMarginRight = 0f,
+        statusBarMobileMarginLeft = 0f,
+        statusBarMobileMarginRight = 0f,
+        statusBarNetworkSpeedMarginLeft = 0f,
         statusBarNetworkTypeEnabled = false,
         xiaomiHealthFloatingNavigationEnabled = false,
         xiaomiHealthMiuixIconsEnabled = false,
@@ -385,6 +405,8 @@ object ModifierSettingsStore {
     private const val KEY_PHONE_CUSTOM_IMAGE = "about_phone_custom_image"
     private const val KEY_PHONE_IMAGE_TRANSFORMS = "about_phone_image_transforms"
     private const val KEY_FORCE_LOCKSCREEN_CLOCK_COLON = "force_lockscreen_clock_colon"
+    private const val KEY_HIDE_LOCKSCREEN_CLOCK_LEADING_ZERO = "hide_lockscreen_clock_leading_zero"
+    private const val KEY_HIDE_DESKTOP_CLOCK_LEADING_ZERO = "hide_desktop_clock_leading_zero"
     private const val KEY_AOD_CLOCK_WEIGHT_ENABLED = "aod_clock_weight_enabled"
     private const val KEY_AOD_CLOCK_WEIGHT = "aod_clock_weight"
     private const val KEY_LOCKSCREEN_PASSWORD_BACKGROUND_BLUR_ENABLED =
@@ -407,7 +429,10 @@ object ModifierSettingsStore {
     private const val KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_Y = "status_bar_mobile_activity_offset_y"
     private const val KEY_STATUS_BAR_WIFI_ACTIVITY_OFFSET_X = "status_bar_wifi_activity_offset_x"
     private const val KEY_STATUS_BAR_WIFI_ACTIVITY_OFFSET_Y = "status_bar_wifi_activity_offset_y"
-    private const val KEY_STATUS_BAR_NETWORK_SPEED_RIGHT_GAP = "status_bar_network_speed_right_gap"
+    private const val KEY_STATUS_BAR_NETWORK_SPEED_MARGIN_RIGHT = "status_bar_network_speed_right_gap"
+    private const val KEY_STATUS_BAR_MOBILE_MARGIN_LEFT = "status_bar_mobile_margin_left"
+    private const val KEY_STATUS_BAR_MOBILE_MARGIN_RIGHT = "status_bar_mobile_margin_right"
+    private const val KEY_STATUS_BAR_NETWORK_SPEED_MARGIN_LEFT = "status_bar_network_speed_margin_left"
     private const val KEY_STATUS_BAR_NETWORK_TYPE_ENABLED = "status_bar_network_type_enabled"
     private const val KEY_STATUS_BAR_NETWORK_TYPE_SIZE = "status_bar_network_type_size"
     private const val KEY_STATUS_BAR_NETWORK_TYPE_BOLD = "status_bar_network_type_bold"
@@ -602,7 +627,18 @@ object ModifierSettingsStore {
             aboutPhoneCustomImage = prefs.getString(KEY_PHONE_CUSTOM_IMAGE, "") ?: "",
             aboutPhoneImageTransforms = prefs.getString(KEY_PHONE_IMAGE_TRANSFORMS, "{}") ?: "{}",
             forceLockscreenClockColon = prefs.getBoolean(KEY_FORCE_LOCKSCREEN_CLOCK_COLON, false),
+            hideLockscreenClockLeadingZero = prefs.getBoolean(KEY_HIDE_LOCKSCREEN_CLOCK_LEADING_ZERO, false),
+            hideDesktopClockLeadingZero = prefs.getBoolean(KEY_HIDE_DESKTOP_CLOCK_LEADING_ZERO, false),
             bypassHyperMusicCoverClockAdjustment = prefs.getBoolean(KEY_BYPASS_HYPER_MUSIC_COVER_CLOCK_ADJUSTMENT, false),
+            hmcExpandedFingerprint = prefs.getBoolean("hmc_expanded_fingerprint", false),
+            hmcClockFontRatioEnabled = prefs.getBoolean("hmc_clock_font_ratio_enabled", false),
+            hmcClockFontRatio = HyperMusicCoverFontShapePolicy.validRatio(prefs.getFloat("hmc_clock_font_ratio", 2.4f)),
+            hmcClockFontHeightEnabled = prefs.getBoolean("hmc_clock_font_height_enabled", false),
+            hmcClockFontHeight = HyperMusicCoverExtensionPolicy.storedHeight(
+                prefs.contains("hmc_clock_font_height_axis"),
+                prefs.getFloat("hmc_clock_font_height_axis", 28f),
+                prefs.getFloat("hmc_clock_font_height", 1f),
+            ),
             progressiveLockscreenClockAvoidance = prefs.getBoolean(KEY_PROGRESSIVE_LOCKSCREEN_CLOCK_AVOIDANCE, false),
             aodClockWeightEnabled = prefs.getBoolean(KEY_AOD_CLOCK_WEIGHT_ENABLED, ModuleDefaultValues.AOD_CLOCK_WEIGHT_ENABLED),
             aodClockWeight = normalizedAodClockWeight(prefs.getFloat(KEY_AOD_CLOCK_WEIGHT, ModuleDefaultValues.AOD_CLOCK_WEIGHT)),
@@ -638,7 +674,10 @@ object ModifierSettingsStore {
             statusBarMobileActivityOffsetY = prefs.getFloat(KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_Y, 0f),
             statusBarWifiActivityOffsetX = prefs.getFloat(KEY_STATUS_BAR_WIFI_ACTIVITY_OFFSET_X, 0f),
             statusBarWifiActivityOffsetY = prefs.getFloat(KEY_STATUS_BAR_WIFI_ACTIVITY_OFFSET_Y, 0f),
-            statusBarNetworkSpeedRightGap = prefs.getFloat(KEY_STATUS_BAR_NETWORK_SPEED_RIGHT_GAP, 0f),
+            statusBarNetworkSpeedMarginRight = prefs.getFloat(KEY_STATUS_BAR_NETWORK_SPEED_MARGIN_RIGHT, 0f),
+            statusBarMobileMarginLeft = prefs.getFloat(KEY_STATUS_BAR_MOBILE_MARGIN_LEFT, 0f),
+            statusBarMobileMarginRight = prefs.getFloat(KEY_STATUS_BAR_MOBILE_MARGIN_RIGHT, 0f),
+            statusBarNetworkSpeedMarginLeft = prefs.getFloat(KEY_STATUS_BAR_NETWORK_SPEED_MARGIN_LEFT, 0f),
             statusBarNetworkTypeEnabled = prefs.getBoolean(KEY_STATUS_BAR_NETWORK_TYPE_ENABLED, false),
             statusBarNetworkTypeSize = prefs.getFloat(KEY_STATUS_BAR_NETWORK_TYPE_SIZE, 13.5f),
             statusBarNetworkTypeBold = prefs.getBoolean(KEY_STATUS_BAR_NETWORK_TYPE_BOLD, true),
@@ -864,7 +903,14 @@ object ModifierSettingsStore {
             .putString(KEY_PHONE_CUSTOM_IMAGE, value.aboutPhoneCustomImage)
             .putString(KEY_PHONE_IMAGE_TRANSFORMS, value.aboutPhoneImageTransforms)
             .putBoolean(KEY_FORCE_LOCKSCREEN_CLOCK_COLON, value.forceLockscreenClockColon)
+            .putBoolean(KEY_HIDE_LOCKSCREEN_CLOCK_LEADING_ZERO, value.hideLockscreenClockLeadingZero)
+            .putBoolean(KEY_HIDE_DESKTOP_CLOCK_LEADING_ZERO, value.hideDesktopClockLeadingZero)
             .putBoolean(KEY_BYPASS_HYPER_MUSIC_COVER_CLOCK_ADJUSTMENT, value.bypassHyperMusicCoverClockAdjustment)
+            .putBoolean("hmc_expanded_fingerprint", value.hmcExpandedFingerprint)
+            .putBoolean("hmc_clock_font_height_enabled", value.hmcClockFontHeightEnabled)
+            .putFloat("hmc_clock_font_height_axis", HyperMusicCoverExtensionPolicy.validHeight(value.hmcClockFontHeight))
+            .putBoolean("hmc_clock_font_ratio_enabled", value.hmcClockFontRatioEnabled)
+            .putFloat("hmc_clock_font_ratio", HyperMusicCoverFontShapePolicy.validRatio(value.hmcClockFontRatio))
             .putBoolean(KEY_PROGRESSIVE_LOCKSCREEN_CLOCK_AVOIDANCE, value.progressiveLockscreenClockAvoidance)
             .putBoolean(KEY_AOD_CLOCK_WEIGHT_ENABLED, value.aodClockWeightEnabled)
             .putFloat(KEY_AOD_CLOCK_WEIGHT, normalizedAodClockWeight(value.aodClockWeight))
@@ -900,7 +946,10 @@ object ModifierSettingsStore {
             .putFloat(KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_Y, value.statusBarMobileActivityOffsetY)
             .putFloat(KEY_STATUS_BAR_WIFI_ACTIVITY_OFFSET_X, value.statusBarWifiActivityOffsetX)
             .putFloat(KEY_STATUS_BAR_WIFI_ACTIVITY_OFFSET_Y, value.statusBarWifiActivityOffsetY)
-            .putFloat(KEY_STATUS_BAR_NETWORK_SPEED_RIGHT_GAP, value.statusBarNetworkSpeedRightGap)
+            .putFloat(KEY_STATUS_BAR_NETWORK_SPEED_MARGIN_RIGHT, value.statusBarNetworkSpeedMarginRight)
+            .putFloat(KEY_STATUS_BAR_MOBILE_MARGIN_LEFT, value.statusBarMobileMarginLeft)
+            .putFloat(KEY_STATUS_BAR_MOBILE_MARGIN_RIGHT, value.statusBarMobileMarginRight)
+            .putFloat(KEY_STATUS_BAR_NETWORK_SPEED_MARGIN_LEFT, value.statusBarNetworkSpeedMarginLeft)
             .putBoolean(KEY_STATUS_BAR_NETWORK_TYPE_ENABLED, value.statusBarNetworkTypeEnabled)
             .putFloat(KEY_STATUS_BAR_NETWORK_TYPE_SIZE, value.statusBarNetworkTypeSize)
             .putBoolean(KEY_STATUS_BAR_NETWORK_TYPE_BOLD, value.statusBarNetworkTypeBold)
@@ -1171,7 +1220,14 @@ object ModifierSettingsStore {
         putString(KEY_PHONE_CUSTOM_IMAGE, value.aboutPhoneCustomImage)
         putString(KEY_PHONE_IMAGE_TRANSFORMS, value.aboutPhoneImageTransforms)
         putBoolean(KEY_FORCE_LOCKSCREEN_CLOCK_COLON, value.forceLockscreenClockColon)
+        putBoolean(KEY_HIDE_LOCKSCREEN_CLOCK_LEADING_ZERO, value.hideLockscreenClockLeadingZero)
+        putBoolean(KEY_HIDE_DESKTOP_CLOCK_LEADING_ZERO, value.hideDesktopClockLeadingZero)
         putBoolean(KEY_BYPASS_HYPER_MUSIC_COVER_CLOCK_ADJUSTMENT, value.bypassHyperMusicCoverClockAdjustment)
+        putBoolean("hmc_expanded_fingerprint", value.hmcExpandedFingerprint)
+        putBoolean("hmc_clock_font_height_enabled", value.hmcClockFontHeightEnabled)
+        putFloat("hmc_clock_font_height_axis", HyperMusicCoverExtensionPolicy.validHeight(value.hmcClockFontHeight))
+        putBoolean("hmc_clock_font_ratio_enabled", value.hmcClockFontRatioEnabled)
+        putFloat("hmc_clock_font_ratio", HyperMusicCoverFontShapePolicy.validRatio(value.hmcClockFontRatio))
         putBoolean(KEY_PROGRESSIVE_LOCKSCREEN_CLOCK_AVOIDANCE, value.progressiveLockscreenClockAvoidance)
         putBoolean(KEY_AOD_CLOCK_WEIGHT_ENABLED, value.aodClockWeightEnabled)
         putFloat(KEY_AOD_CLOCK_WEIGHT, normalizedAodClockWeight(value.aodClockWeight))
@@ -1207,7 +1263,10 @@ object ModifierSettingsStore {
         putFloat(KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_Y, value.statusBarMobileActivityOffsetY)
         putFloat(KEY_STATUS_BAR_WIFI_ACTIVITY_OFFSET_X, value.statusBarWifiActivityOffsetX)
         putFloat(KEY_STATUS_BAR_WIFI_ACTIVITY_OFFSET_Y, value.statusBarWifiActivityOffsetY)
-        putFloat(KEY_STATUS_BAR_NETWORK_SPEED_RIGHT_GAP, value.statusBarNetworkSpeedRightGap)
+        putFloat(KEY_STATUS_BAR_NETWORK_SPEED_MARGIN_RIGHT, value.statusBarNetworkSpeedMarginRight)
+        putFloat(KEY_STATUS_BAR_MOBILE_MARGIN_LEFT, value.statusBarMobileMarginLeft)
+        putFloat(KEY_STATUS_BAR_MOBILE_MARGIN_RIGHT, value.statusBarMobileMarginRight)
+        putFloat(KEY_STATUS_BAR_NETWORK_SPEED_MARGIN_LEFT, value.statusBarNetworkSpeedMarginLeft)
         putBoolean(KEY_STATUS_BAR_NETWORK_TYPE_ENABLED, value.statusBarNetworkTypeEnabled)
         putFloat(KEY_STATUS_BAR_NETWORK_TYPE_SIZE, value.statusBarNetworkTypeSize)
         putBoolean(KEY_STATUS_BAR_NETWORK_TYPE_BOLD, value.statusBarNetworkTypeBold)

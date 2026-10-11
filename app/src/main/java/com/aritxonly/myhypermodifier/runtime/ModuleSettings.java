@@ -105,7 +105,13 @@ final class ModuleSettings {
     static volatile String settingsModuleEntries = "{}";
     static volatile boolean aboutPhoneCardsEnabled = ModuleDefaultValues.ABOUT_PHONE_CARDS_ENABLED;
     static volatile boolean forceLockscreenClockColon = false;
+    static volatile boolean hideLockscreenClockLeadingZero = false;
     static volatile boolean bypassHyperMusicCoverClockAdjustment = false;
+    static volatile boolean hmcExpandedFingerprint = false;
+    static volatile boolean hmcClockFontHeightEnabled = false;
+    static volatile float hmcClockFontHeight = 28f;
+    static volatile boolean hmcClockFontRatioEnabled = false;
+    static volatile float hmcClockFontRatio = 2.4f;
     static volatile boolean progressiveLockscreenClockAvoidance = false;
     static volatile boolean aodClockWeightEnabled = ModuleDefaultValues.AOD_CLOCK_WEIGHT_ENABLED;
     static volatile int aodClockWeight = (int) ModuleDefaultValues.AOD_CLOCK_WEIGHT;
@@ -123,7 +129,10 @@ final class ModuleSettings {
     static volatile float statusBarMobileActivityOffsetY = 0f;
     static volatile float statusBarWifiActivityOffsetX = 0f;
     static volatile float statusBarWifiActivityOffsetY = 0f;
-    static volatile float statusBarNetworkSpeedRightGap = 0f;
+    static volatile float statusBarNetworkSpeedMarginRight = 0f;
+    static volatile float statusBarMobileMarginLeft = 0f;
+    static volatile float statusBarMobileMarginRight = 0f;
+    static volatile float statusBarNetworkSpeedMarginLeft = 0f;
     static volatile boolean statusBarNetworkTypeEnabled = false;
     static volatile float statusBarNetworkTypeSize = 13.5f;
     static volatile boolean statusBarNetworkTypeBold = true;
@@ -530,7 +539,16 @@ final class ModuleSettings {
             settingsModuleEntries = values.getString("settings_module_entries", "{}");
             aboutPhoneCardsEnabled = values.getBoolean("about_phone_cards_enabled", ModuleDefaultValues.ABOUT_PHONE_CARDS_ENABLED);
             forceLockscreenClockColon = values.getBoolean("force_lockscreen_clock_colon", false);
+            hideLockscreenClockLeadingZero = values.getBoolean("hide_lockscreen_clock_leading_zero", false);
             bypassHyperMusicCoverClockAdjustment = values.getBoolean("bypass_hyper_music_cover_clock_adjustment", false);
+            hmcExpandedFingerprint = values.getBoolean("hmc_expanded_fingerprint", false);
+            hmcClockFontRatioEnabled = values.getBoolean("hmc_clock_font_ratio_enabled", false);
+            hmcClockFontRatio = HyperMusicCoverFontShapePolicy.validRatio(values.getFloat("hmc_clock_font_ratio", 2.4f));
+            hmcClockFontHeightEnabled = values.getBoolean("hmc_clock_font_height_enabled", false);
+            hmcClockFontHeight = HyperMusicCoverExtensionPolicy.storedHeight(
+                    values.containsKey("hmc_clock_font_height_axis"),
+                    values.getFloat("hmc_clock_font_height_axis", 28f),
+                    values.getFloat("hmc_clock_font_height", 1f));
             progressiveLockscreenClockAvoidance = values.getBoolean("progressive_lockscreen_clock_avoidance", false);
             aodClockWeightEnabled = values.getBoolean("aod_clock_weight_enabled", ModuleDefaultValues.AOD_CLOCK_WEIGHT_ENABLED);
             float requestedAodWeight = values.getFloat("aod_clock_weight", ModuleDefaultValues.AOD_CLOCK_WEIGHT);
@@ -557,7 +575,10 @@ final class ModuleSettings {
             statusBarMobileActivityOffsetY = values.getFloat("status_bar_mobile_activity_offset_y", 0f);
             statusBarWifiActivityOffsetX = values.getFloat("status_bar_wifi_activity_offset_x", 0f);
             statusBarWifiActivityOffsetY = values.getFloat("status_bar_wifi_activity_offset_y", 0f);
-            statusBarNetworkSpeedRightGap = values.getFloat("status_bar_network_speed_right_gap", 0f);
+            statusBarNetworkSpeedMarginRight = values.getFloat("status_bar_network_speed_right_gap", 0f);
+            statusBarMobileMarginLeft = values.getFloat("status_bar_mobile_margin_left", 0f);
+            statusBarMobileMarginRight = values.getFloat("status_bar_mobile_margin_right", 0f);
+            statusBarNetworkSpeedMarginLeft = values.getFloat("status_bar_network_speed_margin_left", 0f);
             statusBarNetworkTypeEnabled = values.getBoolean("status_bar_network_type_enabled", false);
             statusBarNetworkTypeSize = values.getFloat("status_bar_network_type_size", 13.5f);
             statusBarNetworkTypeBold = values.getBoolean("status_bar_network_type_bold", true);

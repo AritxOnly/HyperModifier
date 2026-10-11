@@ -171,9 +171,10 @@ final class RuntimeRefreshRegistry {
      * main queues. This changes no process-start or class-loader timing.
      */
     static void refreshViewsAfterSettingsLoad() {
+        HyperMusicCoverExtensions.refresh();
         GestureHandleHooks.refresh();
         StatusBarNetworkVisibilityHooks.refresh();
-        StatusBarNetworkSpeedSpacingHooks.refresh();
+        StatusBarNetworkMarginsHooks.refresh();
         // Player Island is constructed before remote preferences are often available. Its main
         // and dummy backgrounds must both be remeasured after the actual height arrives.
         refreshMediaIslandRoots();

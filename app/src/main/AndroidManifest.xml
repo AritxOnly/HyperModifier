@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
     <queries>
+        <package android:name="com.miui.home" />
         <package android:name="org.lsposed.manager" />
         <package android:name="com.android.shell" />
         <package android:name="com.mi.health" />

@@ -18,6 +18,7 @@ final class HyperMusicCoverClockHooks {
     private static final AtomicBoolean INSTALLED = new AtomicBoolean();
     private static volatile HyperMusicCoverClockPolicy policy;
     private static volatile boolean bindingFailed;
+    private static volatile Class<?> discoveredMain;
 
     private HyperMusicCoverClockHooks() {}
 
@@ -65,8 +66,10 @@ final class HyperMusicCoverClockHooks {
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
                         ModuleSettings.ensureLoaded();
+                        if (discoveredMain != null) HyperMusicCoverExtensions.bind(module, discoveredMain);
                         if ((!ModuleSettings.bypassHyperMusicCoverClockAdjustment
-                                && !ModuleSettings.progressiveLockscreenClockAvoidance) || policy != null
+                                && !ModuleSettings.progressiveLockscreenClockAvoidance
+                                && !HyperMusicCoverExtensions.enabled()) || policy != null
                                 || bindingFailed) return chain.proceed();
                         Float previous = originalY.get();
                         originalY.set((Float) chain.getArg(0));
@@ -100,6 +103,8 @@ final class HyperMusicCoverClockHooks {
         if (policy != null || bindingFailed) return policy;
         Class<?> main = StackClasses.findMain();
         if (main == null) return null; // HMC absent or not in this call; leave all arguments alone.
+        discoveredMain = main;
+        HyperMusicCoverExtensions.bind(module, main);
         List<XposedInterface.HookHandle> handles = new ArrayList<>();
         try {
             HyperMusicCoverClockPolicy candidate = new HyperMusicCoverClockPolicy(main);

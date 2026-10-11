@@ -193,6 +193,8 @@ final class LockscreenHooks {
                     .intercept(chain -> {
                         ensureLoaded();
                         // HyperOS 4 sinks notifications when extra shelf space is disabled.
+                        // This Flow is not driven by the HMC scene policy. An automatic override
+                        // here can stay false after leaving fullscreen until an OEM input changes.
                         return sinkLockscreenNotificationsForFingerprint ? false : chain.proceed();
                     });
 
@@ -210,6 +212,9 @@ final class LockscreenHooks {
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
                         ensureLoaded();
+                        // The HMC adapter owns a cloned transform input and a policy StateFlow.
+                        // Do not rewrite its coroutine spill array again or on continuation resume.
+                        if (HyperMusicCoverExtensions.bound()) return chain.proceed();
                         try {
                             Object value = enrolledValues.get(chain.getThisObject());
                             if (value instanceof Object[]) {

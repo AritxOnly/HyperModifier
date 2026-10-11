@@ -35,11 +35,20 @@ val hasReleaseSigning = !signingStoreFile.isNullOrBlank()
 android {
     namespace = "com.aritxonly.myhypermodifier"
     compileSdk = 37
+    ndkVersion = "28.2.13676358"
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
 
     defaultConfig {
         applicationId = "com.aritxonly.myhypermodifier"
         minSdk = 33
         targetSdk = 35
+        ndk { abiFilters += "arm64-v8a" }
         versionCode = 38
         versionName = "1.5.0"
     }

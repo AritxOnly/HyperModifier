@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(mhm_desktop_clock LANGUAGES CXX ASM)
+add_library(mhm_desktop_clock SHARED desktop_clock.cpp calendar_entry.S)
+target_compile_features(mhm_desktop_clock PRIVATE cxx_std_17)
+target_compile_options(mhm_desktop_clock PRIVATE -Wall -Wextra -Werror -fvisibility=hidden)
+target_link_options(mhm_desktop_clock PRIVATE -Wl,-z,max-page-size=16384)
+target_link_libraries(mhm_desktop_clock PRIVATE log dl)

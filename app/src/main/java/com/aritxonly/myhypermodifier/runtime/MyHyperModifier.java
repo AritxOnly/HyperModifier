@@ -100,7 +100,10 @@ public final class MyHyperModifier extends XposedModule {
             if (!installSafely(packageName, "设置加载器", this::installSettingsLoader)) return;
             if (SYSTEM_UI.equals(packageName)) {
                 Application application = currentApplication();
-                if (application != null) HookDiagnostics.attach(application);
+                if (application != null) {
+                    HookDiagnostics.attach(application);
+                    DesktopClockSettingsBridge.attach(application);
+                }
                 if (SystemUiCrashGuard.start(param.getApplicationInfo(), ModuleSettings.systemUiRetryGeneration)) {
                     HookDiagnostics.unavailable(packageName, "自动兼容模式", SystemUiCrashGuard.compatibilityDetail());
                     return;
@@ -108,7 +111,10 @@ public final class MyHyperModifier extends XposedModule {
                 startEarlySystemUiHooks(classLoader);
             } else if (SYSTEM_UI_PLUGIN.equals(packageName)) {
                 Application application = currentApplication();
-                if (application != null) HookDiagnostics.attach(application);
+                if (application != null) {
+                    HookDiagnostics.attach(application);
+                    DesktopClockSettingsBridge.attach(application);
+                }
                 if (SystemUiCrashGuard.start(param.getApplicationInfo(), ModuleSettings.systemUiRetryGeneration)) {
                     HookDiagnostics.unavailable(packageName, "自动兼容模式", SystemUiCrashGuard.compatibilityDetail());
                     return;
@@ -143,7 +149,10 @@ public final class MyHyperModifier extends XposedModule {
             logSpotifyEntry(packageName, "after settings");
             if (!ModuleSettings.moduleHooksEnabled || systemUiCompatibilityFor(packageName)) return;
             Application application = currentApplication();
-            if (application != null) HookDiagnostics.attach(application);
+            if (application != null) {
+                HookDiagnostics.attach(application);
+                DesktopClockSettingsBridge.attach(application);
+            }
             if (SYSTEM_UI.equals(packageName) || SYSTEM_UI_PLUGIN.equals(packageName)) {
                 if (SystemUiCrashGuard.start(param.getApplicationInfo(), ModuleSettings.systemUiRetryGeneration)) {
                     HookDiagnostics.unavailable(packageName, "自动兼容模式", SystemUiCrashGuard.compatibilityDetail());
@@ -229,7 +238,9 @@ public final class MyHyperModifier extends XposedModule {
                 installSafely(packageName, "悬浮通知底部间距", () -> HeadsUpBottomMarginHooks.install(this, param.getClassLoader()));
                 installSafely(packageName, "息屏时钟字重", () -> AodClockWeightHooks.install(this, param.getClassLoader()));
                 installSafely(packageName, "锁屏时钟冒号", () -> LockscreenClockColonHooks.install(this, param.getClassLoader()));
+                installSafely(packageName, "锁屏时钟小时前导零", () -> LockscreenClockLeadingZeroHooks.install(this, param.getClassLoader()));
                 installSafely(packageName, "绕过 HyperMusicCover 时钟避让", () -> HyperMusicCoverClockHooks.install(this, param.getClassLoader()));
+                installSafely(packageName, "HyperMusicCover 扩展", () -> HyperMusicCoverExtensions.install(this, param.getClassLoader()));
                 installSafely(packageName, "锁屏时钟渐进避让通知", () -> LockscreenClockAvoidanceHooks.install(this, param.getClassLoader()));
                 if (LOCKSCREEN_PASSWORD_BACKGROUND_EXPERIMENT_ENABLED) {
                     installSafely(packageName, "锁屏密码背景模糊", () ->
@@ -280,6 +291,7 @@ public final class MyHyperModifier extends XposedModule {
 
     private void connectRemoteSettings() {
         ModuleSettings.setRemotePreferences(getRemotePreferences("modifier_settings"));
+        DesktopClockSettingsBridge.setPreferences(getRemotePreferences("modifier_settings"));
     }
 
     private static boolean systemUiCompatibilityFor(String packageName) {
@@ -324,7 +336,9 @@ public final class MyHyperModifier extends XposedModule {
         installSafely(SYSTEM_UI, "悬浮通知底部间距", () -> HeadsUpBottomMarginHooks.install(this, classLoader));
         installSafely(SYSTEM_UI, "息屏时钟字重", () -> AodClockWeightHooks.install(this, classLoader));
         installSafely(SYSTEM_UI, "锁屏时钟冒号", () -> LockscreenClockColonHooks.install(this, classLoader));
+        installSafely(SYSTEM_UI, "锁屏时钟小时前导零", () -> LockscreenClockLeadingZeroHooks.install(this, classLoader));
         installSafely(SYSTEM_UI, "绕过 HyperMusicCover 时钟避让", () -> HyperMusicCoverClockHooks.install(this, classLoader));
+        installSafely(SYSTEM_UI, "HyperMusicCover 扩展", () -> HyperMusicCoverExtensions.install(this, classLoader));
         installSafely(SYSTEM_UI, "锁屏时钟渐进避让通知", () -> LockscreenClockAvoidanceHooks.install(this, classLoader));
         if (LOCKSCREEN_PASSWORD_BACKGROUND_EXPERIMENT_ENABLED) {
             installSafely(SYSTEM_UI, "锁屏密码背景模糊", () ->
@@ -367,6 +381,7 @@ public final class MyHyperModifier extends XposedModule {
                         markLoaded(context);
                         Object result = chain.proceed();
                         if (chain.getThisObject() instanceof Application) HookDiagnostics.attach(context);
+                        DesktopClockSettingsBridge.attach(context);
                         return result;
                     }
                     Object result = chain.proceed();
@@ -374,6 +389,7 @@ public final class MyHyperModifier extends XposedModule {
                     ModuleSettings.loadImmediately(context);
                     if (chain.getThisObject() instanceof Application) {
                         HookDiagnostics.attach(context);
+                        DesktopClockSettingsBridge.attach(context);
                     }
                     return result;
                 });
@@ -392,6 +408,7 @@ public final class MyHyperModifier extends XposedModule {
                     .intercept(chain -> {
                         Context application = (Context) chain.getThisObject();
                         HookDiagnostics.attach(application);
+                        DesktopClockSettingsBridge.attach(application);
                         if (!EAGER_TARGET_SETTINGS.get()) {
                             markLoaded(application);
                             return chain.proceed();
