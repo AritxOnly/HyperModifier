@@ -1,6 +1,14 @@
 # HyperMusicCover 扩展
 
-设置入口：锁屏设置 → HyperMusicCover 扩展。两项默认关闭，设置由 HyperModifier 保存、同步、备份和重置。
+设置入口：锁屏设置 → HyperMusicCover 扩展二级页。绕过时钟避让、展开通知/指纹、自定义字体高度和宽高比集中于此；设置键和值保持原样。
+
+## 1.5.1 可用性检测
+
+- 只查询安装包，不检测注入状态。页面进入/恢复时在 IO 线程查询官方 `com.github.zyl6932.HyperMusicCover` 与旧包名 `com.os4.musiccover`；正式包名依据：[上游构建配置](https://github.com/zyl6932/HyperMusicCover/blob/main/app/build.gradle.kts)。
+- 未检测到安装包时扩展设置置灰。“强制启用”可忽略包名检测，手动解锁设置，不自动打开其他功能；Android 14 的最低版本条件仍保留。
+- 强制启用默认关闭，键为 `hmc_force_enable`，随配置保存、备份、恢复和预设重置。关闭它不会清空功能设置值。
+- 移除此前新增的 SystemUI 检测广播、接收器、等待超时、采样状态和对应测试；全关闭时不再为 UI 检测额外采集调用栈。功能启用后的既有 HMC 绑定路径保留。
+- 无常驻轮询或新增系统渲染层。页面状态、强制启用及包卸载/重装仍待设备回归。
 
 ## 兼容依据与范围
 

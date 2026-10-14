@@ -37,15 +37,8 @@ final class ShadeCardGlassPolicy {
     }
 
     static float[] tune(float[] original, float[] configured) {
-        if (original == null || configured == null
-                || original.length != COUNT || configured.length != COUNT) return null;
-        boolean nonzero = false;
-        for (int i = 0; i < COUNT; i++) {
-            if (!Float.isFinite(original[i]) || !Float.isFinite(configured[i])) return null;
-            nonzero |= original[i] != 0f;
-        }
-        // A zero recipe clears the effect. Never turn a clear call into a visible material.
-        if (!nonzero) return null;
+        if (!isActiveRecipe(original) || configured == null || configured.length != COUNT) return null;
+        for (float value : configured) if (!Float.isFinite(value)) return null;
         float[] result = original.clone();
         for (int i = 0; i < COUNT; i++) {
             float delta = configured[i] - BASE[i];
@@ -56,6 +49,18 @@ final class ShadeCardGlassPolicy {
             result[i] = signed ? value : Math.max(0f, value);
         }
         return result;
+    }
+
+    /** Validate native payloads without cloning a default and a throwaway tuned recipe. */
+    static boolean isActiveRecipe(float[] original) {
+        if (original == null || original.length != COUNT) return false;
+        boolean nonzero = false;
+        for (int i = 0; i < COUNT; i++) {
+            if (!Float.isFinite(original[i])) return false;
+            nonzero |= original[i] != 0f;
+        }
+        // A zero recipe clears the effect. Never turn a clear call into a visible material.
+        return nonzero;
     }
 
     /** Pure stack classification; View/row identity is checked separately by the hook. */
@@ -80,6 +85,24 @@ final class ShadeCardGlassPolicy {
         return control || (controlMaterial && controlAncestor) ? 2 : notification && !keyguard ? 1 : 0;
     }
 
+    static int callKind(StackTraceElement[] frames, boolean controlAncestor) {
+        boolean control = false;
+        boolean controlMaterial = false;
+        boolean notification = false;
+        boolean keyguard = false;
+        for (StackTraceElement frame : frames) {
+            String owner = frame.getClassName();
+            if (owner.contains("HeadsUp") || owner.contains("ShadeBlendBlurController")) return 0;
+            keyguard |= owner.contains("OnKeyguard") || owner.contains("FullAod")
+                    || owner.startsWith("com.android.keyguard.")
+                    || owner.startsWith("com.miui.keyguard.");
+            control |= owner.startsWith("miui.systemui.controlcenter.");
+            controlMaterial |= owner.startsWith("miui.systemui.util.MiBackgroundStyle");
+            notification |= owner.startsWith("com.android.systemui.statusbar.notification.");
+        }
+        return control || (controlMaterial && controlAncestor) ? 2 : notification && !keyguard ? 1 : 0;
+    }
+
     /** HyperChanger's elementMaterialOverride caller routing for native Glass radii.
      * Deliberately separate from recipe/card routing: BlurProvider owns the sampling buffers.
      */
@@ -87,6 +110,20 @@ final class ShadeCardGlassPolicy {
         boolean notification = false;
         boolean control = false;
         for (String owner : owners) {
+            if (owner.contains("HeadsUp")) return 0;
+            control |= owner.startsWith("miui.systemui.controlcenter.");
+            notification |= owner.startsWith("com.android.systemui.statusbar.notification.")
+                    || owner.startsWith("com.android.systemui.shade.")
+                    || owner.startsWith("com.miui.systemui.shade.");
+        }
+        return control ? 2 : notification ? 1 : 0;
+    }
+
+    static int radiusCallKind(StackTraceElement[] frames) {
+        boolean notification = false;
+        boolean control = false;
+        for (StackTraceElement frame : frames) {
+            String owner = frame.getClassName();
             if (owner.contains("HeadsUp")) return 0;
             control |= owner.startsWith("miui.systemui.controlcenter.");
             notification |= owner.startsWith("com.android.systemui.statusbar.notification.")

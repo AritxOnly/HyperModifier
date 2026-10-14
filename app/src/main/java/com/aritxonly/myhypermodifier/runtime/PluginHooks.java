@@ -303,6 +303,7 @@ final class PluginHooks {
      * is why a dimension-only hook could previously miss parts of the control centre.
      */
     void installSystemUiPluginCornerHooks(ClassLoader classLoader) {
+        DynamicIslandGlassHooks.install(module, classLoader);
         MediaIslandHostHooks.install(module, classLoader);
         hookPluginCornerSetter(classLoader,
                 "miui.systemui.controlcenter.qs.tileview.QSTileItemIconView",

@@ -85,13 +85,38 @@ public final class MyHyperModifier extends XposedModule {
      * PackageLoaded so their View entry point exists before the first relevant Activity frame.
      */
     @Override
+    public void onSystemServerStarting(XposedModuleInterface.SystemServerStartingParam param) {
+        log(Log.INFO, TAG, "Entered system_server for framework hooks");
+        try {
+            KeyShortcutHooks.install(this, param.getClassLoader(), getRemotePreferences("modifier_settings"));
+        } catch (Throwable error) {
+            log(Log.ERROR, TAG, "Could not install key shortcut hooks", error);
+        }
+        try {
+            GestureHandleAppTransitionHooks.install(this, param.getClassLoader(),
+                    getRemotePreferences("modifier_settings"));
+        } catch (Throwable error) {
+            log(Log.ERROR, TAG, "Could not install gesture handle app transition hook", error);
+        }
+    }
+
+    @Override
     public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
         String packageName = param.getPackageName();
-        if (!SYSTEM_UI.equals(packageName) && !SYSTEM_UI_PLUGIN.equals(packageName)
-                && !MILINK.equals(packageName) && !XMSF.equals(packageName)) return;
+        // LSPosed delivers only selected packages. Glass radius must cover every selected UI process.
+        if (BuildConfig.APPLICATION_ID.equals(packageName)) return;
         logSpotifyEntry(packageName, "before settings");
         try {
-            connectRemoteSettings();
+            if (!SYSTEM_UI.equals(packageName) && !SYSTEM_UI_PLUGIN.equals(packageName)
+                    && !MILINK.equals(packageName) && !XMSF.equals(packageName)) {
+                // Added Glass scope gets only its own Hook. Existing features bootstrap at PackageReady.
+                ModuleSettings.setRemotePreferences(getRemotePreferences("modifier_settings"));
+                if (ModuleSettings.moduleHooksEnabled && !systemUiCompatibilityFor(packageName)) {
+                    installSafely(packageName, "全局 Glass 模糊半径", () -> GlobalGlassBlurHooks.install(this, packageName));
+                }
+                return;
+            }
+            connectRemoteSettings(packageName);
             logSpotifyEntry(packageName, "after settings");
             if (!ModuleSettings.moduleHooksEnabled || systemUiCompatibilityFor(packageName)) return;
             EAGER_TARGET_SETTINGS.set(SYSTEM_UI.equals(packageName)
@@ -126,6 +151,11 @@ public final class MyHyperModifier extends XposedModule {
                 installSafely(packageName, "MiLink 背景模糊", () ->
                         systemUiHooks().installMiLinkFusionBackgroundBlurHook(classLoader));
             }
+            installSafely(packageName, "全局 Glass 模糊半径", () -> GlobalGlassBlurHooks.install(this, packageName));
+            if (SYSTEM_UI.equals(packageName)) installSafely(packageName, "通知清除按钮 Glass 半径",
+                    () -> NotificationDismissGlassHooks.install(this, classLoader));
+            if (SYSTEM_UI.equals(packageName)) installSafely(packageName, "通知中心超级岛不透明度",
+                    () -> FocusNotificationGlassTintHooks.install(this, classLoader));
         } catch (Throwable throwable) {
             log(Log.ERROR, TAG, "Could not install early hooks for " + packageName, throwable);
             HookDiagnostics.failure(packageName, "提前注入", throwable);
@@ -135,17 +165,42 @@ public final class MyHyperModifier extends XposedModule {
     @Override
     public void onPackageReady(XposedModuleInterface.PackageReadyParam param) {
         String packageName = param.getPackageName();
-        if (!SYSTEM_UI.equals(packageName) && !SYSTEM_UI_PLUGIN.equals(packageName)
-                && !MILINK.equals(packageName) && !XIAOMI_HEALTH.equals(packageName)
-                && !MARKET.equals(packageName) && !MI_HOME.equals(packageName)
-                && !AMAP.equals(packageName) && !XIAOMI_COMMUNITY.equals(packageName)
-                && !BILIBILI.equals(packageName) && !SPOTIFY.equals(packageName) && !XMSF.equals(packageName) && !SETTINGS.equals(packageName)) {
+        if (ModuleScopePackage.VOICE_ASSIST.equals(packageName)) {
+            try {
+                XiaoAiShortcutBridge.install(this, param.getClassLoader(), getRemotePreferences("modifier_settings"));
+            } catch (Throwable error) {
+                log(Log.ERROR, TAG, "Could not install XiaoAi shortcut bridge", error);
+            }
+            return;
+        }
+        boolean knownTarget = SYSTEM_UI.equals(packageName) || SYSTEM_UI_PLUGIN.equals(packageName)
+                || MILINK.equals(packageName) || XIAOMI_HEALTH.equals(packageName) || MARKET.equals(packageName)
+                || MI_HOME.equals(packageName) || AMAP.equals(packageName) || XIAOMI_COMMUNITY.equals(packageName)
+                || BILIBILI.equals(packageName) || SPOTIFY.equals(packageName) || XMSF.equals(packageName) || SETTINGS.equals(packageName);
+        boolean widgetTarget = false;
+        try {
+            android.content.SharedPreferences widgetPrefs = getRemotePreferences("modifier_settings");
+            widgetTarget = widgetPrefs.getBoolean("deadliner_widget_glass_enabled", false);
+        } catch (RuntimeException error) {
+            log(Log.WARN, TAG, "Widget selection preferences unavailable for " + packageName, error);
+        }
+        if (!knownTarget && !widgetTarget) return;
+        if (!knownTarget) {
+            // Provider-only scopes do not need generic Context/resource Hooks or desktop bridges.
+            try {
+                ModuleSettings.setRemotePreferences(getRemotePreferences("modifier_settings"));
+                if (!ModuleSettings.moduleHooksEnabled) return;
+                Application app = currentApplication();
+                if (app != null) { HookDiagnostics.attach(app); ModuleSettings.markLoaded(app); }
+                installSafely(packageName, "安卓小组件玻璃背景", () -> AndroidWidgetGlassHooks.install(this, packageName));
+                HookDiagnostics.ready(packageName);
+            } catch (Throwable error) { HookDiagnostics.failure(packageName, "小组件注入", error); }
             return;
         }
 
         logSpotifyEntry(packageName, "before settings");
         try {
-            connectRemoteSettings();
+            connectRemoteSettings(packageName);
             logSpotifyEntry(packageName, "after settings");
             if (!ModuleSettings.moduleHooksEnabled || systemUiCompatibilityFor(packageName)) return;
             Application application = currentApplication();
@@ -159,6 +214,11 @@ public final class MyHyperModifier extends XposedModule {
                     return;
                 }
             }
+            installSafely(packageName, "全局 Glass 模糊半径", () -> GlobalGlassBlurHooks.install(this, packageName));
+            if (SYSTEM_UI.equals(packageName)) installSafely(packageName, "通知清除按钮 Glass 半径",
+                    () -> NotificationDismissGlassHooks.install(this, param.getClassLoader()));
+            if (SYSTEM_UI.equals(packageName)) installSafely(packageName, "通知中心超级岛不透明度",
+                    () -> FocusNotificationGlassTintHooks.install(this, param.getClassLoader()));
             boolean eagerTarget = SYSTEM_UI.equals(packageName)
                     || SYSTEM_UI_PLUGIN.equals(packageName) || MILINK.equals(packageName) || XMSF.equals(packageName);
             if (eagerTarget) {
@@ -171,6 +231,10 @@ public final class MyHyperModifier extends XposedModule {
                 ModuleSettings.loadImmediately();
             } else {
                 ModuleSettings.ensureLoaded();
+            }
+            if (widgetTarget) {
+                installSafely(packageName, "安卓小组件玻璃背景", () -> AndroidWidgetGlassHooks.install(this, packageName));
+                if (!knownTarget) { HookDiagnostics.ready(packageName); return; }
             }
             if (SETTINGS.equals(packageName)) {
                 installSafely(packageName, "设置主页入口", () -> SettingsHomeHooks.install(this, param.getClassLoader()));
@@ -289,9 +353,9 @@ public final class MyHyperModifier extends XposedModule {
                 + ", settings=" + ModuleSettings.loadStatus());
     }
 
-    private void connectRemoteSettings() {
+    private void connectRemoteSettings(String packageName) {
         ModuleSettings.setRemotePreferences(getRemotePreferences("modifier_settings"));
-        DesktopClockSettingsBridge.setPreferences(getRemotePreferences("modifier_settings"));
+        if (SYSTEM_UI.equals(packageName)) DesktopClockSettingsBridge.setPreferences(getRemotePreferences("modifier_settings"));
     }
 
     private static boolean systemUiCompatibilityFor(String packageName) {

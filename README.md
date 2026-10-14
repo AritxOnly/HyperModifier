@@ -1,5 +1,7 @@
 # HyperModifier
 
+- [1.5.1 更新日志](RELEASE_NOTES_v1.5.1.md)
+- [1.5.1 发布检查](docs/testing/RELEASE_1.5.1_CHECKLIST.md)
 - [1.5.0 更新日志](RELEASE_NOTES_v1.5.0.md)
 - [1.5.0 功能测试 TODO](docs/testing/TEST_TODO_v1.5.0.md)
 
@@ -23,19 +25,17 @@ Xiaomi Community 6.6.9, and Bilibili 9.13.0 (`reference/哔哩哔哩.apk`).
   each edited slot adds an offset to the original recipe, preserving per-card state differences.
   It is off by default and does not force glass onto non-glass themes. See
   [SHADE_CARD_GLASS.md](docs/investigations/SHADE_CARD_GLASS.md) for scope, reference defaults, and validation limits.
-  Global material blur scales the native Glass sampling radii (`0–200%`), while an optional Glass blur radius
-  supplies a common base (`0–100px`, including zero) before scaling. Like HyperChanger, the radius
-  hook includes the shade BlurProvider's native sampling buffers, not just card Views. Recipe
-  edits remain card-only. No child-radius injection or new capture layer is added; ordinary
-  background blur remains under the global background setting. Shared Glass buffers mean this
-  is not an independent blur layer per card. Descriptive labels follow HyperChanger's
-  verified slot names; unpublished slots are explicitly marked rather than given speculative meanings.
-- “全局材质模糊” is a standalone second-level page, with links from notification/Control Center,
-  heads-up, and their material editors. Shared Glass radius/proportion (including heads-up sampling)
-  is independent of per-surface recipe switches; panel/MiLink background blur and dim share this page.
-  Existing blur values are preserved. An absent global enable key inherits the old card recipe switch.
-  Recipe presets no longer reset shared blur. Card JSON v3 exports the recipe only; v1/v2 still import
-  their recipes without applying legacy blur fields. The separate heads-up radius hook is removed.
+  Global Glass blur now has one enable switch and one radius (`0–100px`, including zero).
+  The native `View.setMiGlassBlurRadius(int,int)` hook applies the chosen value to both radii in
+  every LSPosed-selected app process, including launcher, Settings, keyguard and heads-up surfaces
+  that use this API. Add other system apps to the module scope and restart them for wider coverage.
+  Disabling the switch restores each tracked View's latest original radii. No new capture layer
+  is added; Glass recipe edits remain card-only and ordinary background blur keeps its own setting.
+- “全局材质模糊” is a standalone second-level page, linked from notification/Control Center,
+  heads-up and their material editors. Glass radius is independent of per-surface recipe switches;
+  panel/MiLink background blur and dim share this page. Legacy percentage and radius-enable keys
+  remain stored for config compatibility but no longer affect runtime blur. Recipe presets and
+  JSON imports do not reset shared blur; card JSON v3 exports only the recipe.
 - MiLink Fusion Device Center card radius defaults to `28dp` in v1.5.0.
 - “全局背景材质” offers a shared `0–100%` background dim slider for the notification shade,
   Control Center, and MiLink Fusion Device Center. Custom dim is off by default (editable value
@@ -172,6 +172,14 @@ secondary-panel hook path:
 - `BilibiliHooks` / `BilibiliFloatingNavigation`: official 9.13.0 `TabHost` adapter and touch-only
   `HomeTabPublishView` action. Hyper-PiliPlus icon mapping follows local revision `58e5edc67`;
   the detached emphasis button follows Deadliner revision `4d1b755`.
+
+- `widget_hooks.cpp`: version-checked HyperOS Runtime metadata bridge for all Android widget
+  stacking and default-all launcher glass with app/provider exclusions. The verified alternative
+  clock glass material supports app dropdowns, a custom provider dialog, and desktop instance
+  overrides in the secondary picker (instance > provider > app). `AndroidWidgetGlassHooks`
+  optionally adapts recognized RemoteViews backgrounds in scoped provider apps. Configure under
+  System UI → System Desktop; launcher glass requires System UI and System Desktop scope. Details and limits:
+  [Runtime widget compatibility](docs/investigations/HYPEROS_RUNTIME_WIDGET_COMPATIBILITY.md).
 
 The secondary brightness hook changes only its outer `setOutlineRadius`. Its progress layer keeps
 MIUI's small native clip radius, leaving the fill edge flat while the parent outline rounds the

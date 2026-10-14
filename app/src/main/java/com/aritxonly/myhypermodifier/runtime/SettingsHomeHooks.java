@@ -3,7 +3,6 @@ package com.aritxonly.myhypermodifier;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
-import android.graphics.drawable.Drawable;
 import android.util.Log;
 import android.widget.ImageView;
 import android.widget.Toast;
@@ -34,6 +33,7 @@ final class SettingsHomeHooks {
                     List<Object> headers = (List<Object>) chain.getArg(0);
                     if (headers == null) return chain.proceed();
                     Context context = (Context) chain.getThisObject();
+                    SettingsHomeIconCache.reset(context);
                     try {
                         SettingsHomeHeaderPolicy.removeInjected(headers, readId);
                     } catch (Throwable failure) {
@@ -43,6 +43,15 @@ final class SettingsHomeHooks {
                     Object result = chain.proceed();
                     try {
                         insertFiltered(context, headers, header, readId, loader);
+                        Field extras = header.getField("extras");
+                        int prepared = 0;
+                        for (Object value : headers) {
+                            String key = iconKey(readId.applyAsLong(value), (android.os.Bundle) extras.get(value));
+                            if (key != null) {
+                                SettingsHomeIconCache.prepare(context, key);
+                                if (++prepared == 16) break;
+                            }
+                        }
                     } catch (Throwable failure) {
                         module.log(Log.WARN, "MyHyperModifier", "Settings entry unavailable", failure);
                     }
@@ -71,41 +80,21 @@ final class SettingsHomeHooks {
         try {
             Class<?> adapter = Class.forName("com.android.settings.MiuiSettings$HeaderAdapter", false, loader);
             Class<?> holder = Class.forName("com.android.settings.MiuiSettings$HeaderViewHolder", false, loader);
+            Field extrasField = header.getField("extras");
             Field iconField = holder.getDeclaredField("icon");
             iconField.setAccessible(true);
             module.hook(adapter.getDeclaredMethod("setIcon", holder, header))
                     .setId("settings-home-entry-icons").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
                         long id = readId.applyAsLong(chain.getArg(1));
-                        if (id != MODULE_ID && id != MANAGER_ID && !SettingsHomeHeaderPolicy.isModuleEntryId(id)) return chain.proceed();
-                        // Keep native icon visibility and row binding before replacing the artwork.
+                        if (id != MODULE_ID && id != MANAGER_ID && !SettingsHomeHeaderPolicy.isModuleEntryId(id)
+                                && !SettingsHomeIconCache.hasPendingBindings()) return chain.proceed();
+                        ImageView icon = (ImageView) iconField.get(chain.getArg(0));
+                        SettingsHomeIconCache.unbind(icon);
                         Object result = chain.proceed();
-                        try {
-                            ImageView icon = (ImageView) iconField.get(chain.getArg(0));
-                            Drawable drawable;
-                            if (SettingsHomeHeaderPolicy.isModuleEntryId(id)) {
-                                android.os.Bundle extras = (android.os.Bundle) header.getField("extras").get(chain.getArg(1));
-                                drawable = icon.getContext().getPackageManager().getApplicationIcon(extras.getString("mhm_target_package"));
-                            } else {
-                                Context own = icon.getContext().createPackageContext(PACKAGE, Context.CONTEXT_IGNORE_SECURITY);
-                                String name = id == MANAGER_ID ? "ic_settings_lsposed" : "ic_settings_hypermodifier";
-                                int resource = own.getResources().getIdentifier(name, "drawable", PACKAGE);
-                                drawable = own.getDrawable(resource);
-                            }
-                            // The native row reserves 34dp for a centered 28dp drawable. Changing
-                            // the ImageView to 28dp also moves its following title 6dp to the left.
-                            // Bound only the artwork; preserve host LayoutParams, padding and scale.
-                            int dimension = icon.getResources().getIdentifier(
-                                    "header_icon_size", "dimen", "com.android.settings");
-                            int size = dimension != 0 ? icon.getResources().getDimensionPixelSize(dimension)
-                                    : Math.round(28f * icon.getResources().getDisplayMetrics().density);
-                            drawable = boundedIcon(drawable, size);
-                            icon.setImageTintList(null);
-                            icon.clearColorFilter();
-                            icon.setImageDrawable(drawable);
-                        } catch (Exception unavailable) {
-                            module.log(Log.WARN, "MyHyperModifier", "Settings entry icon unavailable", unavailable);
-                        }
+                        if (id != MODULE_ID && id != MANAGER_ID && !SettingsHomeHeaderPolicy.isModuleEntryId(id)) return result;
+                        String key = iconKey(id, (android.os.Bundle) extrasField.get(chain.getArg(1)));
+                        if (key != null) SettingsHomeIconCache.bind(icon, key);
                         return result;
                     });
         } catch (Exception unavailable) {
@@ -113,23 +102,11 @@ final class SettingsHomeHooks {
         }
     }
 
-    /** Prevent app icon intrinsic sizes from changing wrap_content native rows. */
-    private static Drawable boundedIcon(Drawable drawable, int size) {
-        return new android.graphics.drawable.DrawableWrapper(drawable) {
-            @Override public int getIntrinsicWidth() { return size; }
-            @Override public int getIntrinsicHeight() { return size; }
-            @Override public void draw(android.graphics.Canvas canvas) {
-                android.graphics.Rect bounds = getBounds();
-                android.graphics.Path clip = new android.graphics.Path();
-                float radius = Math.min(bounds.width(), bounds.height()) * 0.28f;
-                clip.addRoundRect(new android.graphics.RectF(bounds), radius, radius,
-                        android.graphics.Path.Direction.CW);
-                int save = canvas.save();
-                canvas.clipPath(clip);
-                super.draw(canvas);
-                canvas.restoreToCount(save);
-            }
-        };
+    private static String iconKey(long id, android.os.Bundle extras) {
+        if (id == MODULE_ID) return "resource:ic_settings_hypermodifier";
+        if (id == MANAGER_ID) return "resource:ic_settings_lsposed";
+        return SettingsHomeHeaderPolicy.isModuleEntryId(id) && extras != null
+                ? extras.getString("mhm_target_package") : null;
     }
 
     private static void insertFiltered(Context context, List<Object> headers, Class<?> type,

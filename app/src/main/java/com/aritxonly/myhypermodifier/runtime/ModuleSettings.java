@@ -23,6 +23,7 @@ final class ModuleSettings {
     static volatile String diagnosticToken = "";
     private static final AtomicBoolean SETTINGS_LOADED = new AtomicBoolean();
     private static final AtomicBoolean LOAD_IN_FLIGHT = new AtomicBoolean();
+    private static final AtomicBoolean RELOAD_REQUESTED = new AtomicBoolean();
     private static final AtomicBoolean LOAD_FAILURE_LOGGED = new AtomicBoolean();
     private static final AtomicBoolean REMOTE_LISTENER_REGISTERED = new AtomicBoolean();
     private static final AtomicInteger LOAD_FAILURES = new AtomicInteger();
@@ -46,13 +47,16 @@ final class ModuleSettings {
     static volatile boolean shadeCardGlassParametersEnabled = false;
     static volatile boolean disableShadeGlassHooks = false;
     static volatile boolean globalGlassBlurEnabled = false;
+    static volatile int dynamicIslandExpandedOpacity = 30;
+    static volatile boolean dynamicIslandOpacityEnabled = false;
+    static volatile boolean dynamicIslandNotificationOpacityEnabled = false;
+    static volatile int dynamicIslandNotificationOpacity = 30;
     private static volatile float[] shadeCardGlassParameters = ShadeCardGlassPolicy.defaults();
-    static volatile int shadeCardBackgroundBlurPercent = 100;
-    static volatile boolean shadeCardGlassBlurEnabled = false;
     static volatile int shadeCardGlassBlurRadius = 20;
     static volatile boolean headsUpBackgroundBlurRadiusEnabled = false;
     static volatile int headsUpBackgroundBlurRadius = 60;
     static volatile int globalBackgroundBlurPercent = 100;
+    static volatile boolean shadeBackgroundScaleDisabled = true;
     static volatile boolean globalBackgroundDimEnabled = false;
     static volatile float globalBackgroundDimPercent = 20f;
     static volatile boolean controlCenterFollowMiLinkBackgroundMaterial = true;
@@ -106,6 +110,12 @@ final class ModuleSettings {
     static volatile boolean aboutPhoneCardsEnabled = ModuleDefaultValues.ABOUT_PHONE_CARDS_ENABLED;
     static volatile boolean forceLockscreenClockColon = false;
     static volatile boolean hideLockscreenClockLeadingZero = false;
+    static volatile int desktopStatusBarIconMode = 0;
+    static volatile boolean androidWidgetGlassEnabled = false;
+    static volatile String androidWidgetGlassStyles = "";
+    static volatile boolean androidWidgetClockGlassEnabled = false;
+    static volatile String androidWidgetClockGlassTargets = "*";
+    static volatile String androidWidgetGlassTargets = "";
     static volatile boolean bypassHyperMusicCoverClockAdjustment = false;
     static volatile boolean hmcExpandedFingerprint = false;
     static volatile boolean hmcClockFontHeightEnabled = false;
@@ -221,6 +231,12 @@ final class ModuleSettings {
         // provider IPC is needed: LSPosed has already supplied the preferences snapshot.
         try {
             moduleHooksEnabled = preferences.getBoolean("module_hooks_enabled", true);
+            desktopStatusBarIconMode = DesktopStatusBarPolicy.normalize(preferences.getInt("desktop_status_bar_icon_mode", 0));
+            androidWidgetGlassEnabled = preferences.getBoolean("deadliner_widget_glass_enabled", false);
+            androidWidgetGlassTargets = preferences.getString(AndroidWidgetGlassPolicy.KEY, AndroidWidgetGlassPolicy.DEFAULT_TARGETS);
+            androidWidgetGlassStyles = preferences.getString(WidgetGlassStyles.KEY, "");
+            androidWidgetClockGlassEnabled = preferences.getBoolean("deadliner_clock_glass_experiment", false);
+            androidWidgetClockGlassTargets = preferences.getString(AndroidWidgetGlassPolicy.CLOCK_STYLE_KEY, "*");
             settingsHomeEntryEnabled = preferences.getBoolean("settings_home_entry_enabled", false);
             settingsModulesEntryEnabled = preferences.getBoolean("settings_modules_entry_enabled", false);
             settingsHomeEntryPosition = SettingsHomeHeaderPolicy.normalizePosition(preferences.getString("settings_home_entry_position", ModuleDefaultValues.SETTINGS_HOME_ENTRY_POSITION));
@@ -233,6 +249,16 @@ final class ModuleSettings {
             String token = preferences.getString("diagnostic_token", "");
             diagnosticToken = token == null ? "" : token;
             disableShadeGlassHooks = preferences.getBoolean("disable_shade_glass_hooks", false);
+            globalGlassBlurEnabled = preferences.getBoolean("global_glass_blur_enabled",
+                    preferences.getBoolean("shade_card_glass_parameters_enabled", false));
+            dynamicIslandOpacityEnabled = preferences.getBoolean("dynamic_island_opacity_enabled", globalGlassBlurEnabled);
+            dynamicIslandExpandedOpacity = Math.round(ShadeCardGlassPolicy.normalize(preferences.getFloat(
+                    "dynamic_island_expanded_opacity", 30f), 100f, 30f));
+            dynamicIslandNotificationOpacityEnabled = preferences.getBoolean("dynamic_island_notification_opacity_enabled", dynamicIslandOpacityEnabled);
+            dynamicIslandNotificationOpacity = Math.round(ShadeCardGlassPolicy.normalize(preferences.getFloat(
+                    "dynamic_island_notification_opacity", preferences.getFloat("dynamic_island_expanded_opacity", 30f)), 100f, 30f));
+            shadeCardGlassBlurRadius = Math.round(ShadeCardGlassPolicy.normalize(preferences.getFloat(
+                    "shade_card_glass_blur_radius", 20f), ShadeCardGlassPolicy.MAX_GLASS_BLUR_RADIUS, 20f));
         } catch (Throwable throwable) {
             moduleHooksEnabled = false;
             systemUiCompatibilityMode = true;
@@ -272,7 +298,7 @@ final class ModuleSettings {
             publishLoadedSettings();
             return true;
         } finally {
-            LOAD_IN_FLIGHT.set(false);
+            finishLoad();
         }
     }
 
@@ -366,7 +392,7 @@ final class ModuleSettings {
                         scheduleRetry();
                     }
                 } finally {
-                    LOAD_IN_FLIGHT.set(false);
+                    finishLoad();
                 }
             });
         } catch (RuntimeException exception) {
@@ -377,23 +403,33 @@ final class ModuleSettings {
 
     /** Refreshes an already loaded target process after LSPosed reports a preference change. */
     private static void scheduleReload() {
-        if (remotePreferences == null || !LOAD_IN_FLIGHT.compareAndSet(false, true)) return;
+        if (remotePreferences == null) return;
+        RELOAD_REQUESTED.set(true);
+        if (!LOAD_IN_FLIGHT.compareAndSet(false, true)) return;
         try {
             SETTINGS_EXECUTOR.execute(() -> {
                 try {
-                    if (load()) {
-                        publishLoadedSettings();
-                    } else {
-                        scheduleRetry();
+                    while (RELOAD_REQUESTED.getAndSet(false)) {
+                        if (load()) {
+                            publishLoadedSettings();
+                        } else {
+                            scheduleRetry();
+                        }
                     }
                 } finally {
-                    LOAD_IN_FLIGHT.set(false);
+                    finishLoad();
                 }
             });
         } catch (RuntimeException exception) {
             LOAD_IN_FLIGHT.set(false);
             scheduleRetry();
         }
+    }
+
+    private static void finishLoad() {
+        LOAD_IN_FLIGHT.set(false);
+        // Changes reported during getAll/publication must not lose the final user value.
+        if (RELOAD_REQUESTED.get()) scheduleReload();
     }
 
     private static void publishLoadedSettings() {
@@ -458,9 +494,12 @@ final class ModuleSettings {
             globalGlassBlurEnabled = values.getBoolean("global_glass_blur_enabled", shadeCardGlassParametersEnabled);
             shadeCardGlassParameters = parseHeadsUpGlassParameters(values.getString(
                     "shade_card_glass_parameters", ""), ShadeCardGlassPolicy.defaults());
-            shadeCardBackgroundBlurPercent = Math.round(ShadeCardGlassPolicy.normalize(values.getFloat(
-                    "shade_card_background_blur_percent", 100f), 200f, 100f));
-            shadeCardGlassBlurEnabled = values.getBoolean("shade_card_glass_blur_enabled", false);
+            dynamicIslandOpacityEnabled = values.getBoolean("dynamic_island_opacity_enabled", globalGlassBlurEnabled);
+            dynamicIslandExpandedOpacity = Math.round(ShadeCardGlassPolicy.normalize(values.getFloat(
+                    "dynamic_island_expanded_opacity", 30f), 100f, 30f));
+            dynamicIslandNotificationOpacityEnabled = values.getBoolean("dynamic_island_notification_opacity_enabled", dynamicIslandOpacityEnabled);
+            dynamicIslandNotificationOpacity = Math.round(ShadeCardGlassPolicy.normalize(values.getFloat(
+                    "dynamic_island_notification_opacity", values.getFloat("dynamic_island_expanded_opacity", 30f)), 100f, 30f));
             shadeCardGlassBlurRadius = Math.round(ShadeCardGlassPolicy.normalize(values.getFloat(
                     "shade_card_glass_blur_radius", 20f), ShadeCardGlassPolicy.MAX_GLASS_BLUR_RADIUS, 20f));
             headsUpGlassParameters = parseHeadsUpGlassParameters(values.getString(
@@ -479,6 +518,7 @@ final class ModuleSettings {
                     "heads_up_background_blur_radius", 60f), ShadeCardGlassPolicy.MAX_GLASS_BLUR_RADIUS, 60f));
             globalBackgroundBlurPercent = Math.max(0, Math.min(200, Math.round(values.getFloat(
                     "global_background_blur_percent", 100f))));
+            shadeBackgroundScaleDisabled = values.getBoolean("shade_background_scale_disabled", true);
             globalBackgroundDimEnabled = values.getBoolean("global_background_dim_enabled", false);
             globalBackgroundDimPercent = BackgroundDimPolicy.normalizePercent(values.getFloat(
                     "global_background_dim_percent", 20f));
@@ -540,6 +580,12 @@ final class ModuleSettings {
             aboutPhoneCardsEnabled = values.getBoolean("about_phone_cards_enabled", ModuleDefaultValues.ABOUT_PHONE_CARDS_ENABLED);
             forceLockscreenClockColon = values.getBoolean("force_lockscreen_clock_colon", false);
             hideLockscreenClockLeadingZero = values.getBoolean("hide_lockscreen_clock_leading_zero", false);
+            desktopStatusBarIconMode = DesktopStatusBarPolicy.normalize(values.getInt("desktop_status_bar_icon_mode", 0));
+            androidWidgetGlassEnabled = values.getBoolean("deadliner_widget_glass_enabled", false);
+            androidWidgetGlassTargets = values.getString(AndroidWidgetGlassPolicy.KEY, AndroidWidgetGlassPolicy.DEFAULT_TARGETS);
+            androidWidgetGlassStyles = values.getString(WidgetGlassStyles.KEY, "");
+            androidWidgetClockGlassEnabled = values.getBoolean("deadliner_clock_glass_experiment", false);
+            androidWidgetClockGlassTargets = values.getString(AndroidWidgetGlassPolicy.CLOCK_STYLE_KEY, "*");
             bypassHyperMusicCoverClockAdjustment = values.getBoolean("bypass_hyper_music_cover_clock_adjustment", false);
             hmcExpandedFingerprint = values.getBoolean("hmc_expanded_fingerprint", false);
             hmcClockFontRatioEnabled = values.getBoolean("hmc_clock_font_ratio_enabled", false);
@@ -699,6 +745,9 @@ final class ModuleSettings {
         }
         return values;
     }
+
+    // Published as a new immutable array on settings load; refresh comparison never mutates it.
+    static float[] shadeCardGlassRefreshParameters() { return shadeCardGlassParameters; }
 
     static float[] tuneShadeCardGlass(float[] original) {
         return ShadeCardGlassPolicy.tune(original, shadeCardGlassParameters);

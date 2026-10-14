@@ -61,6 +61,13 @@ final class HookDiagnostics {
         } catch (Throwable ignored) { /* Diagnostics must never affect the target process. */ }
     }
 
+    /** Rare runtime evidence, queued to the existing worker; never sends IPC in the callback. */
+    static void observed(String packageName, String feature, String detail) {
+        try {
+            record(packageName, feature, detail, false);
+        } catch (Throwable ignored) { /* Diagnostics must never affect the target process. */ }
+    }
+
     static void ready(String packageName) {
         try {
             record(packageName, "模块注入", "已进入目标进程；具体功能以失败记录为准", false);

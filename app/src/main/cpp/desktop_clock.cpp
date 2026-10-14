@@ -1,4 +1,5 @@
 #include "clock_format.h"
+#include "widget_hooks.h"
 
 #include <android/log.h>
 #include <atomic>
@@ -120,6 +121,10 @@ void receiverHook(void *receiver, void *context, void *intent) {
             cacheConfig(value);
             if (previous != value) changedLogs.store(0);
             __android_log_print(ANDROID_LOG_INFO, TAG, "CONFIG accepted enabled=%d", value);
+            bool stack = false, glass = false;
+            if (readBool(extras, "mhm_android_widget_stack", stack)
+                    && readBool(extras, "mhm_android_widget_glass", glass))
+                configureAndroidWidgets(stack, glass, extras);
             // Consume our carrier; no gesture settings are sent to stock handlers.
             return;
         }
@@ -128,10 +133,10 @@ void receiverHook(void *receiver, void *context, void *intent) {
 }
 
 struct Images {
-    uintptr_t maml = 0;
+    uintptr_t maml = 0, dart = 0;
     const ElfW(Phdr) *headers = nullptr;
     size_t headerCount = 0;
-    const char *launcherPath = nullptr, *broadcastPath = nullptr;
+    const char *launcherPath = nullptr, *broadcastPath = nullptr, *dartPath = nullptr;
 };
 int findImages(dl_phdr_info *info, size_t, void *opaque) {
     auto &images = *static_cast<Images *>(opaque);
@@ -141,6 +146,7 @@ int findImages(dl_phdr_info *info, size_t, void *opaque) {
         images.headers = info->dlpi_phdr; images.headerCount = info->dlpi_phnum;
     } else if (std::strstr(name, "/libapp_launcher.so")) images.launcherPath = name;
     else if (std::strstr(name, "/libhyper_os_broadcast_private.dylib.so")) images.broadcastPath = name;
+    else if (std::strstr(name, "/libapp.so")) { images.dart = info->dlpi_addr; images.dartPath = name; }
     return 0;
 }
 bool matchingProfile(const Images &images) {
@@ -174,6 +180,15 @@ void install() {
     std::unique_lock<std::mutex> guard(installMutex, std::try_to_lock);
     if (!guard.owns_lock()) return;
     Images images; dl_iterate_phdr(findImages, &images);
+    if (images.launcherPath && !androidWidgetHooksSettled()) {
+        void *launcher = dlopen(images.launcherPath, RTLD_NOW | RTLD_NOLOAD);
+        if (launcher) {
+            installAndroidWidgetHooks(launcher, hook);
+            dlclose(launcher);
+        }
+    }
+    if (images.dartPath && !androidWidgetPickerHooksSettled())
+        installAndroidWidgetPickerHooks(images.dartPath, images.dart, hook);
     if (!originalReceiver && images.launcherPath && images.broadcastPath) {
         void *launcher = dlopen(images.launcherPath, RTLD_NOW | RTLD_NOLOAD);
         void *broadcast = dlopen(images.broadcastPath, RTLD_NOW | RTLD_NOLOAD);
@@ -207,7 +222,8 @@ void *worker(void *) {
         install();
         {
             std::lock_guard<std::mutex> guard(installMutex);
-            if (originalReceiver && (mhm_original_calendar || profileRejected)) return nullptr;
+            if (originalReceiver && (mhm_original_calendar || profileRejected)
+                    && androidWidgetHooksSettled() && androidWidgetPickerHooksSettled()) return nullptr;
         }
         usleep(500000);
     }
@@ -229,6 +245,7 @@ Loaded native_init(const NativeAPIEntries *entries) {
     if (!isLauncher() || !entries || !entries->hook_func) return nullptr;
     hook = entries->hook_func;
     readCachedConfig();
+    loadAndroidWidgetConfig();
     __android_log_print(ANDROID_LOG_INFO, TAG, "INIT launcher uid=%u api=%u", getuid(), entries->version);
     if (!workerStarted.exchange(true)) {
         pthread_t thread;

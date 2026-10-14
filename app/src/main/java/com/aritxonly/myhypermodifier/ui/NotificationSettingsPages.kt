@@ -366,6 +366,7 @@ private fun HeadsUpGlassSliderItem(
     scope: GlassParameterScope,
 ) {
     val parameter = HeadsUpGlassParameters.definitions[index]
+    val draft = rememberSettingsSliderDraft(value, onValueChange)
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onEdit),
@@ -376,19 +377,20 @@ private fun HeadsUpGlassSliderItem(
                 Text(parameter.summary, color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     style = MiuixTheme.textStyles.footnote1)
                 if (scope == GlassParameterScope.ShadeCards) {
-                    Text("相对原生偏移：${formatGlassParameter(value - ShadeCardGlassPolicy.defaults()[index])}",
+                    Text("相对原生偏移：${formatGlassParameter(draft.value - ShadeCardGlassPolicy.defaults()[index])}",
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary, style = MiuixTheme.textStyles.footnote1)
                 }
             }
             Text(
-                formatGlassParameter(value),
+                formatGlassParameter(draft.value),
                 color = MiuixTheme.colorScheme.primary,
                 style = MiuixTheme.textStyles.body1,
             )
         }
         DeadlinerSlider(
-            value = value,
-            onValueChange = onValueChange,
+            value = draft.value,
+            onValueChange = draft::update,
+            onValueChangeFinished = { draft.commit(onValueChange) },
             valueRange = parameter.valueRange,
             steps = 0,
             enabled = enabled,

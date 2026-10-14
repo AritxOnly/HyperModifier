@@ -17,4 +17,17 @@ class BackgroundDimSettingsTest {
         assertFalse(ModifierSettingsPresets.systemDefault().globalBackgroundDimEnabled)
         assertFalse(ModifierSettingsPresets.moduleDefault().globalBackgroundDimEnabled)
     }
+
+    @Test fun backgroundScaleHasIndependentControl() {
+        val defaults = ModifierSettings()
+        assertTrue(defaults.shadeBackgroundScaleDisabled)
+        assertFalse(defaults.globalBackgroundDimEnabled)
+        val stockScale = defaults.copy(shadeBackgroundScaleDisabled = false)
+        assertTrue(stockScale.controlCenterFollowMiLinkBackgroundMaterial)
+        assertFalse(stockScale.shadeBackgroundScaleDisabled)
+        assertFalse(ModifierSettingsPresets.systemDefault().shadeBackgroundScaleDisabled)
+        val noDim = stockScale.copy(globalBackgroundDimEnabled = true, globalBackgroundDimPercent = 0f)
+        assertFalse(noDim.shadeBackgroundScaleDisabled)
+        assertEquals(0f, noDim.globalBackgroundDimPercent, 0f)
+    }
 }

@@ -4,8 +4,10 @@ import java.util.Set;
 
 /** Declared module targets shared by preset classification and the scope dashboard. */
 public final class ModuleScopePackage {
+    public static final String VOICE_ASSIST = "com.miui.voiceassist";
     public static final String LAUNCHER = "com.miui.home";
     public static final String SETTINGS = "com.android.settings";
+    public static final String SYSTEM_FRAMEWORK = "system";
     public static final String SYSTEM_UI = "com.android.systemui";
     public static final String PLUGIN = "miui.systemui.plugin";
     public static final String XMSF = "com.xiaomi.xmsf";
@@ -17,7 +19,7 @@ public final class ModuleScopePackage {
     public static final String XIAOMI_COMMUNITY = "com.xiaomi.vipaccount";
     public static final String SPOTIFY = "com.spotify.music";
     public static final String BILIBILI = "tv.danmaku.bili";
-    public static final Set<String> PACKAGES = Set.of(SETTINGS, SYSTEM_UI, PLUGIN, XMSF, MILINK, XIAOMI_HEALTH,
+    public static final Set<String> PACKAGES = Set.of(VOICE_ASSIST, SETTINGS, SYSTEM_FRAMEWORK, SYSTEM_UI, PLUGIN, XMSF, MILINK, XIAOMI_HEALTH,
             MARKET, MI_HOME, AMAP, XIAOMI_COMMUNITY, BILIBILI, SPOTIFY, LAUNCHER);
 
     private ModuleScopePackage() {}

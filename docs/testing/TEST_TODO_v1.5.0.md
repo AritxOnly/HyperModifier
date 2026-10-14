@@ -222,10 +222,10 @@
 
 **共享 Glass 材质模糊**
 
-- [ ] G030 全局 Glass 模糊 · `globalGlassBlurEnabled` · 默认：false
-- [ ] G031 材质模糊比例 (%) · `shadeCardBackgroundBlurPercent` · 默认：100
-- [ ] G032 自定义 Glass 模糊半径 · `shadeCardGlassBlurEnabled` · 默认：false
+- [ ] G030 自定义 Glass 模糊半径 · `globalGlassBlurEnabled` · 默认：false
 - [ ] G033 Glass 模糊半径 (px) · `shadeCardGlassBlurRadius` · 默认：20
+- [ ] 系统桌面、设置、锁屏、悬浮通知和控制中心：勾选作用域并重启后验证大小半径统一，0px 关闭模糊，关闭开关恢复原值
+- [ ] 旧比例和额外半径开关不再影响运行时；兼容停用开关仍暂停 Glass 写入
 
 **全局背景材质**
 

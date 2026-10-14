@@ -19,6 +19,8 @@ data class ModifierSettings(
     val aboutPhonePresetUrl: String = PhonePresetRepository.DEFAULT_URL,
     val aboutPhoneCustomImage: String = "",
     val aboutPhoneImageTransforms: String = "{}",
+    val volumeUpPowerAction: String = KeyShortcutActions.STOCK,
+    val doublePowerAction: String = KeyShortcutActions.STOCK,
     val moduleHooksEnabled: Boolean = true,
     val systemUiCompatibilityMode: Boolean = false,
     val systemUiRetryGeneration: Int = 0,
@@ -27,6 +29,7 @@ data class ModifierSettings(
     val gestureHandleAppModes: Map<String, String> = emptyMap(),
     val gestureHandleTouchReveal: Boolean = false,
     val gestureHandleSwipeMotion: Boolean = false,
+    val gestureHandleAttachToAppTransition: Boolean = false,
     val gestureHandleTouchAreaDp: Float = GestureHandleTouchArea.DEFAULT_DP,
     val notificationsEnabled: Boolean = true,
     val notificationRadius: Float = 28f,
@@ -40,6 +43,11 @@ data class ModifierSettings(
     val disableShadeGlassHooks: Boolean = false,
     val shadeCardGlassParameters: String = HeadsUpGlassParameters.serialize(ShadeCardGlassPolicy.defaults()),
     val globalGlassBlurEnabled: Boolean = false,
+    val dynamicIslandExpandedOpacity: Float = 30f,
+    val dynamicIslandOpacityEnabled: Boolean = false,
+    val dynamicIslandNotificationOpacityEnabled: Boolean = false,
+    val dynamicIslandNotificationOpacity: Float = 30f,
+    // Legacy storage/export fields; global Glass now uses only its enable switch and radius.
     val shadeCardBackgroundBlurPercent: Float = 100f,
     val shadeCardGlassBlurEnabled: Boolean = false,
     val shadeCardGlassBlurRadius: Float = 20f,
@@ -47,6 +55,7 @@ data class ModifierSettings(
     val headsUpBackgroundBlurRadius: Float = 60f,
     /** Multiplies the stock blur radius for shared SystemUI background surfaces. */
     val globalBackgroundBlurPercent: Float = 100f,
+    val shadeBackgroundScaleDisabled: Boolean = true,
     val globalBackgroundDimEnabled: Boolean = false,
     val globalBackgroundDimPercent: Float = 20f,
     val controlCenterFollowMiLinkBackgroundMaterial: Boolean = true,
@@ -82,7 +91,15 @@ data class ModifierSettings(
     val forceLockscreenClockColon: Boolean = false,
     val hideLockscreenClockLeadingZero: Boolean = false,
     val hideDesktopClockLeadingZero: Boolean = false,
+    val desktopStatusBarIconMode: Int = 0,
+    val androidWidgetStackEnabled: Boolean = false,
+    val androidWidgetGlassEnabled: Boolean = false,
+    val androidWidgetClockGlassEnabled: Boolean = false,
+    val androidWidgetGlassStyles: String = "",
+    val androidWidgetClockGlassTargets: String = AndroidWidgetGlassPolicy.DEFAULT_TARGETS,
+    val androidWidgetGlassTargets: String = AndroidWidgetGlassPolicy.DEFAULT_TARGETS,
     val bypassHyperMusicCoverClockAdjustment: Boolean = false,
+    val hmcForceEnable: Boolean = false,
     val hmcExpandedFingerprint: Boolean = false,
     val hmcClockFontHeightEnabled: Boolean = false,
     val hmcClockFontHeight: Float = 28f,
@@ -225,7 +242,9 @@ object ModifierSettingsPresets {
         gestureHandleAppModes = emptyMap(),
         gestureHandleTouchReveal = false,
         gestureHandleSwipeMotion = false,
+        gestureHandleAttachToAppTransition = false,
         notificationsEnabled = false,
+        shadeBackgroundScaleDisabled = false,
         controlCenterFollowMiLinkBackgroundMaterial = true,
         hideHeadsUpMiniBar = false,
         headsUpBottomMarginEnabled = false,
@@ -247,7 +266,11 @@ object ModifierSettingsPresets {
         forceLockscreenClockColon = false,
         hideLockscreenClockLeadingZero = false,
         hideDesktopClockLeadingZero = false,
+        androidWidgetStackEnabled = false,
+        androidWidgetGlassEnabled = false,
+        androidWidgetClockGlassEnabled = false,
         bypassHyperMusicCoverClockAdjustment = false,
+        hmcForceEnable = false,
         hmcExpandedFingerprint = false,
         hmcClockFontHeightEnabled = false,
         hmcClockFontHeight = 28f,
@@ -329,6 +352,7 @@ object ModifierSettingsStore {
     private const val KEY_GESTURE_HANDLE_APP_MODES = "gesture_handle_app_modes"
     private const val KEY_GESTURE_HANDLE_TOUCH_REVEAL = "gesture_handle_touch_reveal"
     private const val KEY_GESTURE_HANDLE_SWIPE_MOTION = "gesture_handle_swipe_motion"
+    private const val KEY_GESTURE_HANDLE_ATTACH_TO_APP_TRANSITION = "gesture_handle_attach_to_app_transition"
     private const val KEY_GESTURE_HANDLE_TOUCH_AREA_DP = "gesture_handle_touch_area_dp"
     private const val KEY_NOTIFICATIONS = "notifications_enabled"
     private const val KEY_NOTIFICATION_RADIUS = "notification_radius"
@@ -340,6 +364,10 @@ object ModifierSettingsStore {
     private const val KEY_HEADS_UP_GLASS_DARK_PARAMETERS = "heads_up_glass_dark_parameters"
     private const val KEY_SHADE_CARD_GLASS_ENABLED = "shade_card_glass_parameters_enabled"
     private const val KEY_DISABLE_SHADE_GLASS_HOOKS = "disable_shade_glass_hooks"
+    private const val KEY_DYNAMIC_ISLAND_NOTIFICATION_OPACITY_ENABLED = "dynamic_island_notification_opacity_enabled"
+    private const val KEY_DYNAMIC_ISLAND_NOTIFICATION_OPACITY = "dynamic_island_notification_opacity"
+    private const val KEY_DYNAMIC_ISLAND_OPACITY_ENABLED = "dynamic_island_opacity_enabled"
+    private const val KEY_DYNAMIC_ISLAND_EXPANDED_OPACITY = "dynamic_island_expanded_opacity"
     private const val KEY_GLOBAL_GLASS_BLUR_ENABLED = "global_glass_blur_enabled"
     private const val KEY_SHADE_CARD_GLASS_PARAMETERS = "shade_card_glass_parameters"
     private const val KEY_SHADE_CARD_GLASS_DARK_PARAMETERS = "shade_card_glass_dark_parameters"
@@ -350,6 +378,7 @@ object ModifierSettingsStore {
         "heads_up_background_blur_radius_enabled"
     private const val KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS = "heads_up_background_blur_radius"
     private const val KEY_GLOBAL_BACKGROUND_BLUR_PERCENT = "global_background_blur_percent"
+    private const val KEY_SHADE_BACKGROUND_SCALE_DISABLED = "shade_background_scale_disabled"
     private const val KEY_GLOBAL_BACKGROUND_DIM_ENABLED = "global_background_dim_enabled"
     private const val KEY_GLOBAL_BACKGROUND_DIM_PERCENT = "global_background_dim_percent"
     // New key intentionally ignores the earlier opt-in switch's saved false state.
@@ -406,7 +435,14 @@ object ModifierSettingsStore {
     private const val KEY_PHONE_IMAGE_TRANSFORMS = "about_phone_image_transforms"
     private const val KEY_FORCE_LOCKSCREEN_CLOCK_COLON = "force_lockscreen_clock_colon"
     private const val KEY_HIDE_LOCKSCREEN_CLOCK_LEADING_ZERO = "hide_lockscreen_clock_leading_zero"
+    private const val KEY_DESKTOP_STATUS_BAR_ICON_MODE = "desktop_status_bar_icon_mode"
     private const val KEY_HIDE_DESKTOP_CLOCK_LEADING_ZERO = "hide_desktop_clock_leading_zero"
+    private const val KEY_DEADLINER_WIDGET_STACK = "deadliner_widget_stack_enabled"
+    private const val KEY_WIDGET_GLASS_TARGETS = "android_widget_glass_rules_v2"
+    private const val KEY_WIDGET_GLASS_STYLES = "android_widget_glass_styles"
+    private const val KEY_WIDGET_CLOCK_GLASS_TARGETS = "android_widget_clock_glass_rules"
+    private const val KEY_DEADLINER_CLOCK_GLASS = "deadliner_clock_glass_experiment"
+    private const val KEY_DEADLINER_WIDGET_GLASS = "deadliner_widget_glass_enabled"
     private const val KEY_AOD_CLOCK_WEIGHT_ENABLED = "aod_clock_weight_enabled"
     private const val KEY_AOD_CLOCK_WEIGHT = "aod_clock_weight"
     private const val KEY_LOCKSCREEN_PASSWORD_BACKGROUND_BLUR_ENABLED =
@@ -523,6 +559,9 @@ object ModifierSettingsStore {
             gestureHandleAppModes = GestureHandleRules.decode(prefs.getString(KEY_GESTURE_HANDLE_APP_MODES, "")),
             gestureHandleTouchReveal = prefs.getBoolean(KEY_GESTURE_HANDLE_TOUCH_REVEAL, newModuleDefaults),
             gestureHandleSwipeMotion = prefs.getBoolean(KEY_GESTURE_HANDLE_SWIPE_MOTION, newModuleDefaults),
+            volumeUpPowerAction = KeyShortcutActions.normalize(prefs.getString(KeyShortcutActions.VOLUME_POWER_KEY, KeyShortcutActions.STOCK)),
+            doublePowerAction = KeyShortcutActions.normalize(prefs.getString(KeyShortcutActions.DOUBLE_POWER_KEY, KeyShortcutActions.STOCK)),
+            gestureHandleAttachToAppTransition = prefs.getBoolean(KEY_GESTURE_HANDLE_ATTACH_TO_APP_TRANSITION, false),
             gestureHandleTouchAreaDp = GestureHandleTouchArea.normalize(
                 prefs.getFloat(KEY_GESTURE_HANDLE_TOUCH_AREA_DP, GestureHandleTouchArea.DEFAULT_DP)),
             notificationsEnabled = prefs.getBoolean(KEY_NOTIFICATIONS, true),
@@ -558,6 +597,12 @@ object ModifierSettingsStore {
             ),
             shadeCardBackgroundBlurPercent = ShadeCardGlassPolicy.normalize(prefs.getFloat(KEY_SHADE_CARD_BACKGROUND_BLUR_PERCENT, 100f), 200f, 100f),
             shadeCardGlassBlurEnabled = prefs.getBoolean(KEY_SHADE_CARD_GLASS_BLUR_ENABLED, false),
+            dynamicIslandOpacityEnabled = prefs.getBoolean(KEY_DYNAMIC_ISLAND_OPACITY_ENABLED, prefs.getBoolean(KEY_GLOBAL_GLASS_BLUR_ENABLED, prefs.getBoolean(KEY_SHADE_CARD_GLASS_ENABLED, false))),
+            dynamicIslandExpandedOpacity = ShadeCardGlassPolicy.normalize(prefs.getFloat(KEY_DYNAMIC_ISLAND_EXPANDED_OPACITY, 30f), 100f, 30f),
+            dynamicIslandNotificationOpacityEnabled = prefs.getBoolean(KEY_DYNAMIC_ISLAND_NOTIFICATION_OPACITY_ENABLED,
+                prefs.getBoolean(KEY_DYNAMIC_ISLAND_OPACITY_ENABLED, prefs.getBoolean(KEY_GLOBAL_GLASS_BLUR_ENABLED, prefs.getBoolean(KEY_SHADE_CARD_GLASS_ENABLED, false)))),
+            dynamicIslandNotificationOpacity = ShadeCardGlassPolicy.normalize(prefs.getFloat(KEY_DYNAMIC_ISLAND_NOTIFICATION_OPACITY,
+                prefs.getFloat(KEY_DYNAMIC_ISLAND_EXPANDED_OPACITY, 30f)), 100f, 30f),
             shadeCardGlassBlurRadius = ShadeCardGlassPolicy.normalize(prefs.getFloat(KEY_SHADE_CARD_GLASS_BLUR_RADIUS, 20f), ShadeCardGlassPolicy.MAX_GLASS_BLUR_RADIUS.toFloat(), 20f),
             headsUpBackgroundBlurRadius = ShadeCardGlassPolicy.normalize(prefs.getFloat(
                 KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS, 60f,
@@ -566,6 +611,7 @@ object ModifierSettingsStore {
                 KEY_GLOBAL_BACKGROUND_BLUR_PERCENT,
                 100f,
             ).coerceIn(0f, 200f),
+            shadeBackgroundScaleDisabled = prefs.getBoolean(KEY_SHADE_BACKGROUND_SCALE_DISABLED, true),
             globalBackgroundDimEnabled = prefs.getBoolean(KEY_GLOBAL_BACKGROUND_DIM_ENABLED, false),
             globalBackgroundDimPercent = BackgroundDimPolicy.normalizePercent(
                 prefs.getFloat(KEY_GLOBAL_BACKGROUND_DIM_PERCENT, 20f),
@@ -629,7 +675,15 @@ object ModifierSettingsStore {
             forceLockscreenClockColon = prefs.getBoolean(KEY_FORCE_LOCKSCREEN_CLOCK_COLON, false),
             hideLockscreenClockLeadingZero = prefs.getBoolean(KEY_HIDE_LOCKSCREEN_CLOCK_LEADING_ZERO, false),
             hideDesktopClockLeadingZero = prefs.getBoolean(KEY_HIDE_DESKTOP_CLOCK_LEADING_ZERO, false),
+            desktopStatusBarIconMode = DesktopStatusBarPolicy.normalize(prefs.getInt(KEY_DESKTOP_STATUS_BAR_ICON_MODE, 0)),
+            androidWidgetStackEnabled = prefs.getBoolean(KEY_DEADLINER_WIDGET_STACK, false),
+            androidWidgetGlassEnabled = prefs.getBoolean(KEY_DEADLINER_WIDGET_GLASS, false),
+            androidWidgetClockGlassEnabled = prefs.getBoolean(KEY_DEADLINER_CLOCK_GLASS, false),
+            androidWidgetGlassStyles = prefs.getString(KEY_WIDGET_GLASS_STYLES, "") ?: "",
+            androidWidgetClockGlassTargets = prefs.getString(KEY_WIDGET_CLOCK_GLASS_TARGETS, AndroidWidgetGlassPolicy.DEFAULT_TARGETS) ?: AndroidWidgetGlassPolicy.DEFAULT_TARGETS,
+            androidWidgetGlassTargets = prefs.getString(KEY_WIDGET_GLASS_TARGETS, AndroidWidgetGlassPolicy.DEFAULT_TARGETS) ?: AndroidWidgetGlassPolicy.DEFAULT_TARGETS,
             bypassHyperMusicCoverClockAdjustment = prefs.getBoolean(KEY_BYPASS_HYPER_MUSIC_COVER_CLOCK_ADJUSTMENT, false),
+            hmcForceEnable = prefs.getBoolean("hmc_force_enable", false),
             hmcExpandedFingerprint = prefs.getBoolean("hmc_expanded_fingerprint", false),
             hmcClockFontRatioEnabled = prefs.getBoolean("hmc_clock_font_ratio_enabled", false),
             hmcClockFontRatio = HyperMusicCoverFontShapePolicy.validRatio(prefs.getFloat("hmc_clock_font_ratio", 2.4f)),
@@ -782,6 +836,9 @@ object ModifierSettingsStore {
             .putString(KEY_GESTURE_HANDLE_APP_MODES, GestureHandleRules.encode(value.gestureHandleAppModes))
             .putBoolean(KEY_GESTURE_HANDLE_TOUCH_REVEAL, value.gestureHandleTouchReveal)
             .putBoolean(KEY_GESTURE_HANDLE_SWIPE_MOTION, value.gestureHandleSwipeMotion)
+            .putString(KeyShortcutActions.VOLUME_POWER_KEY, KeyShortcutActions.normalize(value.volumeUpPowerAction))
+            .putString(KeyShortcutActions.DOUBLE_POWER_KEY, KeyShortcutActions.normalize(value.doublePowerAction))
+            .putBoolean(KEY_GESTURE_HANDLE_ATTACH_TO_APP_TRANSITION, value.gestureHandleAttachToAppTransition)
             .putFloat(KEY_GESTURE_HANDLE_TOUCH_AREA_DP,
                 GestureHandleTouchArea.normalize(value.gestureHandleTouchAreaDp))
             .putBoolean(KEY_NOTIFICATIONS, value.notificationsEnabled)
@@ -821,6 +878,10 @@ object ModifierSettingsStore {
             .putBoolean(KEY_SHADE_CARD_GLASS_ENABLED, value.shadeCardGlassParametersEnabled)
             .putBoolean(KEY_DISABLE_SHADE_GLASS_HOOKS, value.disableShadeGlassHooks)
             .putBoolean(KEY_GLOBAL_GLASS_BLUR_ENABLED, value.globalGlassBlurEnabled)
+            .putBoolean(KEY_DYNAMIC_ISLAND_OPACITY_ENABLED, value.dynamicIslandOpacityEnabled)
+            .putBoolean(KEY_DYNAMIC_ISLAND_NOTIFICATION_OPACITY_ENABLED, value.dynamicIslandNotificationOpacityEnabled)
+            .putFloat(KEY_DYNAMIC_ISLAND_NOTIFICATION_OPACITY, ShadeCardGlassPolicy.normalize(value.dynamicIslandNotificationOpacity, 100f, 30f))
+            .putFloat(KEY_DYNAMIC_ISLAND_EXPANDED_OPACITY, ShadeCardGlassPolicy.normalize(value.dynamicIslandExpandedOpacity, 100f, 30f))
             .putString(KEY_SHADE_CARD_GLASS_PARAMETERS, HeadsUpGlassParameters.serialize(
                 HeadsUpGlassParameters.parseSerializedOrDefault(value.shadeCardGlassParameters, ShadeCardGlassPolicy.defaults()),
             ))
@@ -836,6 +897,7 @@ object ModifierSettingsStore {
                 KEY_GLOBAL_BACKGROUND_BLUR_PERCENT,
                 value.globalBackgroundBlurPercent.coerceIn(0f, 200f),
             )
+            .putBoolean(KEY_SHADE_BACKGROUND_SCALE_DISABLED, value.shadeBackgroundScaleDisabled)
             .putBoolean(KEY_GLOBAL_BACKGROUND_DIM_ENABLED, value.globalBackgroundDimEnabled)
             .putFloat(
                 KEY_GLOBAL_BACKGROUND_DIM_PERCENT,
@@ -904,8 +966,16 @@ object ModifierSettingsStore {
             .putString(KEY_PHONE_IMAGE_TRANSFORMS, value.aboutPhoneImageTransforms)
             .putBoolean(KEY_FORCE_LOCKSCREEN_CLOCK_COLON, value.forceLockscreenClockColon)
             .putBoolean(KEY_HIDE_LOCKSCREEN_CLOCK_LEADING_ZERO, value.hideLockscreenClockLeadingZero)
+            .putInt(KEY_DESKTOP_STATUS_BAR_ICON_MODE, DesktopStatusBarPolicy.normalize(value.desktopStatusBarIconMode))
             .putBoolean(KEY_HIDE_DESKTOP_CLOCK_LEADING_ZERO, value.hideDesktopClockLeadingZero)
+            .putBoolean(KEY_DEADLINER_WIDGET_STACK, value.androidWidgetStackEnabled)
+            .putBoolean(KEY_DEADLINER_WIDGET_GLASS, value.androidWidgetGlassEnabled)
+            .putBoolean(KEY_DEADLINER_CLOCK_GLASS, value.androidWidgetClockGlassEnabled)
+            .putString(KEY_WIDGET_GLASS_STYLES, value.androidWidgetGlassStyles)
+            .putString(KEY_WIDGET_CLOCK_GLASS_TARGETS, value.androidWidgetClockGlassTargets)
+            .putString(KEY_WIDGET_GLASS_TARGETS, value.androidWidgetGlassTargets)
             .putBoolean(KEY_BYPASS_HYPER_MUSIC_COVER_CLOCK_ADJUSTMENT, value.bypassHyperMusicCoverClockAdjustment)
+            .putBoolean("hmc_force_enable", value.hmcForceEnable)
             .putBoolean("hmc_expanded_fingerprint", value.hmcExpandedFingerprint)
             .putBoolean("hmc_clock_font_height_enabled", value.hmcClockFontHeightEnabled)
             .putFloat("hmc_clock_font_height_axis", HyperMusicCoverExtensionPolicy.validHeight(value.hmcClockFontHeight))
@@ -1037,6 +1107,33 @@ object ModifierSettingsStore {
             editor.apply()
         }
         syncRemotePreferences(context)
+        if (presetChanged || safetyGateChanged) flushRemotePreferencesSync()
+        context.contentResolver.notifyChange(SETTINGS_URI, null)
+    }
+
+    // Reuse the canonical runtime schema; do not serialize tokens, scope or image caches.
+    internal fun backupValues(context: Context): Map<String, Any> = backupBundleValues(load(context))
+
+    internal fun backupSchema(): Map<String, Any> = backupBundleValues(ModifierSettings())
+
+    @Suppress("DEPRECATION")
+    private fun backupBundleValues(value: ModifierSettings): Map<String, Any> {
+        val bundle = toBundle(value)
+        return bundle.keySet().filter { it != KEY_SYSTEM_UI_RETRY_GENERATION }
+            .associateWith { checkNotNull(bundle.get(it)) }
+    }
+
+    internal fun restoreBackup(context: Context, values: Map<String, Any>) {
+        // Validate everything before opening an editor, including calls outside the import UI.
+        val validated = SettingsBackupCodec.decode(SettingsBackupCodec.encode(values), backupSchema())
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val previous = preferences.all
+        val changed = validated.filter { (key, value) -> previous[key] != value }
+        if (changed.isEmpty()) return
+        val editor = preferences.edit()
+        changed.forEach { (key, value) -> editor.putRemoteValue(key, value) }
+        check(editor.commit()) { "无法保存恢复的配置" }
+        syncRemotePreferences(context)
         context.contentResolver.notifyChange(SETTINGS_URI, null)
     }
 
@@ -1081,19 +1178,44 @@ object ModifierSettingsStore {
         .getString(KEY_DIAGNOSTIC_TOKEN, "").orEmpty()
 
     private fun syncRemotePreferences(context: Context) {
-        val service = remoteService ?: return
-        try {
+        val applicationContext = context.applicationContext
+        remoteSyncQueue.submit {
+            // Discard queued intermediate snapshots, while retaining a trailing write if
+            // settings change during an in-flight commit. The worker always reads latest data.
+            syncRemotePreferencesNow(applicationContext)
+        }
+    }
+
+    /** Called on the restart worker before killing a scoped process or rebooting. */
+    internal fun flushRemotePreferencesSync(): Boolean = try {
+        remoteSyncQueue.flush()
+    } catch (failure: Exception) {
+        Log.w(TAG, "Could not flush remote settings before restart", failure)
+        false
+    }
+
+    private fun syncRemotePreferencesNow(context: Context): Boolean {
+        val service = remoteService ?: return true
+        return try {
             ensureDiagnosticToken(context)
             val source = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             // Preserve the actual framework scope for offline UI and SystemUI classification.
             source.edit().putString(KEY_GESTURE_HANDLE_SCOPE_PACKAGES, service.scope.joinToString("\n")).apply()
-            val editor = service.getRemotePreferences(PREFS).edit().clear()
-            source.all.forEach { (key, value) -> editor.putRemoteValue(key, value) }
-            // A synchronous commit makes the snapshot available before LSPosed starts a scoped
-            // process immediately after the user changes a setting.
+            val snapshot = source.all
+            val remote = service.getRemotePreferences(PREFS)
+            val previous = remote.all
+            val removed = previous.keys - snapshot.keys
+            val changed = snapshot.filter { (key, value) -> !previous.containsKey(key) || previous[key] != value }
+            if (removed.isEmpty() && changed.isEmpty()) return true
+            val editor = remote.edit()
+            removed.forEach(editor::remove)
+            changed.forEach { (key, value) -> editor.putRemoteValue(key, value) }
+            // Keep the mirror exact, but notify only keys whose values actually changed.
+            // Restart waits on this serial worker before launching a new scoped process.
             editor.commit()
         } catch (throwable: Throwable) {
             Log.w(TAG, "Could not mirror settings to LSPosed remote preferences", throwable)
+            false
         }
     }
 
@@ -1109,6 +1231,7 @@ object ModifierSettingsStore {
     }
 
     private val SETTINGS_URI = Uri.parse("content://com.aritxonly.myhypermodifier.settings")
+    private val remoteSyncQueue = SettingsSyncQueue()
     @Volatile private var remoteService: XposedService? = null
 
     internal fun gestureHandleScopePackages(context: Context): Set<String> =
@@ -1127,6 +1250,9 @@ object ModifierSettingsStore {
         putString(KEY_GESTURE_HANDLE_APP_MODES, GestureHandleRules.encode(value.gestureHandleAppModes))
         putBoolean(KEY_GESTURE_HANDLE_TOUCH_REVEAL, value.gestureHandleTouchReveal)
         putBoolean(KEY_GESTURE_HANDLE_SWIPE_MOTION, value.gestureHandleSwipeMotion)
+        putString(KeyShortcutActions.VOLUME_POWER_KEY, KeyShortcutActions.normalize(value.volumeUpPowerAction))
+        putString(KeyShortcutActions.DOUBLE_POWER_KEY, KeyShortcutActions.normalize(value.doublePowerAction))
+        putBoolean(KEY_GESTURE_HANDLE_ATTACH_TO_APP_TRANSITION, value.gestureHandleAttachToAppTransition)
         putFloat(KEY_GESTURE_HANDLE_TOUCH_AREA_DP,
             GestureHandleTouchArea.normalize(value.gestureHandleTouchAreaDp))
         putBoolean(KEY_NOTIFICATIONS, value.notificationsEnabled)
@@ -1143,6 +1269,10 @@ object ModifierSettingsStore {
         putBoolean(KEY_SHADE_CARD_GLASS_ENABLED, value.shadeCardGlassParametersEnabled)
         putBoolean(KEY_DISABLE_SHADE_GLASS_HOOKS, value.disableShadeGlassHooks)
         putBoolean(KEY_GLOBAL_GLASS_BLUR_ENABLED, value.globalGlassBlurEnabled)
+        putBoolean(KEY_DYNAMIC_ISLAND_OPACITY_ENABLED, value.dynamicIslandOpacityEnabled)
+        putBoolean(KEY_DYNAMIC_ISLAND_NOTIFICATION_OPACITY_ENABLED, value.dynamicIslandNotificationOpacityEnabled)
+        putFloat(KEY_DYNAMIC_ISLAND_NOTIFICATION_OPACITY, ShadeCardGlassPolicy.normalize(value.dynamicIslandNotificationOpacity, 100f, 30f))
+        putFloat(KEY_DYNAMIC_ISLAND_EXPANDED_OPACITY, ShadeCardGlassPolicy.normalize(value.dynamicIslandExpandedOpacity, 100f, 30f))
         putString(KEY_SHADE_CARD_GLASS_PARAMETERS, value.shadeCardGlassParameters)
         putFloat(KEY_SHADE_CARD_BACKGROUND_BLUR_PERCENT, ShadeCardGlassPolicy.normalize(value.shadeCardBackgroundBlurPercent, 200f, 100f))
         putBoolean(KEY_SHADE_CARD_GLASS_BLUR_ENABLED, value.shadeCardGlassBlurEnabled)
@@ -1159,6 +1289,7 @@ object ModifierSettingsStore {
             KEY_GLOBAL_BACKGROUND_BLUR_PERCENT,
             value.globalBackgroundBlurPercent.coerceIn(0f, 200f),
         )
+        putBoolean(KEY_SHADE_BACKGROUND_SCALE_DISABLED, value.shadeBackgroundScaleDisabled)
         putBoolean(KEY_GLOBAL_BACKGROUND_DIM_ENABLED, value.globalBackgroundDimEnabled)
         putFloat(
             KEY_GLOBAL_BACKGROUND_DIM_PERCENT,
@@ -1221,8 +1352,16 @@ object ModifierSettingsStore {
         putString(KEY_PHONE_IMAGE_TRANSFORMS, value.aboutPhoneImageTransforms)
         putBoolean(KEY_FORCE_LOCKSCREEN_CLOCK_COLON, value.forceLockscreenClockColon)
         putBoolean(KEY_HIDE_LOCKSCREEN_CLOCK_LEADING_ZERO, value.hideLockscreenClockLeadingZero)
+        putInt(KEY_DESKTOP_STATUS_BAR_ICON_MODE, DesktopStatusBarPolicy.normalize(value.desktopStatusBarIconMode))
         putBoolean(KEY_HIDE_DESKTOP_CLOCK_LEADING_ZERO, value.hideDesktopClockLeadingZero)
+        putBoolean(KEY_DEADLINER_WIDGET_STACK, value.androidWidgetStackEnabled)
+        putBoolean(KEY_DEADLINER_WIDGET_GLASS, value.androidWidgetGlassEnabled)
+        putBoolean(KEY_DEADLINER_CLOCK_GLASS, value.androidWidgetClockGlassEnabled)
+        putString(KEY_WIDGET_GLASS_STYLES, value.androidWidgetGlassStyles)
+        putString(KEY_WIDGET_CLOCK_GLASS_TARGETS, value.androidWidgetClockGlassTargets)
+        putString(KEY_WIDGET_GLASS_TARGETS, value.androidWidgetGlassTargets)
         putBoolean(KEY_BYPASS_HYPER_MUSIC_COVER_CLOCK_ADJUSTMENT, value.bypassHyperMusicCoverClockAdjustment)
+        putBoolean("hmc_force_enable", value.hmcForceEnable)
         putBoolean("hmc_expanded_fingerprint", value.hmcExpandedFingerprint)
         putBoolean("hmc_clock_font_height_enabled", value.hmcClockFontHeightEnabled)
         putFloat("hmc_clock_font_height_axis", HyperMusicCoverExtensionPolicy.validHeight(value.hmcClockFontHeight))

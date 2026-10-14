@@ -128,11 +128,14 @@ internal enum class SettingsDestination(val key: String, val label: String) {
     Media("media", "超级岛与媒体组件"),
     MediaConstraintSet("media-constraint-set", "高级布局编辑"),
     Lockscreen("lockscreen", "锁屏"),
+    HyperMusicCover("hyper-music-cover", "HyperMusicCover 扩展"),
     Desktop("desktop", "系统桌面"),
+    WidgetGlassApps("widget-glass-apps", "小组件材质"),
     StatusBar("status-bar", "状态栏"),
     AboutPhone("about-phone", "系统设置"),
     PhoneImage("phone-image", "手机型号图片"),
     HomeEntries("home-entries", "设置主页入口"),
+    KeyShortcuts("key-shortcuts", "快捷键"),
     Volume("volume", "音量面板"),
     GestureHandle("gesture-handle", "手势提示线"),
     About("about", "关于"),
@@ -190,10 +193,13 @@ private fun SettingsDestination.requiredRestartScopes(): RestartScopeDefaults = 
     SettingsDestination.Media,
     SettingsDestination.MediaConstraintSet,
     SettingsDestination.Lockscreen,
+    SettingsDestination.HyperMusicCover,
     SettingsDestination.StatusBar,
     SettingsDestination.GestureHandle,
     SettingsDestination.Volume -> RestartScopeDefaults(systemUi = true)
-    SettingsDestination.Desktop -> RestartScopeDefaults(systemUi = true, launcher = true)
+    SettingsDestination.Desktop,
+    SettingsDestination.WidgetGlassApps -> RestartScopeDefaults(systemUi = true, launcher = true)
+    SettingsDestination.KeyShortcuts -> RestartScopeDefaults()
     SettingsDestination.Home,
     SettingsDestination.About -> RestartScopeDefaults()
 }
@@ -398,7 +404,7 @@ fun MyHyperModifierSettingsApp() {
                         scrollState = if (homeSection == 0) glassHomeScroll else systemHomeScroll,
                         onNavigate = context::openDetailSettings,
                     )
-                    SettingsDestination.About -> AboutSettingsPage(padding) { scrollProgress = it }
+                    SettingsDestination.About -> AboutSettingsPage(padding, onSettingsRestored = { settings = ModifierSettingsStore.load(context) }) { scrollProgress = it }
                     else -> Unit
                 }
             }
@@ -661,8 +667,12 @@ internal fun MyHyperModifierDetailSettingsApp(
                         { preset -> context.openDetailSettings(SettingsDestination.MediaConstraintSet, preset) },
                     ) { scrollProgress = it }
                     SettingsDestination.MediaConstraintSet -> MediaConstraintSetSettingsPage(padding, settings, ::update) { scrollProgress = it }
-                    SettingsDestination.Lockscreen -> LockscreenSettingsPage(padding, settings, ::update) { scrollProgress = it }
-                    SettingsDestination.Desktop -> DesktopSettingsPage(padding, settings, ::update) { scrollProgress = it }
+                    SettingsDestination.Lockscreen -> LockscreenSettingsPage(padding, settings, ::update,
+                        { context.openDetailSettings(SettingsDestination.HyperMusicCover) }) { scrollProgress = it }
+                    SettingsDestination.HyperMusicCover -> HyperMusicCoverSettingsPage(padding, settings, ::update) { scrollProgress = it }
+                    SettingsDestination.Desktop -> DesktopSettingsPage(padding, settings, ::update,
+                        onOpenWidgetGlassApps = { context.openDetailSettings(SettingsDestination.WidgetGlassApps) }) { scrollProgress = it }
+                    SettingsDestination.WidgetGlassApps -> AndroidWidgetGlassSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.StatusBar -> StatusBarSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.GestureHandle -> GestureHandleSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.AboutPhone -> AboutPhoneSettingsPage(
@@ -671,6 +681,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                     ) { scrollProgress = it }
                     SettingsDestination.HomeEntries -> HomeEntriesSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.PhoneImage -> PhoneImageSettingsPage(padding, settings, ::update) { scrollProgress = it }
+                    SettingsDestination.KeyShortcuts -> KeyShortcutSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Volume -> VolumeSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Home, SettingsDestination.About -> Unit
                 }
@@ -702,7 +713,7 @@ internal fun NavigationSettingItem(
         Icon(
             painter = rememberVectorPainter(MiuixIcons.ChevronForward),
             contentDescription = null,
-            tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+            tint = MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = if (enabled) 1f else 0.38f),
             modifier = Modifier.size(16.dp),
         )
     },
@@ -787,6 +798,20 @@ private fun scopeStatuses(
     framework: ModuleFrameworkState.Snapshot,
 ): List<ScopeStatus> = listOf(
     ScopeStatus(
+        appName = "系统框架",
+        packageName = ModuleScopePackage.SYSTEM_FRAMEWORK,
+        hasModification = (settings.gestureHandleEnabled && settings.gestureHandleAttachToAppTransition) ||
+            settings.volumeUpPowerAction != KeyShortcutActions.STOCK || settings.doublePowerAction != KeyShortcutActions.STOCK,
+        isActive = framework.isActive(ModuleScopePackage.SYSTEM_FRAMEWORK),
+    ),
+    ScopeStatus(
+        appName = "超级小爱",
+        packageName = ModuleScopePackage.VOICE_ASSIST,
+        hasModification = settings.volumeUpPowerAction in listOf(KeyShortcutActions.MEMORY, KeyShortcutActions.SCREEN) ||
+            settings.doublePowerAction in listOf(KeyShortcutActions.MEMORY, KeyShortcutActions.SCREEN),
+        isActive = framework.isActive(ModuleScopePackage.VOICE_ASSIST),
+    ),
+    ScopeStatus(
         appName = "系统界面",
         packageName = ModuleScopePackage.SYSTEM_UI,
         hasModification = listOf(
@@ -798,8 +823,9 @@ private fun scopeStatuses(
             settings.headsUpBottomMarginEnabled,
             settings.headsUpGlassParametersEnabled,
             GlassParameterScope.ShadeCards.enabled(settings),
-            !settings.disableShadeGlassHooks && settings.globalGlassBlurEnabled && (settings.shadeCardGlassBlurEnabled || settings.shadeCardBackgroundBlurPercent != 100f),
+            !settings.disableShadeGlassHooks && settings.globalGlassBlurEnabled,
             settings.globalBackgroundDimEnabled,
+            settings.shadeBackgroundScaleDisabled,
             settings.globalBackgroundBlurPercent != 100f,
             settings.mediaEnabled,
             settings.mediaLayoutPreset.isNotBlank(),
@@ -808,6 +834,8 @@ private fun scopeStatuses(
             settings.sinkLockscreenNotificationsForFingerprint,
             settings.hideLockscreenClockLeadingZero,
             settings.hideDesktopClockLeadingZero,
+            settings.androidWidgetStackEnabled,
+            settings.androidWidgetGlassEnabled,
             settings.bypassHyperMusicCoverClockAdjustment,
             settings.hmcExpandedFingerprint,
             settings.hmcClockFontHeightEnabled,
@@ -833,21 +861,22 @@ private fun scopeStatuses(
             settings.volumePanelRadius > 0f,
             settings.islandEnabled,
             settings.superIslandWhitelistDisabled,
+            !settings.disableShadeGlassHooks && (settings.dynamicIslandOpacityEnabled || settings.dynamicIslandNotificationOpacityEnabled),
         ).any { it },
         isActive = framework.isActive(ModuleScopePackage.SYSTEM_UI),
     ),
     ScopeStatus(
         appName = "系统桌面",
         packageName = ModuleScopePackage.LAUNCHER,
-        hasModification = settings.hideDesktopClockLeadingZero,
+        hasModification = settings.hideDesktopClockLeadingZero || settings.androidWidgetStackEnabled || settings.androidWidgetGlassEnabled,
         isActive = framework.isActive(ModuleScopePackage.LAUNCHER),
     ),
     ScopeStatus(
         appName = "系统界面插件",
         packageName = ModuleScopePackage.PLUGIN,
-        hasModification = settings.controlCenterEnabled || settings.globalBackgroundBlurPercent != 100f ||
-            settings.globalBackgroundDimEnabled || GlassParameterScope.ShadeCards.enabled(settings) ||
-            (!settings.disableShadeGlassHooks && settings.globalGlassBlurEnabled && (settings.shadeCardGlassBlurEnabled || settings.shadeCardBackgroundBlurPercent != 100f)),
+        hasModification = (!settings.disableShadeGlassHooks && settings.dynamicIslandOpacityEnabled) || settings.controlCenterEnabled || settings.globalBackgroundBlurPercent != 100f ||
+            settings.globalBackgroundDimEnabled || settings.shadeBackgroundScaleDisabled || GlassParameterScope.ShadeCards.enabled(settings) ||
+            (!settings.disableShadeGlassHooks && settings.globalGlassBlurEnabled),
         isActive = framework.isActive(ModuleScopePackage.PLUGIN),
     ),
     ScopeStatus(
@@ -917,6 +946,8 @@ private fun scopeStatuses(
         settings.systemUiCompatibilityMode && scope.packageName in setOf(
             ModuleScopePackage.SYSTEM_UI, ModuleScopePackage.PLUGIN,
         ) -> scope.copy(hasModification = false)
+        settings.globalGlassBlurEnabled && !settings.disableShadeGlassHooks &&
+            scope.packageName != ModuleScopePackage.SYSTEM_FRAMEWORK -> scope.copy(hasModification = true)
         else -> scope
     }
 }
@@ -996,10 +1027,11 @@ private fun HomeDashboardPage(
             NavigationSettingItem("全局材质模糊", "", onClick = { onNavigate(SettingsDestination.GlobalMaterialBlur) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_apps, Color(0xFF5276C7)) })
             NavigationSettingItem("超级岛与媒体组件", "", onClick = { onNavigate(SettingsDestination.Media) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_music_note, Color(0xFF843AD4)) })
             NavigationSettingItem("锁屏", "", onClick = { onNavigate(SettingsDestination.Lockscreen) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_lock, Color(0xFF008F7D)) })
-            NavigationSettingItem("系统桌面", "", onClick = { onNavigate(SettingsDestination.Desktop) }, leadingContent = { HomeAppIcon(ModuleScopePackage.LAUNCHER) })
+            NavigationSettingItem("系统桌面", "", onClick = { onNavigate(SettingsDestination.Desktop) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_home, Color(0xFF5276C7)) })
             NavigationSettingItem("状态栏", "", onClick = { onNavigate(SettingsDestination.StatusBar) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_signal_cellular_alt, Color(0xFF087EBA)) })
             NavigationSettingItem("手势提示线", "", onClick = { onNavigate(SettingsDestination.GestureHandle) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_gesture_handle, Color(0xFF5276C7)) })
             NavigationSettingItem("系统设置", "", onClick = { onNavigate(SettingsDestination.AboutPhone) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_settings, Color(0xFF607D8B)) })
+            NavigationSettingItem("快捷键", "", onClick = { onNavigate(SettingsDestination.KeyShortcuts) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_mobile_arrow_up_right, Color(0xFFC52C79)) })
             NavigationSettingItem("音量面板", "", onClick = { onNavigate(SettingsDestination.Volume) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_volume_up, Color(0xFFC52C79)) })
         }
     }

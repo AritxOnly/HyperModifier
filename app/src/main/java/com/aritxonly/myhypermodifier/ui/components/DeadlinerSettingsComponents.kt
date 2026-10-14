@@ -65,11 +65,12 @@ fun SettingItem(
             androidx.compose.foundation.layout.Spacer(Modifier.width(12.dp))
         }
         Column(Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(text = headlineText, style = MiuixTheme.textStyles.body1)
+            Text(text = headlineText, style = MiuixTheme.textStyles.body1,
+                color = MiuixTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f))
             if (supportingText.isNotBlank()) {
                 Text(
                     text = supportingText,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = if (enabled) 1f else 0.38f),
                     style = MiuixTheme.textStyles.footnote1,
                     modifier = Modifier.padding(top = 3.dp),
                 )
@@ -104,11 +105,12 @@ fun SettingsSwitchItem(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(text = label, style = MiuixTheme.textStyles.body1)
+            Text(text = label, style = MiuixTheme.textStyles.body1,
+                color = MiuixTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f))
             if (supportingText.isNotBlank()) {
                 Text(
                     text = supportingText,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = if (enabled) 1f else 0.38f),
                     style = MiuixTheme.textStyles.footnote1,
                     modifier = Modifier.padding(top = 3.dp),
                 )
@@ -162,6 +164,7 @@ fun SettingsSliderItemWithLabel(
     valueText: (Float) -> String = { "${it.toInt()} dp" },
     onLabelClick: (() -> Unit)? = null,
 ) {
+    val draft = rememberSettingsSliderDraft(value, onValueChange)
     Column(modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().then(
@@ -176,14 +179,15 @@ fun SettingsSliderItemWithLabel(
                 modifier = Modifier.weight(1f).padding(end = 12.dp),
             )
             Text(
-                text = valueText(value),
+                text = valueText(draft.value),
                 color = MiuixTheme.colorScheme.primary,
                 style = MiuixTheme.textStyles.body1,
             )
         }
         DeadlinerSlider(
-            value = value,
-            onValueChange = onValueChange,
+            value = draft.value,
+            onValueChange = draft::update,
+            onValueChangeFinished = { draft.commit(onValueChange) },
             valueRange = valueRange,
             steps = steps,
             enabled = enabled,

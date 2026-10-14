@@ -146,3 +146,81 @@ UI 沿用项目现有 MIUIX SettingsScrollPage / SettingsSection / NavigationSet
 也不修改整页背景模糊或压暗范围。
 主页“全局材质模糊”移除摘要，复用其他系统项的 HomeSystemIcon 左侧图标样式；
 相关二级页面的数值摘要与跳转入口保持不变。
+
+## 2026-10-13 全系统 Glass 半径入口
+
+共享区精简为 `global_glass_blur_enabled` 开关与 `shade_card_glass_blur_radius`（0–100px）。
+旧比例和额外半径开关键继续保存/导出，但运行时不再读取，也不再修改卡片的背景模糊。
+`GlobalGlassBlurHooks` 在 PackageLoaded 安装到每个 LSPosed 选中的应用进程；
+不再按 View 类型、父链、通知状态或调用栈过滤 `View.setMiGlassBlurRadius(int,int)`。
+因此锁屏、悬浮通知、桌面、设置及其他选中的应用，只要使用该原生 API，就会统一大小半径。
+作用域外的进程、独立 shader 和其他模糊 API 不会因此改变；扩大覆盖需在 LSPosed 勾选对应系统应用并重启。
+
+每个目标 View 使用弱引用保存最新系统调用的原始大小半径；设置刷新在 View 线程重放，
+重放不会覆盖原值，关闭全局开关恢复最近的系统半径。兼容停用开关仍暂停所有写入，
+重启后将不安装 Hook。卡片配方继续由 `ShadeCardGlassHooks` 独立处理。
+
+## 2026-10-13 通知中心清除按钮补充入口
+
+用户确认音量条半径可用，不再对音量路径追加修改。通知中心 × 的
+`NotificationDismissViewGlassEffect.apply(Object, Context)` 只设置 Glass 配方，
+没有直接设置采样半径；新增 `NotificationDismissGlassHooks` 在该方法完成后
+通过 `GlobalGlassBlurHooks.onMaterialApplied` 补设现有全局半径。
+同时 Hook `clear(Object)`，在玻璃效果退出时恢复原值并移除跟踪，
+防止待执行的设置回放将普通材质重新加上 Glass 半径。
+
+原始半径优先取之前观察到的系统 setter 入参；没有系统调用时采用受支持设备
+libhwui 原生 `BackgroundBlurBlendProperties` 的默认值 0/0。核对的 native getter
+位于 0xa323c0，读取字段 0x304/0x308；初始化路径 0x5d955c/0x5d9560 将两字段置零。
+该默认值是此设备构建的静态证据，其他 ROM 仍需验证，不能当作全部系统版本的保证。
+
+该补充 Hook 只安装在 SystemUI，使用精准的材质 apply/clear 方法，
+复用原有弱引用状态、设置去重及合并回放，不扫描 View 树、不采集调用栈、不轮询，
+无关设置变化不额外刷新。只输出一次实际匹配日志，便于真机确认入口。
+未增加独立开关、模糊层或修改 Glass 配方。
+本次开发时 ADB 设备已断开，无法完成按钮视觉/帧耗时实测；编译和测试不能替代真机验证。
+
+验证：35 项 Glass 相关单元测试通过，签名 Release 构建成功，APK v2 签名验证通过。
+
+## 2026-10-14 超级岛 Glass 半径
+
+核对设备插件代码：`DynamicIslandWindowView.updateWindowBlur(boolean)` 在柔光模式中
+通过 `MiBackgroundStyle.setBackgroundBlurRadius(view, background, 50, 500)` 设置窗口采样，
+其中 Glass 分支最终调用 `View.setMiGlassBlurRadius`，已被全局 Hook 覆盖。
+`DynamicIslandBaseContentView.updateBackgroundBg(View, boolean)` 对展开内容只应用
+`EXPANDED_GLASS_TOKEN` 配方，没有设置该背景自身的 Glass 半径。
+
+新增 `DynamicIslandGlassHooks`，在展开背景材质更新结束后复用全局半径覆盖。
+父节点存在、系统允许背景材质且插件处于 Bionics 模式时才处理 Glass；
+普通材质/关闭材质路径恢复原值并移除跟踪，旧排队回放通过状态身份检查失效。
+不强制将非 Glass 的收起岛或传统材质转成 Glass，不修改转场内容/应用的 self blur。
+
+通过现有插件加载器工厂获取真实 ClassLoader，复用 `installSystemUiPluginCornerHooks`
+安装入口；不增加 ClassLoader 全局拦截器，不在 loadClass 的锁内加载其他类。
+只 Hook 材质更新方法，不 Hook 绘制/动画逐帧回调，不遍历 View 树。
+模式反射 Method 在安装时缓存；背景材质允许状态读取 Resources.Configuration，
+不是 Settings/Binder IPC；设置回放沿用现有去重、合并和弱引用状态。
+无需新开关，超级岛窗口和展开背景都使用“全局材质模糊 → Glass 模糊半径”。
+本次未安装到设备或进行真机效果/前后帧率验证。
+
+验证：35 项共享 Glass 回归测试通过，Release 构建成功，APK v2 签名验证通过。
+
+## 2026-10-14 展开面板未生效后的实测修正
+
+已比对安装 APK SHA-256 与构建一致；模块更新后 SystemUI 已重启，
+全局开关 true、半径 48、兼容停用 false。用户持久化诊断截图确认安装成功。
+定位版实际回调条件 7：target/parent 均为 FrameLayout，材质允许与 Bionics 均 true，
+viewBlurMode=1、backgroundBlurMode=0。之前的实现修改了消费者，而没有直接注册其采样容器；
+“已安装”不能作为效果覆盖的证据，先前完成声明未经过视觉验证。
+
+修正为通过 getRootView 精确识别 DynamicIslandWindowView，要求其 backgroundBlurMode=1；
+直接复用现有背景采样容器，不给消费者新增背景模糊模式或采样层。
+原生 setter 被观测时保存其入参；若窗口初始化早于注入，则使用受支持插件
+updateWindowBlur(true) 的 50/500 原值作为基准。展开材质事件才激活覆盖，
+对应窗口的常规原生半径 Hook 默认透传，收起小岛和修改全局半径时的收起状态保持系统值。
+真实内容和 fake 内容的 close-end 事件各执行一次清理，延后一帧检查当前是否仍有展开内容，
+在确已收起后恢复并移除跟踪，避免关闭旧卡片时覆盖新展开卡片。
+
+消费者与采样容器映射使用弱键/弱引用，重复材质更新复用映射；只在材质/收起事件处理，
+不扫描完整 View 树、不增加动画逐帧回调或 IPC。诊断每种条件最多记录一次并复用后台队列。
+修正后的实际视觉效果须在新 APK 安装、重启并展开后验证。

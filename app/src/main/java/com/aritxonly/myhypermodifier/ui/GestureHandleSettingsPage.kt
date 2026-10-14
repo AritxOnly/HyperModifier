@@ -157,6 +157,13 @@ internal fun GestureHandleSettingsPage(
                     )
                     SettingsSwitchItem("触摸时显示 3 秒", "", settings.gestureHandleTouchReveal,
                         { update(settings.copy(gestureHandleTouchReveal = it)) })
+                    SettingsSwitchItem(
+                        "应用退场时跟随",
+                        "需系统框架作用域，首次启用需重启手机。",
+                        settings.gestureHandleAttachToAppTransition,
+                        { update(settings.copy(gestureHandleAttachToAppTransition = it)) },
+                        enabled = settings.gestureHandleEnabled,
+                    )
                     SettingsSwitchItem("滑动时跟随", "", settings.gestureHandleSwipeMotion,
                         { update(settings.copy(gestureHandleSwipeMotion = it)) })
                     SettingsSliderItemWithLabel(

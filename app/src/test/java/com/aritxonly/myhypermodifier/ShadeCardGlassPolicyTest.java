@@ -4,6 +4,44 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class ShadeCardGlassPolicyTest {
+    @Test public void allocationFreeValidationPreservesClearAndInvalidPayloadSemantics() {
+        assertTrue(ShadeCardGlassPolicy.isActiveRecipe(ShadeCardGlassPolicy.defaults()));
+        assertFalse(ShadeCardGlassPolicy.isActiveRecipe(null));
+        assertFalse(ShadeCardGlassPolicy.isActiveRecipe(new float[42]));
+        assertFalse(ShadeCardGlassPolicy.isActiveRecipe(new float[43]));
+        float[] recipe = new float[42];
+        recipe[41] = -1f;
+        assertTrue(ShadeCardGlassPolicy.isActiveRecipe(recipe));
+        for (float invalid : new float[]{Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY}) {
+            recipe[0] = invalid;
+            assertFalse(ShadeCardGlassPolicy.isActiveRecipe(recipe));
+        }
+    }
+
+    @Test public void stackFramesRetainCallerRoutingAcrossHeadsUpKeyguardAndPanelTransitions() {
+        String[] owners = {
+                "com.android.systemui.statusbar.notification.utils.NotificationUtil",
+                "miui.systemui.controlcenter.panel.main.qs.QSItemViewHolder",
+                "miui.systemui.util.MiBackgroundStyle$animateBionics$1",
+                "com.miui.systemui.shade.blur.ShadeBlendBlurControllerImpl$BlurProvider",
+                "com.android.keyguard.KeyguardView",
+                "com.android.systemui.statusbar.notification.style.vieweffect.HeadsUpNotificationGlassEffect",
+                "com.milink.service.BlurUtils"
+        };
+        for (String first : owners) for (String second : owners) {
+            String[] names = {first, second};
+            StackTraceElement[] frames = {
+                    new StackTraceElement(first, "apply", "test", 1),
+                    new StackTraceElement(second, "apply", "test", 2)
+            };
+            for (boolean ancestor : new boolean[]{false, true}) {
+                assertEquals(ShadeCardGlassPolicy.callKind(names, ancestor),
+                        ShadeCardGlassPolicy.callKind(frames, ancestor));
+            }
+            assertEquals(ShadeCardGlassPolicy.radiusCallKind(names),
+                    ShadeCardGlassPolicy.radiusCallKind(frames));
+        }
+    }
     @Test public void customBaseIsLimitedToOneHundredWithoutClampingStockGlass() {
         assertArrayEquals(new int[]{100, 100}, ShadeCardGlassPolicy.effectiveGlassRadii(40, 500, true, 700, 100));
         assertArrayEquals(new int[]{100, 100}, ShadeCardGlassPolicy.effectiveGlassRadii(40, 500, true, 100, 100));

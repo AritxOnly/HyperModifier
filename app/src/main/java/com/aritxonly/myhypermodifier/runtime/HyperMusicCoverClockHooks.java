@@ -66,7 +66,8 @@ final class HyperMusicCoverClockHooks {
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
                         ModuleSettings.ensureLoaded();
-                        if (discoveredMain != null) HyperMusicCoverExtensions.bind(module, discoveredMain);
+                        if (discoveredMain != null && HyperMusicCoverExtensions.enabled())
+                            HyperMusicCoverExtensions.bind(module, discoveredMain);
                         if ((!ModuleSettings.bypassHyperMusicCoverClockAdjustment
                                 && !ModuleSettings.progressiveLockscreenClockAvoidance
                                 && !HyperMusicCoverExtensions.enabled()) || policy != null

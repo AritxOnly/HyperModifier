@@ -193,12 +193,14 @@ final class SystemUiRuntimeHooks {
         tryInstallSystemUiPart("全局背景模糊", this::installGlobalBackgroundBlurHook);
         tryInstallSystemUiPart("控制中心 MiLink 背景", () ->
                 installControlCenterMiLinkBackgroundMaterialHook(classLoader));
+        tryInstallSystemUiPart("背景缩放", () -> ShadeBackgroundScaleHooks.install(module, classLoader));
         tryInstallSystemUiPart("全局背景压暗", () -> BackgroundDimHooks.installSystemUi(module, classLoader));
         tryInstallSystemUiPart("锁屏通知", () -> new LockscreenHooks(module).installLockscreenNotificationHooks(classLoader));
         tryInstallSystemUiPart("锁屏指纹", () -> new LockscreenHooks(module).installLockscreenFingerprintHooks(classLoader));
         tryInstallSystemUiPart("锁屏凭据", () -> new LockscreenHooks(module).installLockscreenCredentialHooks(classLoader));
         tryInstallSystemUiPart("状态栏信号隐藏", () -> StatusBarNetworkVisibilityHooks.install(module, classLoader));
         tryInstallSystemUiPart("状态栏信号及网速边距", () -> StatusBarNetworkMarginsHooks.install(module, classLoader));
+        tryInstallSystemUiPart("桌面状态栏取色", () -> DesktopStatusBarHooks.install(module, classLoader));
         tryInstallSystemUiPart("状态栏网络类型", () -> StatusBarNetworkType.install(module, classLoader));
         if (retryLateClasses) SYSTEM_UI_HOOKS_INSTALLED.set(false);
     }
@@ -359,14 +361,15 @@ final class SystemUiRuntimeHooks {
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
                         ensureLoaded();
+                        int percent = globalBackgroundBlurPercent;
+                        // The stock multiplier must not classify callers on every animation tick.
+                        if (percent == 100) return chain.proceed();
                         Object receiver = chain.getThisObject();
                         Object argument = chain.getArg(0);
                         if (!(receiver instanceof View) || !(argument instanceof Integer)
                                 || !isGlobalBackgroundBlurTarget((View) receiver)) {
                             return chain.proceed();
                         }
-                        int percent = globalBackgroundBlurPercent;
-                        if (percent == 100) return chain.proceed();
                         int original = (Integer) argument;
                         int adjusted = Math.max(0, Math.min(500,
                                 Math.round(original * percent / 100f)));
@@ -383,7 +386,7 @@ final class SystemUiRuntimeHooks {
     /**
      * The installed SystemUI uses the same blend colors as stock MiLink for both classic and
      * bionics material, but its Control Center backdrop uses a 100px blur baseline and a
-     * background scale ratio. MiLink's backdrop uses 110px and does not set that scale. Alter
+     * background scale ratio. MiLink's backdrop uses 110px. Sampling scale has its own switch. Alter
      * only the Control Center BlurProvider, leaving notification shade and card blur untouched.
      */
     private void installControlCenterMiLinkBackgroundMaterialHook(ClassLoader classLoader) {
@@ -396,12 +399,10 @@ final class SystemUiRuntimeHooks {
             Field radiusField = provider.getDeclaredField("maxRadius");
             Field smallGlassRadiusField = provider.getDeclaredField("maxGlassSmallBlurRadius");
             Field bigGlassRadiusField = provider.getDeclaredField("maxGlassBigBlurRadius");
-            Field scaleField = provider.getDeclaredField("enableScale");
             viewField.setAccessible(true);
             radiusField.setAccessible(true);
             smallGlassRadiusField.setAccessible(true);
             bigGlassRadiusField.setAccessible(true);
-            scaleField.setAccessible(true);
             module.hook(provider.getDeclaredMethod("setBlurRatio", float.class))
                     .setId("control-center-follow-milink-background-material")
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
@@ -418,24 +419,22 @@ final class SystemUiRuntimeHooks {
                                             CONTROL_CENTER_BACKGROUND_MATERIAL_DEFAULTS.put(
                                                     instance, new int[]{radiusField.getInt(instance),
                                                             smallGlassRadiusField.getInt(instance),
-                                                            bigGlassRadiusField.getInt(instance),
-                                                            scaleField.getBoolean(instance) ? 1 : 0});
+                                                            bigGlassRadiusField.getInt(instance)});
                                         }
                                     }
                                     radiusField.setInt(instance, MILINK_FUSION_MATERIAL_BLUR_RADIUS);
                                     // Compatibility mode yields Glass ownership to other modules,
-                                    // while keeping our non-Glass background blur/scale behavior.
+                                    // while keeping our non-Glass background blur behavior.
                                     if (!disableShadeGlassHooks) {
                                         smallGlassRadiusField.setInt(instance,
                                                 MILINK_FUSION_MATERIAL_BLUR_RADIUS);
                                         bigGlassRadiusField.setInt(instance,
                                                 MILINK_FUSION_MATERIAL_BLUR_RADIUS);
                                     }
-                                    scaleField.setBoolean(instance, false);
                                     if (CONTROL_CENTER_MILINK_MATERIAL_LOGGED
                                             .compareAndSet(false, true)) {
                                         Log.i(TAG, "Control Center backdrop follows stock MiLink "
-                                                + "material: radius 110, background scale off");
+                                                + "material: radius 110");
                                     }
                                 } else {
                                     int[] defaults;
@@ -449,7 +448,6 @@ final class SystemUiRuntimeHooks {
                                             smallGlassRadiusField.setInt(instance, defaults[1]);
                                             bigGlassRadiusField.setInt(instance, defaults[2]);
                                         }
-                                        scaleField.setBoolean(instance, defaults[3] != 0);
                                     }
                                 }
                             }
@@ -482,7 +480,6 @@ final class SystemUiRuntimeHooks {
 
     private static boolean isGlobalBackgroundBlurTarget(View view) {
         // Card blur has its own control. Never multiply it again by the whole-page slider.
-        if (ShadeCardGlassHooks.isCardBackgroundTarget(view)) return false;
         String className = view.getClass().getName();
         // The global control is deliberately limited to shade/Control Center. Keyguard owns
         // several independent blur effects (including the two bottom shortcuts), which must not
@@ -513,7 +510,9 @@ final class SystemUiRuntimeHooks {
         boolean notificationShade = false;
         boolean shadeBlurProvider = false;
         boolean keyguardCall = keyguardView;
-        for (StackTraceElement frame : Thread.currentThread().getStackTrace()) {
+        StackTraceElement[] frames = Thread.currentThread().getStackTrace();
+        if (ShadeCardGlassHooks.isCardBackgroundTarget(view, frames)) return false;
+        for (StackTraceElement frame : frames) {
             String owner = frame.getClassName();
             if (owner.startsWith("com.android.keyguard.")
                     || owner.startsWith("com.miui.keyguard.")) {
@@ -664,8 +663,31 @@ final class SystemUiRuntimeHooks {
                         if (activity instanceof Activity) {
                             rememberMiLinkFusionDeviceCenterView((Activity) activity);
                         }
-                        return chain.proceed();
+                        Object result = chain.proceed();
+                        ensureLoaded();
+                        if (activity instanceof Activity) {
+                            BackgroundDimHooks.clearMiLinkContentDim((Activity) activity);
+                        }
+                        return result;
                     });
+            // BaseActivity independently writes #59555555 onto activity_content_view.
+            // Its content background is separate from the decor View's native blend list.
+            try {
+                Method contentBackground = baseActivity.getDeclaredMethod("E");
+                module.hook(contentBackground).setId("milink-content-background-dim")
+                        .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                        .intercept(chain -> {
+                            Object result = chain.proceed();
+                            ensureLoaded();
+                            if (chain.getThisObject() instanceof Activity) {
+                                BackgroundDimHooks.clearMiLinkContentDim((Activity) chain.getThisObject());
+                            }
+                            return result;
+                        });
+                BackgroundDimHooks.deoptimizeCallers(module, classLoader, baseActivity.getName());
+            } catch (NoSuchMethodException ignored) {
+                // Other releases still get the semantic content View correction onStart.
+            }
             Log.i(TAG, "MiLink Fusion Device Center background owner hook installed");
         } catch (Throwable throwable) {
             MILINK_FUSION_BACKGROUND_OWNER_HOOK_INSTALLED.set(false);

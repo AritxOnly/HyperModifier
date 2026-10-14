@@ -104,6 +104,7 @@ import top.yukonga.miuix.kmp.icon.extended.Reset
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.core.graphics.ColorUtils
+import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
 
 @Composable internal fun MediaSettingsPage(padding: PaddingValues, settings: ModifierSettings, update: (ModifierSettings) -> Unit, onOpenConstraintEditor: (String) -> Unit, onScroll: (Float) -> Unit) = SettingsScrollPage(padding, onScroll) {
     val context = LocalContext.current
@@ -151,6 +152,46 @@ import androidx.core.graphics.ColorUtils
         SettingsSwitchItem("息屏时隐藏操作按钮", "", settings.hideAodActions, { update(settings.copy(hideAodActions = it)) })
         SettingsSwitchItem("息屏时隐藏设备切换", "", settings.hideAodSeamless, { update(settings.copy(hideAodSeamless = it)) })
     }
+    SettingsSection(topLabel = "超级岛背景") {
+        SettingsSwitchItem(
+            "自定义展开背景",
+            "包含下拉小窗",
+            settings.dynamicIslandOpacityEnabled,
+            { update(settings.copy(dynamicIslandOpacityEnabled = it)) },
+            enabled = !settings.disableShadeGlassHooks,
+        )
+        SettingsSliderItemWithLabel(
+            label = "展开背景不透明度",
+            value = settings.dynamicIslandExpandedOpacity,
+            valueRange = 0f..100f,
+            onValueChange = { update(settings.copy(dynamicIslandExpandedOpacity = it)) },
+            steps = 99,
+            enabled = settings.dynamicIslandOpacityEnabled && !settings.disableShadeGlassHooks,
+            valueText = { "${it.toInt()}%" },
+        )
+        SettingsSwitchItem(
+            "自定义通知中心背景",
+            "",
+            settings.dynamicIslandNotificationOpacityEnabled,
+            { update(settings.copy(dynamicIslandNotificationOpacityEnabled = it)) },
+            enabled = !settings.disableShadeGlassHooks,
+        )
+        SettingsSliderItemWithLabel(
+            label = "通知中心背景不透明度",
+            value = settings.dynamicIslandNotificationOpacity,
+            valueRange = 0f..100f,
+            onValueChange = { update(settings.copy(dynamicIslandNotificationOpacity = it)) },
+            steps = 99,
+            enabled = settings.dynamicIslandNotificationOpacityEnabled && !settings.disableShadeGlassHooks,
+            valueText = { "${it.toInt()}%" },
+        )
+        if (settings.disableShadeGlassHooks) Text(
+            "玻璃材质修改已停用，可在通知/控制中心开启。",
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            style = MiuixTheme.textStyles.footnote1,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+        )
+    }
     SettingsSection(topLabel = "超级岛媒体") {
         SettingsSwitchItem(
             "进度条光效",
@@ -160,15 +201,13 @@ import androidx.core.graphics.ColorUtils
             enabled = settings.islandEnabled,
         )
     }
-    SettingsSection(topLabel = "超级岛权限") {
+    SettingsSection(topLabel = "超级岛") {
         SettingsSwitchItem(
             "关闭超级岛白名单",
-            "需勾选系统界面与小米服务框架，首次启用后重启设备",
+            "需系统界面与小米服务框架作用域，首次启用后重启手机",
             settings.superIslandWhitelistDisabled,
             { update(settings.copy(superIslandWhitelistDisabled = it)) },
         )
-    }
-    SettingsSection(topLabel = "超级岛交互") {
         SettingsSwitchItem(
             "隐藏下拉横条",
             "",
@@ -193,19 +232,48 @@ import androidx.core.graphics.ColorUtils
     }
 }
 
-@Composable internal fun DesktopSettingsPage(padding: PaddingValues, settings: ModifierSettings, update: (ModifierSettings) -> Unit, onScroll: (Float) -> Unit) = SettingsScrollPage(padding, onScroll) {
-    SettingsSection(topLabel = "桌面时钟") {
+@Composable internal fun DesktopSettingsPage(padding: PaddingValues, settings: ModifierSettings, update: (ModifierSettings) -> Unit, onOpenWidgetGlassApps: () -> Unit, onScroll: (Float) -> Unit) = SettingsScrollPage(padding, onScroll) {
+    SettingsSection {
+        WindowDropdownPreference(
+            title = "桌面状态栏图标颜色",
+            summary = "需系统界面作用域",
+            items = listOf("跟随系统", "浅色图标", "深色图标"),
+            selectedIndex = DesktopStatusBarPolicy.normalize(settings.desktopStatusBarIconMode),
+            onSelectedIndexChange = { update(settings.copy(desktopStatusBarIconMode = it)) },
+            enabled = android.os.Build.VERSION.SDK_INT >= 36,
+        )
         SettingsSwitchItem(
             "24 小时制隐藏小时前导零",
-            "HyperOS 4 MAML 时钟，09:03 → 9:03；需勾选系统桌面与系统界面作用域，更新模块后重启手机",
+            "09:03 → 9:03；需系统桌面与系统界面作用域",
             settings.hideDesktopClockLeadingZero,
             { update(settings.copy(hideDesktopClockLeadingZero = it)) },
             enabled = android.os.Build.VERSION.SDK_INT >= 36,
         )
     }
+    SettingsSection(topLabel = "安卓小组件") {
+        SettingsSwitchItem(
+            "允许安卓小组件堆叠",
+            "开启后重启桌面；关闭前先移出堆叠",
+            settings.androidWidgetStackEnabled,
+            { update(settings.copy(androidWidgetStackEnabled = it)) },
+            enabled = android.os.Build.VERSION.SDK_INT >= 36,
+        )
+        SettingsSwitchItem(
+            "玻璃背景",
+            "需系统桌面及小组件应用作用域",
+            settings.androidWidgetGlassEnabled,
+            { update(settings.copy(androidWidgetGlassEnabled = it)) },
+            enabled = android.os.Build.VERSION.SDK_INT >= 36,
+        )
+        NavigationSettingItem(
+            title = "小组件材质",
+            summary = "按应用或桌面实例设置",
+            onClick = onOpenWidgetGlassApps,
+        )
+    }
 }
 
-@Composable internal fun LockscreenSettingsPage(padding: PaddingValues, settings: ModifierSettings, update: (ModifierSettings) -> Unit, onScroll: (Float) -> Unit) = SettingsScrollPage(padding, onScroll) {
+@Composable internal fun LockscreenSettingsPage(padding: PaddingValues, settings: ModifierSettings, update: (ModifierSettings) -> Unit, onOpenHyperMusicCover: () -> Unit, onScroll: (Float) -> Unit) = SettingsScrollPage(padding, onScroll) {
     SettingsSection(topLabel = "锁屏时钟") {
         SettingsSwitchItem(
             "24 小时制隐藏小时前导零",
@@ -220,13 +288,6 @@ import androidx.core.graphics.ColorUtils
             { update(settings.copy(forceLockscreenClockColon = it)) },
         )
         SettingsSwitchItem(
-            "绕过 HyperMusicCover 时钟避让",
-            "恢复原生通知避让，保留音乐封面模式",
-            settings.bypassHyperMusicCoverClockAdjustment,
-            { update(settings.copy(bypassHyperMusicCoverClockAdjustment = it)) },
-            enabled = android.os.Build.VERSION.SDK_INT >= 34,
-        )
-        SettingsSwitchItem(
             "时钟渐进避让通知",
             "适用于 AllInOne 时钟，保留音乐封面模式",
             settings.progressiveLockscreenClockAvoidance,
@@ -234,43 +295,8 @@ import androidx.core.graphics.ColorUtils
             enabled = android.os.Build.VERSION.SDK_INT >= 34,
         )
     }
-    SettingsSection(topLabel = "HyperMusicCover 扩展") {
-        SettingsSwitchItem(
-            "全屏岛展开时下沉通知并隐藏指纹",
-            "音乐、导航、计时等全屏岛生效；展开全部卡片时恢复避让。首次启用请重启系统界面，需要 HMC",
-            settings.hmcExpandedFingerprint,
-            { update(settings.copy(hmcExpandedFingerprint = it)) },
-            enabled = android.os.Build.VERSION.SDK_INT >= 34,
-        )
-        SettingsSwitchItem(
-            "自定义封面时钟字体高度",
-            "直接设置原生字体高度，需 AllInOne 字体支持和 HMC；首次启用请重启系统界面",
-            settings.hmcClockFontHeightEnabled,
-            { update(settings.copy(hmcClockFontHeightEnabled = it)) },
-            enabled = android.os.Build.VERSION.SDK_INT >= 34,
-        )
-        HyperMusicCoverFontHeightSetting(
-            value = settings.hmcClockFontHeight,
-            onValueChange = { update(settings.copy(hmcClockFontHeight = it)) },
-            enabled = settings.hmcClockFontHeightEnabled && !settings.hmcClockFontRatioEnabled && android.os.Build.VERSION.SDK_INT >= 34,
-        )
-        SettingsSwitchItem(
-            "按宽高比调整字体",
-            "联动原生字体宽度、高度和字号；关闭后恢复上面的高度设置",
-            settings.hmcClockFontRatioEnabled,
-            { update(settings.copy(hmcClockFontRatioEnabled = it)) },
-            enabled = settings.hmcClockFontHeightEnabled && android.os.Build.VERSION.SDK_INT >= 34,
-        )
-        HyperMusicCoverFontHeightSetting(
-            value = settings.hmcClockFontRatio,
-            onValueChange = { update(settings.copy(hmcClockFontRatio = it)) },
-            enabled = settings.hmcClockFontHeightEnabled && settings.hmcClockFontRatioEnabled && android.os.Build.VERSION.SDK_INT >= 34,
-            label = "字形宽高比",
-            defaultValue = 2.4f,
-            summary = "每组数字的宽／高，越大越扁；默认 2.4",
-            inputSummary = "以两位数字 00 的轮廓为基准，保持数字宽度并调整高度。输入大于 0 的数值，超出范围时采用字体可达的最接近形态。",
-            positiveOnly = true,
-        )
+    SettingsSection {
+        NavigationSettingItem("HyperMusicCover 扩展", "", onClick = onOpenHyperMusicCover)
     }
     SettingsSection(topLabel = "息屏时钟") {
         SettingsSwitchItem(
@@ -619,7 +645,7 @@ private val MEDIA_ISLAND_CONSTRAINT_SET_TEMPLATE = """
 """.trimIndent()
 
 @Composable
-internal fun AboutSettingsPage(padding: PaddingValues, onScroll: (Float) -> Unit) {
+internal fun AboutSettingsPage(padding: PaddingValues, onSettingsRestored: () -> Unit, onScroll: (Float) -> Unit) {
     val context = LocalContext.current
     val layoutDirection = LocalLayoutDirection.current
     val scroll = rememberScrollState()
@@ -681,6 +707,7 @@ internal fun AboutSettingsPage(padding: PaddingValues, onScroll: (Float) -> Unit
             if (powerAnalysisVisible) {
                 PowerAnalysisSection(containerAlpha = 0.5f + progress * 0.5f)
             }
+            ModuleSettingsSection(containerAlpha = 0.5f + progress * 0.5f, onSettingsRestored = onSettingsRestored)
             SettingsSection(topLabel = "致谢", containerAlpha = 0.5f + progress * 0.5f) {
                 SettingItem("HyperBlackScreen", "功能参考与适配贡献 · 酷安@不愧是小睦")
             }
@@ -1043,7 +1070,7 @@ internal fun restartSelectedScope(
             else -> ""
         }
         val completed = try {
-            if (command.isBlank()) false else {
+            if (command.isBlank() || !ModifierSettingsStore.flushRemotePreferencesSync()) false else {
                 val process = ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
                 val finished = process.waitFor(12, TimeUnit.SECONDS)
                 if (!finished) process.destroyForcibly()
