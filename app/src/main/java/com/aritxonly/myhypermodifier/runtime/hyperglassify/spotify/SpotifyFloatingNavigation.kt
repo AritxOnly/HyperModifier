@@ -174,10 +174,11 @@ private class SpotifyNavigationHost private constructor(
     private val composeView = ComposeView(activity)
     private val visibility = FloatingNavigationVisibility(composeView)
     private var samplingBounds: ViewBackdropBounds? = null
+    private val gpuBackdrop = NativeGpuBackdrop.create(samplingView, composeView)
     private val sampler = ViewBackdropSampler(
         source = samplingView,
         excludedView = composeView,
-        useHardwareCanvasSampling = true,
+        useHardwareCanvasSampling = gpuBackdrop == null,
         minimumCaptureIntervalMs = 0L,
         matchDisplayRefreshRate = true,
         sampleOnSourceFrame = true,
@@ -191,7 +192,7 @@ private class SpotifyNavigationHost private constructor(
                 snapshot?.forTarget(region, playback.backdropBounds!!)
             } else null)
         },
-    )
+    ).also { if (gpuBackdrop != null) it.setActive(false) }
     private val tabIcons = SpotifyIconLoader(activity)
     private val playback = SpotifyPlaybackCapsule(activity)
     private var foreground = true
@@ -204,7 +205,7 @@ private class SpotifyNavigationHost private constructor(
     }
     private val preDrawListener = ViewTreeObserver.OnPreDrawListener {
         syncNativeState()
-        sampler.onFrame()
+        if (gpuBackdrop == null) sampler.onFrame()
         true
     }
 
@@ -224,6 +225,7 @@ private class SpotifyNavigationHost private constructor(
                 SpotifyNavigationContent(
                     state = state,
                     backdropSnapshot = backdropSnapshot,
+                    gpuBackdrop = gpuBackdrop,
                     onBackdropBoundsChanged = { bounds ->
                         navigationBounds = bounds
                         updateSamplingBounds()
@@ -252,19 +254,21 @@ private class SpotifyNavigationHost private constructor(
     }
 
     fun onTouchEvent(event: MotionEvent) {
-        sampler.onTouchEvent(event)
+        if (gpuBackdrop == null) sampler.onTouchEvent(event)
     }
 
     fun setForeground(value: Boolean) {
         foreground = value
         if (value) syncNativeState() else {
             sampler.setActive(false)
+            gpuBackdrop?.setActive(false)
         }
     }
 
     fun dispose() {
         visibility.dispose()
         sampler.dispose()
+        gpuBackdrop?.dispose()
         playback.dispose()
         composeView.removeOnLayoutChangeListener(composeLayoutListener)
         if (overlayParent.viewTreeObserver.isAlive) {
@@ -299,7 +303,8 @@ private class SpotifyNavigationHost private constructor(
         }
         // Keep the native navigation usable when a version lacks required icon resources.
         val navigationVisible = navigationAvailable && tabs.size >= 3
-        sampler.setActive(navigationVisible)
+        sampler.setActive(gpuBackdrop == null && navigationVisible)
+        gpuBackdrop?.setActive(navigationVisible)
         playback.sync(navigationVisible, navigationBounds)
         updateSamplingBounds()
         if (navigationVisible) {
@@ -343,6 +348,8 @@ private class SpotifyNavigationHost private constructor(
         val tab = navigationBounds ?: return
         val region = SpotifyDockBackdrop.union(tab, playback.backdropBounds)
         samplingBounds = region
+        gpuBackdrop?.setBounds(region)
+        playback.updateGpuBackdrop(gpuBackdrop, playback.backdropBounds)
         sampler.setNavigationBounds(region)
     }
 
@@ -577,6 +584,7 @@ private class SpotifyIconLoader(private val activity: Activity) {
 private fun SpotifyNavigationContent(
     state: SpotifyNavigationState,
     backdropSnapshot: ViewBackdropSnapshot?,
+    gpuBackdrop: NativeGpuBackdrop?,
     onBackdropBoundsChanged: (ViewBackdropBounds) -> Unit,
     onDestinationSelected: (Int) -> Unit,
 ) {
@@ -586,6 +594,8 @@ private fun SpotifyNavigationContent(
     val materialColors = remember(dark) { MhmPresetColors.material(dark) }
     val miuixColors = remember(dark, materialColors) { MhmPresetColors.miuix(materialColors, dark) }
     val backdrop = rememberLayerBackdrop()
+    var nativeBackdropBounds by remember { mutableStateOf<ViewBackdropBounds?>(null) }
+    val opticalBackdrop = if (gpuBackdrop?.geometry != null || backdropSnapshot != null) backdrop else null
     val hiddenNavigationLift = hyperGlassifyHiddenNavigationLift()
 
     MaterialTheme(colorScheme = materialColors) {
@@ -604,7 +614,8 @@ private fun SpotifyNavigationContent(
                         .height(MiuixFloatingTabBarDefaults.Height),
                     contentAlignment = Alignment.Center,
                 ) {
-                    ViewBackdropLayer(backdropSnapshot, backdrop)
+                    if (gpuBackdrop != null) NativeGpuBackdropLayer(gpuBackdrop, backdrop, nativeBackdropBounds)
+                    else ViewBackdropLayer(backdropSnapshot, backdrop)
                     MiuixFloatingTabBar(
                         items = state.tabs.mapIndexed { index, tab ->
                             MiuixFloatingTabItem(
@@ -619,18 +630,18 @@ private fun SpotifyNavigationContent(
                         onItemSelected = { onDestinationSelected(it.key.toInt()) },
                         modifier = Modifier.onGloballyPositioned { coordinates ->
                             val position = coordinates.positionInWindow()
-                            onBackdropBoundsChanged(
-                                ViewBackdropBounds(
+                            val bounds = ViewBackdropBounds(
                                     position.x.roundToInt(),
                                     position.y.roundToInt(),
                                     coordinates.size.width,
                                     coordinates.size.height,
-                                ),
-                            )
+                                )
+                            nativeBackdropBounds = bounds
+                            onBackdropBoundsChanged(bounds)
                         },
                         layout = MiuixFloatingTabLayout.Stacked,
                         fillAvailableWidth = true,
-                        backdrop = backdropSnapshot?.let { backdrop },
+                        backdrop = opticalBackdrop,
                     )
                 }
             }

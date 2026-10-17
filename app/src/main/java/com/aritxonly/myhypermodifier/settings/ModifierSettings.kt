@@ -45,8 +45,6 @@ data class ModifierSettings(
     val globalGlassBlurEnabled: Boolean = false,
     val dynamicIslandExpandedOpacity: Float = 30f,
     val dynamicIslandOpacityEnabled: Boolean = false,
-    val dynamicIslandNotificationOpacityEnabled: Boolean = false,
-    val dynamicIslandNotificationOpacity: Float = 30f,
     // Legacy storage/export fields; global Glass now uses only its enable switch and radius.
     val shadeCardBackgroundBlurPercent: Float = 100f,
     val shadeCardGlassBlurEnabled: Boolean = false,
@@ -118,6 +116,7 @@ data class ModifierSettings(
     val statusBarHideMobileTypeOnWifi: Boolean = false,
     val statusBarHideMobileActivity: Boolean = false,
     val statusBarHideWifiActivity: Boolean = false,
+    val statusBarShowSeconds: Boolean = false,
     val statusBarHideWifiStandard: Boolean = false,
     val statusBarMobileActivityOffsetX: Float = 0f,
     val statusBarMobileActivityOffsetY: Float = 0f,
@@ -150,6 +149,7 @@ data class ModifierSettings(
     val amapMiuixIconsEnabled: Boolean = false,
     val amapMonochromeIconsEnabled: Boolean = true,
     val amapHideLongPressVoiceTabEnabled: Boolean = ModuleDefaultValues.AMAP_HIDE_LONG_PRESS_VOICE_TAB_ENABLED,
+    val douyinFloatingNavigationEnabled: Boolean = ModuleDefaultValues.DOUYIN_FLOATING_NAVIGATION_ENABLED,
     val xiaomiCommunityFloatingNavigationEnabled: Boolean = ModuleDefaultValues.XIAOMI_COMMUNITY_FLOATING_NAVIGATION_ENABLED,
     val xiaomiCommunityMiuixIconsEnabled: Boolean = false,
     val xiaomiCommunityMonochromeIconsEnabled: Boolean = true,
@@ -284,6 +284,7 @@ object ModifierSettingsPresets {
         statusBarHideMobileTypeOnWifi = false,
         statusBarHideMobileActivity = false,
         statusBarHideWifiActivity = false,
+        statusBarShowSeconds = false,
         statusBarHideWifiStandard = false,
         statusBarMobileActivityOffsetX = 0f,
         statusBarMobileActivityOffsetY = 0f,
@@ -311,6 +312,7 @@ object ModifierSettingsPresets {
         amapMiuixIconsEnabled = false,
         amapMonochromeIconsEnabled = false,
         amapHideLongPressVoiceTabEnabled = false,
+        douyinFloatingNavigationEnabled = false,
         xiaomiCommunityFloatingNavigationEnabled = false,
         xiaomiCommunityMiuixIconsEnabled = false,
         xiaomiCommunityMonochromeIconsEnabled = false,
@@ -364,8 +366,6 @@ object ModifierSettingsStore {
     private const val KEY_HEADS_UP_GLASS_DARK_PARAMETERS = "heads_up_glass_dark_parameters"
     private const val KEY_SHADE_CARD_GLASS_ENABLED = "shade_card_glass_parameters_enabled"
     private const val KEY_DISABLE_SHADE_GLASS_HOOKS = "disable_shade_glass_hooks"
-    private const val KEY_DYNAMIC_ISLAND_NOTIFICATION_OPACITY_ENABLED = "dynamic_island_notification_opacity_enabled"
-    private const val KEY_DYNAMIC_ISLAND_NOTIFICATION_OPACITY = "dynamic_island_notification_opacity"
     private const val KEY_DYNAMIC_ISLAND_OPACITY_ENABLED = "dynamic_island_opacity_enabled"
     private const val KEY_DYNAMIC_ISLAND_EXPANDED_OPACITY = "dynamic_island_expanded_opacity"
     private const val KEY_GLOBAL_GLASS_BLUR_ENABLED = "global_glass_blur_enabled"
@@ -460,6 +460,7 @@ object ModifierSettingsStore {
     private const val KEY_STATUS_BAR_HIDE_MOBILE_TYPE_ON_WIFI = "status_bar_hide_mobile_on_wifi"
     private const val KEY_STATUS_BAR_HIDE_MOBILE_ACTIVITY = "status_bar_hide_mobile_activity"
     private const val KEY_STATUS_BAR_HIDE_WIFI_ACTIVITY = "status_bar_hide_wifi_activity"
+    private const val KEY_STATUS_BAR_SHOW_SECONDS = "status_bar_show_seconds"
     private const val KEY_STATUS_BAR_HIDE_WIFI_STANDARD = "status_bar_hide_wifi_standard"
     private const val KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_X = "status_bar_mobile_activity_offset_x"
     private const val KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_Y = "status_bar_mobile_activity_offset_y"
@@ -496,6 +497,7 @@ object ModifierSettingsStore {
     private const val KEY_AMAP_MONOCHROME_ICONS = "amap_monochrome_icons_enabled"
     private const val KEY_AMAP_HIDE_LONG_PRESS_VOICE_TAB =
         "amap_hide_long_press_voice_tab_enabled"
+    private const val KEY_DOUYIN_FLOATING_NAVIGATION = "douyin_floating_navigation_enabled"
     private const val KEY_XIAOMI_COMMUNITY_FLOATING_NAVIGATION =
         "xiaomi_community_floating_navigation_enabled"
     private const val KEY_XIAOMI_COMMUNITY_MIUIX_ICONS =
@@ -599,10 +601,6 @@ object ModifierSettingsStore {
             shadeCardGlassBlurEnabled = prefs.getBoolean(KEY_SHADE_CARD_GLASS_BLUR_ENABLED, false),
             dynamicIslandOpacityEnabled = prefs.getBoolean(KEY_DYNAMIC_ISLAND_OPACITY_ENABLED, prefs.getBoolean(KEY_GLOBAL_GLASS_BLUR_ENABLED, prefs.getBoolean(KEY_SHADE_CARD_GLASS_ENABLED, false))),
             dynamicIslandExpandedOpacity = ShadeCardGlassPolicy.normalize(prefs.getFloat(KEY_DYNAMIC_ISLAND_EXPANDED_OPACITY, 30f), 100f, 30f),
-            dynamicIslandNotificationOpacityEnabled = prefs.getBoolean(KEY_DYNAMIC_ISLAND_NOTIFICATION_OPACITY_ENABLED,
-                prefs.getBoolean(KEY_DYNAMIC_ISLAND_OPACITY_ENABLED, prefs.getBoolean(KEY_GLOBAL_GLASS_BLUR_ENABLED, prefs.getBoolean(KEY_SHADE_CARD_GLASS_ENABLED, false)))),
-            dynamicIslandNotificationOpacity = ShadeCardGlassPolicy.normalize(prefs.getFloat(KEY_DYNAMIC_ISLAND_NOTIFICATION_OPACITY,
-                prefs.getFloat(KEY_DYNAMIC_ISLAND_EXPANDED_OPACITY, 30f)), 100f, 30f),
             shadeCardGlassBlurRadius = ShadeCardGlassPolicy.normalize(prefs.getFloat(KEY_SHADE_CARD_GLASS_BLUR_RADIUS, 20f), ShadeCardGlassPolicy.MAX_GLASS_BLUR_RADIUS.toFloat(), 20f),
             headsUpBackgroundBlurRadius = ShadeCardGlassPolicy.normalize(prefs.getFloat(
                 KEY_HEADS_UP_BACKGROUND_BLUR_RADIUS, 60f,
@@ -723,6 +721,7 @@ object ModifierSettingsStore {
             statusBarHideMobileTypeOnWifi = prefs.getBoolean(KEY_STATUS_BAR_HIDE_MOBILE_TYPE_ON_WIFI, false),
             statusBarHideMobileActivity = prefs.getBoolean(KEY_STATUS_BAR_HIDE_MOBILE_ACTIVITY, false),
             statusBarHideWifiActivity = prefs.getBoolean(KEY_STATUS_BAR_HIDE_WIFI_ACTIVITY, false),
+            statusBarShowSeconds = prefs.getBoolean(KEY_STATUS_BAR_SHOW_SECONDS, false),
             statusBarHideWifiStandard = prefs.getBoolean(KEY_STATUS_BAR_HIDE_WIFI_STANDARD, false),
             statusBarMobileActivityOffsetX = prefs.getFloat(KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_X, 0f),
             statusBarMobileActivityOffsetY = prefs.getFloat(KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_Y, 0f),
@@ -766,6 +765,7 @@ object ModifierSettingsStore {
                 KEY_AMAP_HIDE_LONG_PRESS_VOICE_TAB,
                 ModuleDefaultValues.AMAP_HIDE_LONG_PRESS_VOICE_TAB_ENABLED,
             ),
+            douyinFloatingNavigationEnabled = prefs.getBoolean(KEY_DOUYIN_FLOATING_NAVIGATION, ModuleDefaultValues.DOUYIN_FLOATING_NAVIGATION_ENABLED),
             xiaomiCommunityFloatingNavigationEnabled = prefs.getBoolean(
                 KEY_XIAOMI_COMMUNITY_FLOATING_NAVIGATION,
                 ModuleDefaultValues.XIAOMI_COMMUNITY_FLOATING_NAVIGATION_ENABLED,
@@ -879,8 +879,6 @@ object ModifierSettingsStore {
             .putBoolean(KEY_DISABLE_SHADE_GLASS_HOOKS, value.disableShadeGlassHooks)
             .putBoolean(KEY_GLOBAL_GLASS_BLUR_ENABLED, value.globalGlassBlurEnabled)
             .putBoolean(KEY_DYNAMIC_ISLAND_OPACITY_ENABLED, value.dynamicIslandOpacityEnabled)
-            .putBoolean(KEY_DYNAMIC_ISLAND_NOTIFICATION_OPACITY_ENABLED, value.dynamicIslandNotificationOpacityEnabled)
-            .putFloat(KEY_DYNAMIC_ISLAND_NOTIFICATION_OPACITY, ShadeCardGlassPolicy.normalize(value.dynamicIslandNotificationOpacity, 100f, 30f))
             .putFloat(KEY_DYNAMIC_ISLAND_EXPANDED_OPACITY, ShadeCardGlassPolicy.normalize(value.dynamicIslandExpandedOpacity, 100f, 30f))
             .putString(KEY_SHADE_CARD_GLASS_PARAMETERS, HeadsUpGlassParameters.serialize(
                 HeadsUpGlassParameters.parseSerializedOrDefault(value.shadeCardGlassParameters, ShadeCardGlassPolicy.defaults()),
@@ -1011,6 +1009,7 @@ object ModifierSettingsStore {
             .putBoolean(KEY_STATUS_BAR_HIDE_MOBILE_TYPE_ON_WIFI, value.statusBarHideMobileTypeOnWifi)
             .putBoolean(KEY_STATUS_BAR_HIDE_MOBILE_ACTIVITY, value.statusBarHideMobileActivity)
             .putBoolean(KEY_STATUS_BAR_HIDE_WIFI_ACTIVITY, value.statusBarHideWifiActivity)
+            .putBoolean(KEY_STATUS_BAR_SHOW_SECONDS, value.statusBarShowSeconds)
             .putBoolean(KEY_STATUS_BAR_HIDE_WIFI_STANDARD, value.statusBarHideWifiStandard)
             .putFloat(KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_X, value.statusBarMobileActivityOffsetX)
             .putFloat(KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_Y, value.statusBarMobileActivityOffsetY)
@@ -1076,6 +1075,7 @@ object ModifierSettingsStore {
             .putBoolean(KEY_BILIBILI_MALL_TAB_VISIBLE, value.bilibiliMallTabVisible)
             .putBoolean(KEY_BILIBILI_MINE_TAB_VISIBLE, value.bilibiliMineTabVisible)
             .putBoolean(KEY_BILIBILI_PUBLISH_BUTTON_VISIBLE, value.bilibiliPublishButtonVisible)
+            .putBoolean(KEY_DOUYIN_FLOATING_NAVIGATION, value.douyinFloatingNavigationEnabled)
             .putBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, value.spotifyFloatingNavigationEnabled)
             .putBoolean(KEY_SPOTIFY_FAVORITE_BUTTON, value.spotifyFavoriteButtonEnabled)
             .putBoolean(KEY_SPOTIFY_SHUFFLE_BUTTON, value.spotifyShuffleButtonEnabled)
@@ -1270,8 +1270,6 @@ object ModifierSettingsStore {
         putBoolean(KEY_DISABLE_SHADE_GLASS_HOOKS, value.disableShadeGlassHooks)
         putBoolean(KEY_GLOBAL_GLASS_BLUR_ENABLED, value.globalGlassBlurEnabled)
         putBoolean(KEY_DYNAMIC_ISLAND_OPACITY_ENABLED, value.dynamicIslandOpacityEnabled)
-        putBoolean(KEY_DYNAMIC_ISLAND_NOTIFICATION_OPACITY_ENABLED, value.dynamicIslandNotificationOpacityEnabled)
-        putFloat(KEY_DYNAMIC_ISLAND_NOTIFICATION_OPACITY, ShadeCardGlassPolicy.normalize(value.dynamicIslandNotificationOpacity, 100f, 30f))
         putFloat(KEY_DYNAMIC_ISLAND_EXPANDED_OPACITY, ShadeCardGlassPolicy.normalize(value.dynamicIslandExpandedOpacity, 100f, 30f))
         putString(KEY_SHADE_CARD_GLASS_PARAMETERS, value.shadeCardGlassParameters)
         putFloat(KEY_SHADE_CARD_BACKGROUND_BLUR_PERCENT, ShadeCardGlassPolicy.normalize(value.shadeCardBackgroundBlurPercent, 200f, 100f))
@@ -1397,6 +1395,7 @@ object ModifierSettingsStore {
         putBoolean(KEY_STATUS_BAR_HIDE_MOBILE_TYPE_ON_WIFI, value.statusBarHideMobileTypeOnWifi)
         putBoolean(KEY_STATUS_BAR_HIDE_MOBILE_ACTIVITY, value.statusBarHideMobileActivity)
         putBoolean(KEY_STATUS_BAR_HIDE_WIFI_ACTIVITY, value.statusBarHideWifiActivity)
+        putBoolean(KEY_STATUS_BAR_SHOW_SECONDS, value.statusBarShowSeconds)
         putBoolean(KEY_STATUS_BAR_HIDE_WIFI_STANDARD, value.statusBarHideWifiStandard)
         putFloat(KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_X, value.statusBarMobileActivityOffsetX)
         putFloat(KEY_STATUS_BAR_MOBILE_ACTIVITY_OFFSET_Y, value.statusBarMobileActivityOffsetY)
@@ -1461,6 +1460,7 @@ object ModifierSettingsStore {
         putBoolean(KEY_BILIBILI_MALL_TAB_VISIBLE, value.bilibiliMallTabVisible)
         putBoolean(KEY_BILIBILI_MINE_TAB_VISIBLE, value.bilibiliMineTabVisible)
         putBoolean(KEY_BILIBILI_PUBLISH_BUTTON_VISIBLE, value.bilibiliPublishButtonVisible)
+        putBoolean(KEY_DOUYIN_FLOATING_NAVIGATION, value.douyinFloatingNavigationEnabled)
         putBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, value.spotifyFloatingNavigationEnabled)
         putBoolean(KEY_SPOTIFY_FAVORITE_BUTTON, value.spotifyFavoriteButtonEnabled)
         putBoolean(KEY_SPOTIFY_SHUFFLE_BUTTON, value.spotifyShuffleButtonEnabled)

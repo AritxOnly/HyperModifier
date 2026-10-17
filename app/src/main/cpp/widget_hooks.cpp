@@ -1,6 +1,11 @@
 #include "widget_hooks.h"
 #include "widget_policy.h"
-#include "native_image_file.h"
+#include "schema_abi_origin.h"
+#include <memory>
+#include "widget_status.h"
+#include "widget_picker_probe.h"
+#include "widget_instance_probe.h"
+#include <link.h>
 #include <android/log.h>
 #include <atomic>
 #include <cstdio>
@@ -166,13 +171,96 @@ bool containsHook(void *bundle, const char *key, size_t size) {
     // Preserve key presence for picker classification and all unrelated keys.
     return reinterpret_cast<Contains>(originalContains)(bundle, key, size);
 }
-bool matchingFile(const char *path, size_t expectedSize, uint64_t expectedHash) {
-    return matchingNativeImageFile(path, expectedSize, expectedHash);
+bool matchingSchema(void *launcher) {
+    struct Source {
+        void *base;
+        std::string path;
+        std::vector<uint8_t> bytes;
+        schema_abi::Image image;
+        std::vector<widget_picker::Code> ranges;
+        Source(void *address, const char *name) : base(address), path(name), image(bytes) {}
+    };
+    std::vector<std::unique_ptr<Source>> sources;
+    size_t cachedBytes = 0;
+    auto fail = [](const char *kind, const char *symbol, const std::string &detail) {
+        std::snprintf(widget_status::schemaDetail, sizeof(widget_status::schemaDetail), "%s:%s:%s", kind, symbol, detail.c_str());
+        return false;
+    };
+    for (size_t root = 0; root < schema_abi::rootCount; ++root) {
+        const char *symbol = schema_abi::functions[root].name;
+        void *resolved = dlsym(launcher, symbol); Dl_info origin{};
+        if (!resolved || !dladdr(resolved, &origin) || !origin.dli_fbase || !origin.dli_fname)
+            return fail("live-origin", symbol, "unresolved");
+        Source *source = nullptr;
+        for (const auto &candidate : sources) if (candidate->base == origin.dli_fbase) { source = candidate.get(); break; }
+        if (!source) {
+            auto added = std::make_unique<Source>(origin.dli_fbase, origin.dli_fname);
+            if (!schema_abi::load(origin.dli_fname, added->bytes) || !added->image.init())
+                return fail("live-origin", symbol, origin.dli_fname);
+            if (added->bytes.size() > 8 * 1024 * 1024 - cachedBytes)
+                return fail("live-origin", symbol, "file-budget-exceeded");
+            cachedBytes += added->bytes.size();
+            dl_iterate_phdr([](dl_phdr_info *info, size_t, void *opaque) {
+                auto &value = *static_cast<Source *>(opaque);
+                if (info->dlpi_addr != reinterpret_cast<uintptr_t>(value.base)) return 0;
+                for (size_t i = 0; i < info->dlpi_phnum; ++i) {
+                    const auto &segment = info->dlpi_phdr[i];
+                    if (segment.p_type == PT_LOAD && (segment.p_flags & (PF_R | PF_X)) == (PF_R | PF_X))
+                        value.ranges.push_back({info->dlpi_addr + segment.p_vaddr, segment.p_memsz});
+                }
+                return 1;
+            }, added.get());
+            source = added.get(); sources.push_back(std::move(added));
+        }
+        std::string reason;
+        std::vector<uint64_t> locations;
+        const schema_abi::Contract *profile = nullptr;
+        if (!schema_abi::compatibleExport(source->image, symbol, reason, profile, locations)) {
+            __android_log_print(ANDROID_LOG_WARN, TAG, "ABI export rejected symbol=%s source=%s reason=%s", symbol, source->path.c_str(), reason.c_str());
+            return fail("abi", symbol, reason);
+        }
+        uint64_t exportAddress = 0, exportSize = 0;
+        uintptr_t base = reinterpret_cast<uintptr_t>(source->base);
+        if (!source->image.find(symbol, exportAddress, exportSize) || exportAddress > UINTPTR_MAX - base
+                || reinterpret_cast<uintptr_t>(resolved) != base + exportAddress)
+            return fail("live-address", symbol, source->path);
+        // Check all reachable helpers as well as the public entry. Legal copies
+        // in other DSOs are accepted; pre-existing inline changes still reject.
+        for (size_t i = 0; i < locations.size(); ++i) if (locations[i]) {
+            const uint8_t *fileCode = nullptr;
+            size_t size = profile->functions[i].size;
+            if (locations[i] > UINTPTR_MAX - base || !source->image.code(locations[i], size, fileCode)
+                    || !widget_picker::contains(source->ranges, base + locations[i], size))
+                return fail("live-range", symbol, source->path);
+            auto *live = reinterpret_cast<const uint8_t *>(base + locations[i]);
+            if (!schema_abi::sameLiveCode(live, fileCode, size)) {
+                __android_log_print(ANDROID_LOG_WARN, TAG, "ABI live code modified symbol=%s source=%s helper=%zu", symbol, source->path.c_str(), i);
+                return fail("live-code", symbol, source->path);
+            }
+        }
+        __android_log_print(ANDROID_LOG_INFO, TAG, "ABI export verified symbol=%s source=%s", symbol, source->path.c_str());
+    }
+    std::snprintf(widget_status::schemaDetail, sizeof(widget_status::schemaDetail), "schema-abi-origins-v2");
+    return true;
 }
-bool matchingSchema(void *target) {
-    Dl_info info{};
-    return target && dladdr(target, &info) && info.dli_fname
-        && matchingFile(info.dli_fname, 601400, 0xf519ae5224ebc666ULL);
+bool matchingInstanceAbi(void *launcher) {
+    Dl_info sdk{};
+    void *entry = dlsym(launcher, "native_widget_free_native_data");
+    if (!entry || !dladdr(entry, &sdk) || !sdk.dli_fbase) return false;
+    struct Search { uintptr_t base; std::vector<widget_instance::Segment> segments; } search{reinterpret_cast<uintptr_t>(sdk.dli_fbase), {}};
+    dl_iterate_phdr([](dl_phdr_info *info, size_t, void *opaque) {
+        auto &value = *static_cast<Search *>(opaque);
+        if (info->dlpi_addr != value.base) return 0;
+        for (size_t i = 0; i < info->dlpi_phnum; ++i) {
+            const auto &segment = info->dlpi_phdr[i];
+            if (segment.p_type == PT_LOAD && (segment.p_flags & PF_R))
+                value.segments.push_back({info->dlpi_addr + segment.p_vaddr, segment.p_memsz, (segment.p_flags & PF_X) != 0});
+        }
+        return 1;
+    }, &search);
+    return widget_instance::compatible(search.segments,
+        reinterpret_cast<uintptr_t>(dlsym(launcher, "AppWidgetManager_get_app_widget_info")),
+        reinterpret_cast<uintptr_t>(dlsym(launcher, "AppWidgetProviderInfo_get_providerInfo")));
 }
 
 }
@@ -299,9 +387,11 @@ void installAndroidWidgetHooks(void *launcher, WidgetNativeHook hook) {
     void *target = dlsym(launcher, "ActivityInfo_get_meta_data");
     if (!target) return;
     attempted = true;
-    // Whole-file version fingerprint protects all schema getter/lifetime ABIs.
-    if (!matchingSchema(target)) {
-        __android_log_write(ANDROID_LOG_WARN, TAG, "HOOK rejected: schema file fingerprint mismatch");
+    // Validate the ABI we actually call, independently of whole-ROM file hashes.
+    if (!matchingSchema(launcher)) {
+        bool modified = std::strncmp(widget_status::schemaDetail, "live-", 5) == 0;
+        widget_status::schema.store(modified ? widget_status::Failed : widget_status::Incompatible, std::memory_order_release);
+        __android_log_print(ANDROID_LOG_WARN, TAG, "HOOK rejected: schema validation failed (%s)", widget_status::schemaDetail);
         return;
     }
     activityPackage = reinterpret_cast<GetString>(dlsym(launcher, "ActivityInfo_get_package_name"));
@@ -319,21 +409,26 @@ void installAndroidWidgetHooks(void *launcher, WidgetNativeHook hook) {
         {"ActivityInfo_get_meta_data", reinterpret_cast<void *>(activityMetadataHook), &originalActivityMetadata},
         {"PackageItemInfo_get_meta_data", reinterpret_cast<void *>(itemMetadataHook), &originalItemMetadata},
     };
-    if (!activityPackage || !activityName || !itemPackage || !itemName) return;
-    for (const auto &entry : entries) if (!dlsym(launcher, entry.name)) return;
+    auto failed = [](const char *detail) {
+        std::snprintf(widget_status::schemaDetail, sizeof(widget_status::schemaDetail), "%s", detail);
+        widget_status::schema.store(widget_status::Failed, std::memory_order_release);
+    };
+    if (!activityPackage || !activityName || !itemPackage || !itemName) { failed("metadata-getter-missing"); return; }
+    for (const auto &entry : entries) if (!dlsym(launcher, entry.name)) { failed(entry.name); return; }
     for (const auto &entry : entries) {
         int result = hook(dlsym(launcher, entry.name), entry.replacement, entry.original);
         if (result != 0 || !*entry.original) {
             __android_log_print(ANDROID_LOG_WARN, TAG, "HOOK %s result=%d; capability override disabled", entry.name, result);
-            return;
+            failed(entry.name); return;
         }
     }
     getInteger = reinterpret_cast<GetBoolean>(dlsym(launcher, "Bundle_get_i32"));
-    if (!getInteger) return;
-    // Verify the SDK whose call sites establish the Option<owned info> and pointer getter ABI.
-    Dl_info sdk{}; void *sdkEntry = dlsym(launcher, "native_widget_free_native_data");
-    if (sdkEntry && dladdr(sdkEntry, &sdk) && sdk.dli_fname
-            && matchingFile(sdk.dli_fname, 2679408, 0x67fdc4bf9c2e1b24ULL)) {
+    if (!getInteger) { failed("Bundle_get_i32-missing"); return; }
+    // Confirm scalar tag+x1 owned info and direct pointer return at reviewed
+    // SDK call sites; address/pool relocation no longer needs a hash whitelist.
+    widget_status::instances.store(widget_status::Incompatible);
+    if (matchingInstanceAbi(launcher)) {
+        __android_log_write(ANDROID_LOG_INFO, TAG, "INSTANCE SDK return/call ABI verified");
         Entry instanceEntries[] = {
             {"AppWidgetManager_get_app_widget_info", reinterpret_cast<void *>(widgetInfoHook), &originalWidgetInfo},
             {"AppWidgetProviderInfo_get_providerInfo", reinterpret_cast<void *>(providerActivityHook), &originalProviderActivity},
@@ -347,42 +442,66 @@ void installAndroidWidgetHooks(void *launcher, WidgetNativeHook hook) {
             // Install ID-producing hook last, so partial installation cannot tag metadata.
             for (int index = 4; index >= 0; --index) {
                 const auto &entry = instanceEntries[index];
-                if (hook(dlsym(launcher, entry.name), entry.replacement, entry.original) != 0 || !*entry.original) break;
+                if (hook(dlsym(launcher, entry.name), entry.replacement, entry.original) != 0 || !*entry.original) {
+                    widget_status::instances.store(widget_status::Failed); break;
+                }
+                if (index == 0) widget_status::instances.store(widget_status::Ready);
             }
         }
     }
+    widget_status::schema.store(widget_status::Ready, std::memory_order_release);
     active.store(true, std::memory_order_release);
     { std::lock_guard<std::mutex> guard(configMutex); refreshPickerEnabled(); }
     __android_log_write(ANDROID_LOG_INFO, TAG, "HOOK metadata capability bridge ready (full desktop capabilities; original MIUI key presence)");
 }
 
 bool androidWidgetPickerHooksSettled() { return pickerAttempted; }
-void installAndroidWidgetPickerHooks(const char *path, uintptr_t base, WidgetNativeHook hook) {
+void installAndroidWidgetPickerHooks(const char *path, uintptr_t base, WidgetNativeHook hook, WidgetNativeUnhook unhook) {
     if (pickerAttempted || !path || !base || !hook) return;
     pickerAttempted = true;
-    // Exact launcher Dart AOT image. Address is a classification read in
-    // buildAppWidgetsItems, not a global isMiuiWidget getter or provider mutation.
-    constexpr uintptr_t site = 0x1a83de0;
-    constexpr unsigned char entry[] = {
-        0x00, 0x0a, 0x20, 0x37, // tbnz w0, #4, 0x1a83f20
-        0x51, 0x18, 0xc3, 0x97,
-        0xa0, 0x03, 0x1b, 0xf8,
-        0x40, 0x3f, 0x40, 0xf9,
-    };
-    if (!matchingFile(path, 29382056, 0xa9c299ea503f9171ULL)
-            || std::memcmp(reinterpret_cast<void *>(base + site), entry, sizeof(entry)) != 0) {
+    widget_status::picker.store(widget_status::Incompatible);
+    // Probe the loaded executable image once. A changed whole-file hash is
+    // harmless if this unique reviewed classification context still exists.
+    struct Search { uintptr_t base; std::vector<widget_picker::Code> ranges; } search{base, {}};
+    dl_iterate_phdr([](dl_phdr_info *info, size_t, void *opaque) {
+        auto &value = *static_cast<Search *>(opaque);
+        if (info->dlpi_addr != value.base) return 0;
+        for (size_t i = 0; i < info->dlpi_phnum; ++i) {
+            const auto &segment = info->dlpi_phdr[i];
+            if (segment.p_type == PT_LOAD && (segment.p_flags & (PF_R | PF_X)) == (PF_R | PF_X))
+                value.ranges.push_back({info->dlpi_addr + segment.p_vaddr, segment.p_memsz});
+        }
+        return 1;
+    }, &search);
+    uintptr_t site = widget_picker::find(search.ranges);
+    if (!site) {
         __android_log_print(ANDROID_LOG_WARN, TAG,
-            "PICKER rejected: Dart image or branch fingerprint mismatch path=%s", path);
+            "PICKER unavailable: no unique compatible Dart classification context path=%s", path);
         return;
     }
-    int result = hook(reinterpret_cast<void *>(base + site),
+    if (!unhook) {
+        widget_status::picker.store(widget_status::Failed);
+        __android_log_write(ANDROID_LOG_WARN, TAG, "PICKER unavailable: backend has no rollback API");
+        return;
+    }
+    int result = hook(reinterpret_cast<void *>(site),
         reinterpret_cast<void *>(mhm_widget_picker_entry), &mhm_original_widget_picker);
     if (result == 0 && mhm_original_widget_picker) {
         pickerReady.store(true, std::memory_order_release);
+        widget_status::picker.store(widget_status::Ready);
         std::lock_guard<std::mutex> guard(configMutex);
         refreshPickerEnabled();
     }
+    if (!pickerReady.load()) {
+        widget_status::picker.store(widget_status::Failed);
+        // Only undo a detour the backend reported as ours. A failed hook may
+        // mean another module owns the address; never unhook that module.
+        if (result == 0) {
+            int rollback = unhook(reinterpret_cast<void *>(site));
+            __android_log_print(ANDROID_LOG_WARN, TAG, "PICKER missing trampoline: rollback=%d", rollback);
+        }
+    }
     __android_log_print(ANDROID_LOG_INFO, TAG,
-        "PICKER apk-aware Android AppWidget branch result=%d ready=%d path=%s",
-        result, pickerReady.load(), path);
+        "PICKER structural-v2 branch result=%d ready=%d rva=0x%zx path=%s",
+        result, pickerReady.load(), static_cast<size_t>(site - base), path);
 }

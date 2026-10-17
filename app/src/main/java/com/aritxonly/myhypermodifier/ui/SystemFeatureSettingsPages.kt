@@ -169,22 +169,6 @@ import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
             enabled = settings.dynamicIslandOpacityEnabled && !settings.disableShadeGlassHooks,
             valueText = { "${it.toInt()}%" },
         )
-        SettingsSwitchItem(
-            "自定义通知中心背景",
-            "",
-            settings.dynamicIslandNotificationOpacityEnabled,
-            { update(settings.copy(dynamicIslandNotificationOpacityEnabled = it)) },
-            enabled = !settings.disableShadeGlassHooks,
-        )
-        SettingsSliderItemWithLabel(
-            label = "通知中心背景不透明度",
-            value = settings.dynamicIslandNotificationOpacity,
-            valueRange = 0f..100f,
-            onValueChange = { update(settings.copy(dynamicIslandNotificationOpacity = it)) },
-            steps = 99,
-            enabled = settings.dynamicIslandNotificationOpacityEnabled && !settings.disableShadeGlassHooks,
-            valueText = { "${it.toInt()}%" },
-        )
         if (settings.disableShadeGlassHooks) Text(
             "玻璃材质修改已停用，可在通知/控制中心开启。",
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
@@ -251,9 +235,10 @@ import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
         )
     }
     SettingsSection(topLabel = "安卓小组件") {
+        DesktopWidgetCompatibilitySetting(settings.androidWidgetStackEnabled || settings.androidWidgetGlassEnabled)
         SettingsSwitchItem(
             "允许安卓小组件堆叠",
-            "开启后重启桌面；关闭前先移出堆叠",
+            "在澎湃目录显示本机小组件；需系统桌面与智能助理作用域，开启后重启两者；关闭前先移出堆叠",
             settings.androidWidgetStackEnabled,
             { update(settings.copy(androidWidgetStackEnabled = it)) },
             enabled = android.os.Build.VERSION.SDK_INT >= 36,
@@ -377,6 +362,14 @@ import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
 }
 
 @Composable internal fun StatusBarSettingsPage(padding: PaddingValues, settings: ModifierSettings, update: (ModifierSettings) -> Unit, onScroll: (Float) -> Unit) = SettingsScrollPage(padding, onScroll) {
+    SettingsSection(topLabel = "状态栏时间") {
+        SettingsSwitchItem(
+            "时间显示秒数",
+            "仅在亮屏且状态栏时钟可见时每秒刷新",
+            settings.statusBarShowSeconds,
+            { update(settings.copy(statusBarShowSeconds = it)) },
+        )
+    }
     SettingsSection(topLabel = "状态栏信号") {
         SettingsSwitchItem(
             "Wi-Fi 下隐藏信号角标",
@@ -819,6 +812,7 @@ internal fun RestartScopeDialogContent(
     restartAmap: Boolean,
     restartXiaomiCommunity: Boolean,
     restartBilibili: Boolean,
+    restartDouyin: Boolean,
     restartSpotify: Boolean,
     restartSettings: Boolean,
     restartSystem: Boolean,
@@ -832,6 +826,7 @@ internal fun RestartScopeDialogContent(
     onAmapChange: (Boolean) -> Unit,
     onXiaomiCommunityChange: (Boolean) -> Unit,
     onBilibiliChange: (Boolean) -> Unit,
+    onDouyinChange: (Boolean) -> Unit,
     onSpotifyChange: (Boolean) -> Unit,
     onSettingsChange: (Boolean) -> Unit,
     onSystemChange: (Boolean) -> Unit,
@@ -861,6 +856,7 @@ internal fun RestartScopeDialogContent(
                 restartAmap = restartAmap,
                 restartXiaomiCommunity = restartXiaomiCommunity,
                 restartBilibili = restartBilibili,
+                restartDouyin = restartDouyin,
                 restartSpotify = restartSpotify,
                 restartSettings = restartSettings,
                 restartSystem = restartSystem,
@@ -874,6 +870,7 @@ internal fun RestartScopeDialogContent(
                 onAmapChange = onAmapChange,
                 onXiaomiCommunityChange = onXiaomiCommunityChange,
                 onBilibiliChange = onBilibiliChange,
+                onDouyinChange = onDouyinChange,
                 onSpotifyChange = onSpotifyChange,
                 onSettingsChange = onSettingsChange,
                 onSystemChange = onSystemChange,
@@ -895,6 +892,7 @@ internal fun RestartScopeDialogContent(
     restartAmap: Boolean,
     restartXiaomiCommunity: Boolean,
     restartBilibili: Boolean,
+    restartDouyin: Boolean,
     restartSpotify: Boolean,
     restartSettings: Boolean,
     restartSystem: Boolean,
@@ -908,6 +906,7 @@ internal fun RestartScopeDialogContent(
     onAmapChange: (Boolean) -> Unit,
     onXiaomiCommunityChange: (Boolean) -> Unit,
     onBilibiliChange: (Boolean) -> Unit,
+    onDouyinChange: (Boolean) -> Unit,
     onSpotifyChange: (Boolean) -> Unit,
     onSettingsChange: (Boolean) -> Unit,
     onSystemChange: (Boolean) -> Unit,
@@ -996,6 +995,11 @@ internal fun RestartScopeDialogContent(
         trailingContent = { DeadlinerCheckbox(restartSpotify, onSpotifyChange, enabled = editable && !restartSystem) },
     )
     SettingItem(
+        "抖音", "",
+        enabled = editable && !restartSystem,
+        trailingContent = { DeadlinerCheckbox(restartDouyin, onDouyinChange, enabled = editable && !restartSystem) },
+    )
+    SettingItem(
         "哔哩哔哩",
         "",
         enabled = editable && !restartSystem,
@@ -1045,6 +1049,7 @@ internal fun restartSelectedScope(
     system: Boolean,
     systemSettings: Boolean = false,
     launcher: Boolean = false,
+    douyin: Boolean = false,
     onCompleted: (Boolean) -> Unit,
 ) {
     Thread {
@@ -1054,7 +1059,7 @@ internal fun restartSelectedScope(
         val command = when {
             system -> "reboot"
             systemUi || plugin || miLink || xiaomiHealth || market || miHome || amap ||
-                xiaomiCommunity || bilibili || spotify || systemSettings || launcher -> buildList {
+                xiaomiCommunity || bilibili || spotify || douyin || systemSettings || launcher -> buildList {
                 if (systemUi || plugin) add("killall com.android.systemui")
                 if (launcher) add("killall com.miui.home")
                 if (miLink) add("am force-stop com.milink.service")
@@ -1063,6 +1068,7 @@ internal fun restartSelectedScope(
                 if (miHome) add("am force-stop com.xiaomi.smarthome")
                 if (amap) add("am force-stop com.autonavi.minimap")
                 if (xiaomiCommunity) add("am force-stop com.xiaomi.vipaccount")
+                if (douyin) add("am force-stop com.ss.android.ugc.aweme")
                 if (bilibili) add("am force-stop tv.danmaku.bili")
                 if (spotify) add("am force-stop com.spotify.music")
                 if (systemSettings) add("am force-stop com.android.settings")

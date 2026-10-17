@@ -87,7 +87,7 @@ final class HyperMusicCoverExtensions {
         try {
             HyperMusicCoverAdapter candidate = new HyperMusicCoverAdapter(main);
             adapter = candidate;
-            // These retained Main methods still exist in both official R8 APKs inspected.
+            // Scene entry points remain retained on Main; split helper members come from the DEX resolver.
             for (String name : new String[]{"setDepthHidden", "handBackDepth", "onClockReleased"})
                 for (Method method : main.getDeclaredMethods()) if (name.equals(method.getName())) {
                     module.hook(method).setId("hmc-extension-state-" + name + '-' + method.getParameterCount())
@@ -193,7 +193,7 @@ final class HyperMusicCoverExtensions {
     private static Float activeFontProgress() throws ReflectiveOperationException {
         if (font == null || !ModuleSettings.hmcClockFontHeightEnabled || editor || goingAway
                 || (adapter.holdY.get(null) == null && !adapter.bool(adapter.clockHeld)) || !adapter.bool(adapter.locked)) return null;
-        float progress = ((Number) adapter.progress.invoke(null)).floatValue();
+        float progress = adapter.progress();
         return Float.isFinite(progress) ? Math.max(0f, Math.min(1f, progress)) : 0f;
     }
     private static float currentFontProgress() throws ReflectiveOperationException {
@@ -250,8 +250,8 @@ final class HyperMusicCoverExtensions {
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain -> {
                     Object instance = chain.getThisObject();
                     int resource = (Integer) chain.getArg(0);
-                    boolean keyguardFrame = adapter.bool(adapter.fodRing, resource)
-                            && adapter.bool(adapter.fodForKeyguard, adapter.fodView.invoke(null, instance));
+                    boolean keyguardFrame = adapter.isFodRing(resource)
+                            && adapter.bool(adapter.fodForKeyguard, adapter.fodView(instance));
                     if (keyguardFrame) LAST_FRAMES.put(instance, resource);
                     else LAST_FRAMES.remove(instance);
                     if (expanded && keyguardFrame) {
@@ -268,7 +268,7 @@ final class HyperMusicCoverExtensions {
         for (Object instance : LAST_FRAMES.keySet().toArray()) {
             Integer resource = LAST_FRAMES.get(instance);
             if (instance != null && resource != null
-                    && adapter.bool(adapter.fodForKeyguard, adapter.fodView.invoke(null, instance))) {
+                    && adapter.bool(adapter.fodForKeyguard, adapter.fodView(instance))) {
                 Method draw = instance.getClass().getDeclaredMethod("draw", int.class);
                 draw.setAccessible(true); draw.invoke(instance, resource);
             }
@@ -279,7 +279,7 @@ final class HyperMusicCoverExtensions {
         for (Object instance : FRAMES.keySet().toArray()) {
             Integer resource = FRAMES.remove(instance);
             if (instance != null && resource != null
-                    && adapter.bool(adapter.fodForKeyguard, adapter.fodView.invoke(null, instance))) {
+                    && adapter.bool(adapter.fodForKeyguard, adapter.fodView(instance))) {
                 Method draw = instance.getClass().getDeclaredMethod("draw", int.class);
                 draw.setAccessible(true); draw.invoke(instance, resource);
             }

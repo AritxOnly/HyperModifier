@@ -237,13 +237,19 @@ final class LockscreenHooks {
         }
     }
 
-    /** Keep the global visual-only option separate from credential-page FOD window suppression. */
+    /** Keep lockscreen-only visuals separate from credential-page FOD window suppression. */
     void installLockscreenFingerprintHooks(ClassLoader classLoader) {
         if (!LOCKSCREEN_FINGERPRINT_HOOKS_INSTALLED.compareAndSet(false, true)) return;
         try {
             Class<?> iconClass = Class.forName(
                     "com.miui.keyguard.biometrics.fod.MiuiGxzwIconView", false, classLoader);
             Method dismissIcon = iconClass.getMethod("dismissFingerpirntIcon");
+            // Inherited from GxzwNoRotateFrameLayout. Resolve once, then read the current
+            // authentication owner on each call: payment/app-lock reuse this same view.
+            Field iconKeyguardAuthen = iconClass.getField("mKeyguardAuthen");
+            Field iconDozing = iconClass.getField("mDozing");
+            iconKeyguardAuthen.setAccessible(true);
+            iconDozing.setAccessible(true);
             Class<?> managerClass = Class.forName(
                     "com.miui.keyguard.biometrics.fod.MiuiGxzwManager", false, classLoader);
             Class<?> factoryClass = Class.forName(
@@ -263,7 +269,8 @@ final class LockscreenHooks {
                         // On this SystemUI build, AOD invokes this method after show() whenever
                         // Xiaomi's own FOD-on-AOD toggle is off. Blocking it preserves the icon;
                         // show() has already attached the FOD window and touch target.
-                        return shouldKeepFingerprintIconOnAod(chain.getThisObject())
+                        return shouldKeepFingerprintIconOnAod(
+                                chain.getThisObject(), iconKeyguardAuthen, iconDozing)
                                 ? null : chain.proceed();
                     });
             int hookedMethods = 0;
@@ -283,17 +290,21 @@ final class LockscreenHooks {
                         .intercept(chain -> {
                             ensureLoaded();
                             Object result = chain.proceed();
-                            boolean keepForAod = shouldKeepFingerprintIconOnAod(
-                                    chain.getThisObject());
-                            if (hideLockscreenFingerprintIcon && !keepForAod) {
-                                try {
+                            if (!hideLockscreenFingerprintIcon) return result;
+                            try {
+                                Object icon = chain.getThisObject();
+                                // Do not touch another authentication owner's icon, even if
+                                // keyguard is still visible behind a payment/application UI.
+                                if (!iconKeyguardAuthen.getBoolean(icon)) return result;
+                                if (!shouldKeepFingerprintIconOnAod(
+                                        icon, iconKeyguardAuthen, iconDozing)) {
                                     Object manager = getFingerprintManager.invoke(null);
                                     if (!FINGERPRINT_MODE_REQUESTED_MANAGERS.contains(manager)) {
-                                        dismissIcon.invoke(chain.getThisObject());
+                                        dismissIcon.invoke(icon);
                                     }
-                                } catch (ReflectiveOperationException | RuntimeException ignored) {
-                                    // A changed FOD manager keeps the stock behavior on this build.
                                 }
+                            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                                // Unknown ownership retains the stock icon for authentication.
                             }
                             return result;
                         });
@@ -356,10 +367,14 @@ final class LockscreenHooks {
         }
     }
 
-    private static boolean shouldKeepFingerprintIconOnAod(Object iconView) {
-        return hideLockscreenFingerprintIcon
-                && showLockscreenFingerprintIconOnAod
-                && booleanDeclaredField(iconView, "mDozing", false);
+    private static boolean shouldKeepFingerprintIconOnAod(
+            Object iconView, Field keyguardAuthen, Field dozing) {
+        if (!hideLockscreenFingerprintIcon || !showLockscreenFingerprintIconOnAod) return false;
+        try {
+            return keyguardAuthen.getBoolean(iconView) && dozing.getBoolean(iconView);
+        } catch (IllegalAccessException | RuntimeException ignored) {
+            return false;
+        }
     }
 
     private static boolean shouldSuppressCredentialFod(

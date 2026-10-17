@@ -9,20 +9,15 @@ import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** Scoped recipe override shared by expanded island and focus notification backgrounds. */
+/** Scoped recipe override for expanded island and pull-to-window backgrounds. */
 final class DynamicIslandGlassTint {
     private static final Map<View, State> TARGETS = new WeakHashMap<>();
-    private static final Map<View, State> NOTIFICATION_TARGETS = new WeakHashMap<>();
-    private static final AtomicInteger NOTIFICATION_CONFIG = new AtomicInteger(Integer.MIN_VALUE);
     private static final AtomicInteger CONFIG = new AtomicInteger(Integer.MIN_VALUE);
     private static final ThreadLocal<Boolean> REPLAYING = new ThreadLocal<>();
     private static volatile boolean hasTargets;
     private static Method setter;
 
     static final class State {
-        final boolean notification;
-        State() { this(false); }
-        State(boolean notification) { this.notification = notification; }
         float[] stock;
         float[] tuned;
         int applied = -1;
@@ -63,20 +58,12 @@ final class DynamicIslandGlassTint {
     }
 
     /** Register BEFORE stock apply so its real recipe is captured, including animation changes. */
-    static void register(View view) { register(view, false); }
-
-    static void register(View view, boolean notification) {
+    static void register(View view) {
         if (setter == null || ModuleSettings.disableShadeGlassHooks) return;
         synchronized (TARGETS) {
-            Map<View, State> targets = targets(notification);
-            targets(!notification).remove(view);
-            if (!targets.containsKey(view)) targets.put(view, new State(notification));
+            if (!TARGETS.containsKey(view)) TARGETS.put(view, new State());
             hasTargets = true;
         }
-    }
-
-    private static Map<View, State> targets(boolean notification) {
-        return notification ? NOTIFICATION_TARGETS : TARGETS;
     }
 
     /** Called from the existing native recipe Hook; no extra universal Hook or frame callback. */
@@ -85,21 +72,19 @@ final class DynamicIslandGlassTint {
         State state;
         synchronized (TARGETS) {
             state = TARGETS.get(view);
-            if (state == null) state = NOTIFICATION_TARGETS.get(view);
         }
         if (state == null) return null;
         if (Boolean.TRUE.equals(REPLAYING.get())) return original;
         if (original == null || original.length <= 14 || !ShadeCardGlassPolicy.isActiveRecipe(original)) {
             synchronized (TARGETS) {
-                Map<View, State> targets = targets(state.notification);
-                if (targets.get(view) == state) targets.remove(view);
-                hasTargets = !TARGETS.isEmpty() || !NOTIFICATION_TARGETS.isEmpty();
+                if (TARGETS.get(view) == state) TARGETS.remove(view);
+                hasTargets = !TARGETS.isEmpty();
             }
             return null;
         }
         // Stock OEM material callbacks and View.post replay use this target's UI thread.
         // Validation/copies must not hold the shared weak-map lock across unrelated Views.
-        int percent = config(state.notification);
+        int percent = config();
         if (state.record(original, percent)) ShadeCardGlassHooks.forgetGenericCard(view);
         if (percent < 0) return null;
         return Float.compare(original[14], percent / 100f) == 0 ? original : state.recipe(percent);
@@ -108,57 +93,45 @@ final class DynamicIslandGlassTint {
     static void forget(View view) {
         synchronized (TARGETS) {
             TARGETS.remove(view);
-            NOTIFICATION_TARGETS.remove(view);
-            hasTargets = !TARGETS.isEmpty() || !NOTIFICATION_TARGETS.isEmpty();
+            hasTargets = !TARGETS.isEmpty();
         }
     }
 
-    static int effectiveOpacity(boolean notification, boolean expandedEnabled, int expanded,
-                                boolean notificationEnabled, int notificationPercent) {
-        boolean enabled = notification ? notificationEnabled : expandedEnabled;
-        int percent = notification ? notificationPercent : expanded;
+    static int effectiveOpacity(boolean enabled, int percent) {
         return enabled ? Math.max(0, Math.min(100, percent)) : -1;
     }
 
-    private static int config(boolean notification) {
+    private static int config() {
         if (!ModuleSettings.moduleHooksEnabled || ModuleSettings.disableShadeGlassHooks) return -1;
-        return effectiveOpacity(notification, ModuleSettings.dynamicIslandOpacityEnabled,
-                ModuleSettings.dynamicIslandExpandedOpacity, ModuleSettings.dynamicIslandNotificationOpacityEnabled,
-                ModuleSettings.dynamicIslandNotificationOpacity);
+        return effectiveOpacity(ModuleSettings.dynamicIslandOpacityEnabled, ModuleSettings.dynamicIslandExpandedOpacity);
     }
 
     private static void refresh() {
         if (ModuleSettings.disableShadeGlassHooks) return;
-        refreshKind(false, CONFIG);
-        refreshKind(true, NOTIFICATION_CONFIG);
-    }
-
-    private static void refreshKind(boolean notification, AtomicInteger previous) {
-        int config = config(notification);
-        if (previous.getAndSet(config) == config || !hasTargets) return;
+        int config = config();
+        if (CONFIG.getAndSet(config) == config || !hasTargets) return;
         ArrayList<View> views;
-        Map<View, State> targets = targets(notification);
         synchronized (TARGETS) {
-            if (targets.isEmpty()) return;
-            views = new ArrayList<>(targets.keySet());
+            if (TARGETS.isEmpty()) return;
+            views = new ArrayList<>(TARGETS.keySet());
         }
         for (View view : views) {
             if (view == null) continue;
             State state;
-            synchronized (TARGETS) { state = targets.get(view); }
+            synchronized (TARGETS) { state = TARGETS.get(view); }
             if (state == null || !state.pending.compareAndSet(false, true)) continue;
             State current = state;
             if (!view.post(() -> {
                 current.pending.set(false);
                 if (ModuleSettings.disableShadeGlassHooks) return;
-                synchronized (TARGETS) { if (targets.get(view) != current) return; }
+                synchronized (TARGETS) { if (TARGETS.get(view) != current) return; }
                 apply(view, current);
             })) current.pending.set(false);
         }
     }
 
     private static void apply(View view, State state) {
-        int percent = config(state.notification);
+        int percent = config();
         if (state.stock == null || state.applied == percent) return;
         try {
             ShadeCardGlassHooks.forgetGenericCard(view);

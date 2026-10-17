@@ -17,6 +17,22 @@ final class HyperMusicCoverClockPolicy {
     private final Field roomSoft;
 
     HyperMusicCoverClockPolicy(Class<?> main) throws ReflectiveOperationException {
+        this(main, HyperMusicCoverSymbols.cached(main));
+    }
+    HyperMusicCoverClockPolicy(Class<?> main, HyperMusicCoverDexSymbols symbols) throws ReflectiveOperationException {
+        boolean split = symbols != null || !hasLegacyRoom(main);
+        if (split) {
+            roomForRows = HyperMusicCoverSymbols.method(main, symbols, "roomForRows", float.class, float.class);
+            roomForRowsNow = HyperMusicCoverSymbols.method(main, symbols, "roomForRowsNow", float.class, float.class);
+            reassertClockRoom = HyperMusicCoverSymbols.method(main, symbols, "reassertClockRoom", void.class);
+            holdY = field(main, "sHoldY", Float.class);
+            selfDriving = field(main, "sSelfDriving", boolean.class);
+            roomEasing = HyperMusicCoverSymbols.field(main, symbols, "roomEasing", boolean.class);
+            roomShown = HyperMusicCoverSymbols.field(main, symbols, "roomShown", float.class);
+            roomRaw = HyperMusicCoverSymbols.field(main, symbols, "roomRaw", float.class);
+            roomSoft = HyperMusicCoverSymbols.field(main, symbols, "roomSoft", float.class);
+            return;
+        }
         roomForRows = method(main, "roomForRows", float.class, float.class);
         roomForRowsNow = method(main, "roomForRowsNow", float.class, float.class);
         reassertClockRoom = method(main, "reassertClockRoom", void.class);
@@ -40,6 +56,10 @@ final class HyperMusicCoverClockPolicy {
         roomSoft.setFloat(null, 0f);
     }
 
+    private static boolean hasLegacyRoom(Class<?> main) {
+        try { main.getDeclaredMethod("roomForRows", float.class); return true; }
+        catch (NoSuchMethodException missing) { return false; }
+    }
     private static Field field(Class<?> owner, String name, Class<?> type)
             throws ReflectiveOperationException {
         Field field = owner.getDeclaredField(name);

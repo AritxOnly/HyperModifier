@@ -1,5 +1,7 @@
 # HyperModifier
 
+- [1.5.2 更新日志](RELEASE_NOTES_v1.5.2.md)
+- [1.5.2 发布检查](docs/testing/RELEASE_1.5.2_CHECKLIST.md)
 - [1.5.1 更新日志](RELEASE_NOTES_v1.5.1.md)
 - [1.5.1 发布检查](docs/testing/RELEASE_1.5.1_CHECKLIST.md)
 - [1.5.0 更新日志](RELEASE_NOTES_v1.5.0.md)

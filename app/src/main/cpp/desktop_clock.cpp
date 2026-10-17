@@ -1,8 +1,10 @@
 #include "clock_format.h"
 #include "widget_hooks.h"
+#include "widget_status_socket.h"
 
 #include <android/log.h>
 #include <atomic>
+#include <algorithm>
 #include <cstdio>
 #include <cstdint>
 #include <dlfcn.h>
@@ -11,12 +13,14 @@
 #include <link.h>
 #include <mutex>
 #include <pthread.h>
+#include <sys/eventfd.h>
 #include <unistd.h>
 
 // LSPosed's published Native Hook API. HyperOS Runtime has no JNI.
 using Hook = int (*)(void *, void *, void **);
 using Loaded = void (*)(const char *, void *);
-struct NativeAPIEntries { uint32_t version; Hook hook_func; Hook unhook_func; };
+using Unhook = int (*)(void *);
+struct NativeAPIEntries { uint32_t version; Hook hook_func; Unhook unhook_func; };
 
 extern "C" {
 void *mhm_original_calendar = nullptr;
@@ -59,6 +63,7 @@ using GetBool = uint64_t (*)(void *, const char *, size_t);
 using Receiver = void (*)(void *, void *, void *);
 
 Hook hook = nullptr;
+Unhook unhook = nullptr;
 void *originalReceiver = nullptr;
 GetString getAction = nullptr, getSender = nullptr;
 GetExtras getExtras = nullptr;
@@ -68,6 +73,8 @@ std::atomic<bool> enabled{false};
 std::atomic<unsigned> changedLogs{0};
 std::atomic<bool> workerStarted{false};
 bool profileRejected = false;
+int installWake = -1;
+std::atomic<bool> installRequested{false};
 
 bool isLauncher() {
     char name[96]{};
@@ -124,7 +131,7 @@ void receiverHook(void *receiver, void *context, void *intent) {
             bool stack = false, glass = false;
             if (readBool(extras, "mhm_android_widget_stack", stack)
                     && readBool(extras, "mhm_android_widget_glass", glass))
-                configureAndroidWidgets(stack, glass, extras);
+                widget_status::config.store(configureAndroidWidgets(stack, glass, extras));
             // Consume our carrier; no gesture settings are sent to stock handlers.
             return;
         }
@@ -176,7 +183,7 @@ bool matchingProfile(const Images &images) {
         && std::memcmp(reinterpret_cast<void *>(images.maml + FORMAT_RVA), ENTRY, sizeof(ENTRY)) == 0;
 }
 void install() {
-    if (!isLauncher() || !hook) return;
+    if (!hook) return;
     std::unique_lock<std::mutex> guard(installMutex, std::try_to_lock);
     if (!guard.owns_lock()) return;
     Images images; dl_iterate_phdr(findImages, &images);
@@ -188,8 +195,12 @@ void install() {
         }
     }
     if (images.dartPath && !androidWidgetPickerHooksSettled())
-        installAndroidWidgetPickerHooks(images.dartPath, images.dart, hook);
-    if (!originalReceiver && images.launcherPath && images.broadcastPath) {
+        installAndroidWidgetPickerHooks(images.dartPath, images.dart, hook, unhook);
+    int schemaStage = widget_status::schema.load();
+    if (schemaStage == widget_status::Incompatible || schemaStage == widget_status::Failed)
+        widget_status::bridge.store(schemaStage);
+    if (!originalReceiver && images.launcherPath && images.broadcastPath
+            && schemaStage == widget_status::Ready) {
         void *launcher = dlopen(images.launcherPath, RTLD_NOW | RTLD_NOLOAD);
         void *broadcast = dlopen(images.broadcastPath, RTLD_NOW | RTLD_NOLOAD);
         if (launcher && broadcast) {
@@ -200,6 +211,7 @@ void install() {
             void *target = dlsym(broadcast, RECEIVER_SYMBOL);
             if (getAction && getSender && getExtras && getBool && target) {
                 int result = hook(target, reinterpret_cast<void *>(receiverHook), &originalReceiver);
+                widget_status::bridge.store(result == 0 && originalReceiver ? widget_status::Ready : widget_status::Failed);
                 __android_log_print(ANDROID_LOG_INFO, TAG, "BRIDGE install result=%d ready=%d", result, originalReceiver != nullptr);
             }
         }
@@ -218,19 +230,57 @@ void install() {
     }
 }
 void *worker(void *) {
-    for (int i = 0; i < 120; ++i) {
-        install();
+    WidgetStatusSocket status;
+    bool settled = false;
+    auto milliseconds = []() -> int64_t {
+        timespec now{}; clock_gettime(CLOCK_MONOTONIC, &now);
+        return int64_t(now.tv_sec) * 1000 + now.tv_nsec / 1000000;
+    };
+    int64_t deadline = milliseconds() + 60000, nextInstall = 0;
+    while (!settled) {
+        int64_t now = milliseconds();
+        if (now >= nextInstall) {
+            installRequested.store(false);
+            install();
+            nextInstall = milliseconds() + 500;
+        }
         {
             std::lock_guard<std::mutex> guard(installMutex);
-            if (originalReceiver && (mhm_original_calendar || profileRejected)
-                    && androidWidgetHooksSettled() && androidWidgetPickerHooksSettled()) return nullptr;
+            settled = (originalReceiver || widget_status::schema.load() == widget_status::Incompatible
+                    || widget_status::schema.load() == widget_status::Failed)
+                && (mhm_original_calendar || profileRejected)
+                && androidWidgetHooksSettled() && androidWidgetPickerHooksSettled();
         }
-        usleep(500000);
+        now = milliseconds();
+        if (!settled && now >= deadline) {
+            __android_log_write(ANDROID_LOG_WARN, TAG, "HOOK timeout waiting for Runtime libraries");
+            for (auto *stage : {&widget_status::schema, &widget_status::picker, &widget_status::bridge}) {
+                int pending = widget_status::Pending;
+                stage->compare_exchange_strong(pending, widget_status::Timeout);
+            }
+            break;
+        }
+        if (!settled) {
+            int wait = static_cast<int>(std::max(int64_t{0}, std::min(nextInstall, deadline) - now));
+            if (status.available() || installWake >= 0) status.wait(wait, installWake); else usleep(wait * 1000);
+        }
     }
-    __android_log_write(ANDROID_LOG_WARN, TAG, "HOOK timeout waiting for Runtime libraries");
+    if (status.available() || installWake >= 0) for (;;) {
+        if (installRequested.exchange(false)) install();
+        status.wait(-1, installWake);
+    }
     return nullptr;
 }
-void onLoaded(const char *, void *) { install(); }
+void onLoaded(const char *name, void *) {
+    // Loader callbacks may run on the main thread. Only signal the worker;
+    // never fingerprint, scan, dlopen or install detours on that thread.
+    if (installWake < 0 || !name) return;
+    const char *file = std::strrchr(name, '/'); file = file ? file + 1 : name;
+    if (std::strcmp(file, "libapp_launcher.so") && std::strcmp(file, "libapp.so")
+            && std::strcmp(file, "librust_maml_sdk.so")
+            && std::strcmp(file, "libhyper_os_broadcast_private.dylib.so")) return;
+    if (!installRequested.exchange(true)) { uint64_t value = 1; (void)write(installWake, &value, sizeof(value)); }
+}
 }
 
 extern "C" ClockFormat mhm_clock_format(const char *data, size_t size) {
@@ -244,13 +294,23 @@ extern "C" __attribute__((visibility("default"), used))
 Loaded native_init(const NativeAPIEntries *entries) {
     if (!isLauncher() || !entries || !entries->hook_func) return nullptr;
     hook = entries->hook_func;
+    unhook = entries->unhook_func;
     readCachedConfig();
     loadAndroidWidgetConfig();
     __android_log_print(ANDROID_LOG_INFO, TAG, "INIT launcher uid=%u api=%u", getuid(), entries->version);
     if (!workerStarted.exchange(true)) {
+        installWake = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
         pthread_t thread;
-        if (pthread_create(&thread, nullptr, worker, nullptr) == 0) pthread_detach(thread);
-        else __android_log_write(ANDROID_LOG_ERROR, TAG, "INIT worker creation failed");
+        pthread_attr_t attributes;
+        pthread_attr_init(&attributes);
+        pthread_attr_setstacksize(&attributes, 256 * 1024);
+        int result = pthread_create(&thread, &attributes, worker, nullptr);
+        pthread_attr_destroy(&attributes);
+        if (result == 0) pthread_detach(thread);
+        else {
+            if (installWake >= 0) { close(installWake); installWake = -1; }
+            __android_log_write(ANDROID_LOG_ERROR, TAG, "INIT worker creation failed");
+        }
     }
     return onLoaded;
 }

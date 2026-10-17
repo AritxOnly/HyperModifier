@@ -13,6 +13,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.compose.foundation.layout.Box
@@ -43,6 +44,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionOnScreen
+import androidx.compose.ui.platform.createLifecycleAwareWindowRecomposer
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -86,16 +88,26 @@ internal data class NativeViewBottomBarTarget(
     val resolveTabViews: ((View) -> List<View>)? = null,
     val resolveTabLabel: ((View, Int) -> String?)? = null,
     val selectedIndexMethodName: String? = null,
+    val resolveSelectedIndex: ((View, List<View>) -> Int)? = null,
     val tabVisible: (String, Int) -> Boolean = { _, _ -> true },
     val isDetachedAction: (View, Int) -> Boolean = { _, _ -> false },
     val onNativeTabClick: (View) -> Unit = { it.performClick() },
     val tabIconScale: ((String, Int) -> Float)? = null,
     val contentHostResourceName: String? = null,
     val overlayAllowed: (Activity) -> Boolean = { true },
+    val nativeBarVisible: (View) -> Boolean = { true },
+    val resolveDarkTheme: ((Activity, List<View>, Int) -> Boolean?)? = null,
+    val sampleBackdropForTabs: (List<View>, Int) -> Boolean = { _, _ -> true },
+    val onNavigationBoundsChanged: (Activity, ViewBackdropBounds) -> Unit = { _, _ -> },
     val lateAttachWindowMs: Long = 8_000L,
     val onAttachDiagnostic: (String) -> Unit = {},
     val nativeRefreshIntervalMs: Long = 0L,
     val useHardwareBackdrop: Boolean = false,
+    val useNativeGpuBackdrop: Boolean = false,
+    val useVideoSurfaceBackdrop: Boolean = false,
+    val inTreeOverlay: Boolean = false,
+    val gpuContentResourceName: String? = null,
+    val manageWindowImmersion: Boolean = true,
     val minimumCaptureIntervalMs: Long = 0L,
     val allowSoftwareBackdrop: Boolean = true,
     val matchDisplayBackdropRefreshRate: Boolean = false,
@@ -105,6 +117,7 @@ internal data class NativeViewBottomBarTarget(
     val stableNavigationInset: Boolean = false,
     val onChromeReplacement: (Activity, Boolean) -> Unit = { _, _ -> },
     val retainNativeSuppressionDuringCover: Boolean = false,
+    val retainReplacementDuringCover: Boolean = false,
     val detachedActionContainerColor: Color? = null,
     val displayTabLabel: (String, Int) -> String = { label, _ -> label },
 )
@@ -252,6 +265,8 @@ private data class NativeViewNavigationState(
     val detachedAction: NativeViewTabState? = null,
     val navigationLiftDp: Float = 0f,
     val navigationInsetPx: Int = 0,
+    val darkTheme: Boolean? = null,
+    val sampleBackdrop: Boolean = true,
 )
 
 private class NativeViewBottomBarHost private constructor(
@@ -264,12 +279,21 @@ private class NativeViewBottomBarHost private constructor(
 ) {
     private var state by mutableStateOf(NativeViewNavigationState())
     private var backdropSnapshot by mutableStateOf<ViewBackdropSnapshot?>(null)
+    private var videoSnapshot by mutableStateOf<ViewBackdropSnapshot?>(null)
     private val owner = InjectedViewTreeOwner()
     private val windowImmersion = InjectedBottomNavigationImmersion(activity, target.requestImmersiveInsets)
     private val windowManager = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val composeView = ComposeView(activity)
-    private val visibility = FloatingNavigationVisibility(composeView, windowManager)
+    private val visibility = FloatingNavigationVisibility(composeView, windowManager.takeUnless { target.inTreeOverlay })
     private var composeWindowAttached = false
+    private val gpuSource = target.gpuContentResourceName?.let { name ->
+        val id = activity.resources.getIdentifier(name, "id", activity.packageName)
+        overlayParent.findViewById<View>(id)
+    } ?: overlayParent.takeUnless { target.inTreeOverlay }
+    private val gpuBackdrop = if (target.useNativeGpuBackdrop && gpuSource != null)
+        NativeGpuBackdrop.create(gpuSource, composeView, target.useVideoSurfaceBackdrop) else null
+    private val videoSampler = if (target.useVideoSurfaceBackdrop && gpuSource != null)
+        DouyinSurfaceBackdrop(gpuSource) { videoSnapshot = it } else null
     private val sampler = ViewBackdropSampler(
         source = overlayParent,
         excludedView = composeView,
@@ -280,7 +304,10 @@ private class NativeViewBottomBarHost private constructor(
         matchDisplayRefreshRate = target.matchDisplayBackdropRefreshRate,
         sampleOnSourceFrame = target.sampleBackdropOnSourceFrame,
         pixelCopyRetryDelayMs = target.pixelCopyRetryDelayMs,
-    ) { backdropSnapshot = it }
+    ) { backdropSnapshot = it }.also {
+        // In-tree Window PixelCopy would include this very glass surface and feed it back.
+        if (gpuBackdrop != null || target.inTreeOverlay) it.setActive(false)
+    }
     private val refreshPolicy = NavigationRefreshPolicy(target.nativeRefreshIntervalMs)
     private var foreground = true
     private val stableNavigationInset = StableNavigationBarInset()
@@ -307,7 +334,7 @@ private class NativeViewBottomBarHost private constructor(
     }
     private val preDrawListener = ViewTreeObserver.OnPreDrawListener {
         syncNativeState()
-        sampler.onFrame()
+        if (gpuBackdrop == null && !target.inTreeOverlay && state.sampleBackdrop) sampler.onFrame()
         true
     }
 
@@ -317,42 +344,55 @@ private class NativeViewBottomBarHost private constructor(
             setViewTreeViewModelStoreOwner(owner)
             setViewTreeSavedStateRegistryOwner(owner)
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+            // The foreign Decor has no module LifecycleOwner. Its window recomposer lookup
+            // starts at Decor rather than this ComposeView, so supply our owned lifecycle.
+            if (target.inTreeOverlay) {
+                setParentCompositionContext(createLifecycleAwareWindowRecomposer(lifecycle = owner.lifecycle))
+            }
             setContent {
                 NativeViewBottomBarContent(
                     state = state,
                     target = target,
-                    backdropSnapshot = backdropSnapshot,
+                    backdropSnapshot = videoSnapshot ?: if (state.sampleBackdrop) backdropSnapshot else null,
+                    gpuBackdrop = gpuBackdrop.takeUnless { videoSnapshot != null },
                     onBackdropBoundsChanged = ::setBackdropScreenBounds,
                     onDestinationSelected = ::selectDestination,
                 )
             }
         }
         syncNativeState()
-        val params = WindowManager.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_PANEL,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.BOTTOM
-            token = activity.window.decorView.windowToken
-            title = "MyHyperModifier ${target.logName} navigation"
-            setFitInsetsTypes(0)
+        if (target.inTreeOverlay) {
+            overlayParent.addView(composeView, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM,
+            ))
+        } else {
+            val params = WindowManager.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_PANEL,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT,
+            ).apply {
+                gravity = Gravity.BOTTOM
+                token = activity.window.decorView.windowToken
+                title = "MyHyperModifier ${target.logName} navigation"
+                setFitInsetsTypes(0)
+            }
+            windowManager.addView(composeView, params)
+            composeWindowAttached = true
+            visibility.onAttached()
         }
-        windowManager.addView(composeView, params)
-        composeWindowAttached = true
-        visibility.onAttached()
         composeView.addOnLayoutChangeListener(composeLayoutListener)
         overlayParent.viewTreeObserver.addOnPreDrawListener(preDrawListener)
         composeView.post { sampler.requestCaptureBurst(900L) }
     }
 
     fun onTouchEvent(event: MotionEvent) {
-        if (state.visible) sampler.onTouchEvent(event)
+        if (gpuBackdrop == null && !target.inTreeOverlay && state.visible && state.sampleBackdrop) sampler.onTouchEvent(event)
     }
 
     fun setForeground(value: Boolean) {
@@ -368,12 +408,16 @@ private class NativeViewBottomBarHost private constructor(
         target.onChromeReplacement(activity, false)
         visibility.dispose()
         sampler.dispose()
+        videoSampler?.dispose()
+        gpuBackdrop?.dispose()
         composeView.removeOnLayoutChangeListener(composeLayoutListener)
         contentBottomPadding?.dispose()
         if (overlayParent.viewTreeObserver.isAlive) {
             overlayParent.viewTreeObserver.removeOnPreDrawListener(preDrawListener)
         }
-        if (composeWindowAttached) {
+        if (target.inTreeOverlay) {
+            (composeView.parent as? ViewGroup)?.removeView(composeView)
+        } else if (composeWindowAttached) {
             runCatching { windowManager.removeViewImmediate(composeView) }
             composeWindowAttached = false
         }
@@ -387,11 +431,13 @@ private class NativeViewBottomBarHost private constructor(
     private fun syncNativeState(force: Boolean = false) {
         // Cheap visibility checks run on every frame even when native-tab synchronization is capped.
         // This prevents a low-frequency state refresh from covering an ad's skip target for a frame.
-        if (!foreground || !target.enabled() || !nativeBottomBar.isVisibleIgnoringAlpha() ||
+        if (!foreground || !target.enabled() || !nativeBottomBar.isVisibleIgnoringAlpha() || !target.nativeBarVisible(nativeBottomBar) ||
             !target.overlayAllowed(activity)
         ) {
             if (state.visible) state = state.copy(visible = false)
             sampler.setActive(false)
+            gpuBackdrop?.setActive(false)
+            videoSampler?.setActive(false)
             visibility.setVisible(false)
             updateNativeChromeReplacement(false)
             return
@@ -403,7 +449,9 @@ private class NativeViewBottomBarHost private constructor(
         }
         val nativeTabs = nativeTabViews()
         if (nativeTabs.size > 1) nativeTabsReady = true
-        val selected = target.selectedIndexMethodName?.let(nativeBottomBar::invokeInt)
+        val selected = target.resolveSelectedIndex?.invoke(nativeBottomBar, nativeTabs)
+            ?.takeIf { it in nativeTabs.indices }
+            ?: target.selectedIndexMethodName?.let(nativeBottomBar::invokeInt)
             ?.takeIf { it in nativeTabs.indices }
             ?: nativeTabs.indexOfFirst { it.isSelected || it.invokeBoolean("getStatus") }
             .takeIf { it >= 0 }
@@ -421,10 +469,12 @@ private class NativeViewBottomBarHost private constructor(
             tabs = displayedTabs,
             selectedIndex = selected.coerceIn(0, (nativeTabs.size - 1).coerceAtLeast(0)),
             visible = target.enabled() && nativeTabs.size > 1 && displayedTabs.isNotEmpty() &&
-                nativeBottomBar.isVisibleIgnoringAlpha(),
+                nativeBottomBar.isVisibleIgnoringAlpha() && target.nativeBarVisible(nativeBottomBar),
             detachedAction = allTabs.getOrNull(actionIndex)?.takeIf {
                 target.tabVisible(it.label, it.nativeIndex)
             },
+            darkTheme = target.resolveDarkTheme?.invoke(activity, nativeTabs, selected),
+            sampleBackdrop = target.sampleBackdropForTabs(nativeTabs, selected),
             navigationLiftDp = ModuleSettings.hyperGlassifyHiddenNavigationLift.coerceIn(0f, 48f),
             navigationInsetPx = if (target.stableNavigationInset) {
                 stableNavigationInset.bottomPx(composeView, activity.window.decorView)
@@ -436,7 +486,9 @@ private class NativeViewBottomBarHost private constructor(
         if (selectionChanged) sampler.invalidateSamplingContext()
         updateNativeChromeReplacement(next.visible)
         visibility.setVisible(next.visible)
-        sampler.setActive(next.visible)
+        sampler.setActive(gpuBackdrop == null && !target.inTreeOverlay && next.visible && next.sampleBackdrop)
+        gpuBackdrop?.setActive(next.visible)
+        videoSampler?.setActive(next.visible && !next.sampleBackdrop)
         if (selectionChanged || becameVisible) sampler.requestCaptureBurst()
     }
 
@@ -485,12 +537,13 @@ private class NativeViewBottomBarHost private constructor(
 
     private fun updateNativeChromeReplacement(enabled: Boolean) {
         updateNativeBarSuppression(enabled)
-        if (enabled) {
+        val retain = target.retainReplacementDuringCover && target.enabled() && nativeTabsReady
+        if (enabled || retain) {
             if (!replacingNativeChrome) {
                 replacingNativeChrome = true
-                windowImmersion.apply()
+                if (target.manageWindowImmersion) windowImmersion.apply()
             }
-            windowImmersion.ensureApplied()
+            if (target.manageWindowImmersion) windowImmersion.ensureApplied()
             target.onChromeReplacement(activity, true)
             ensureContentReservationRemoved()
             val contentInset = composeView.injectedNavigationContentInsetPx()
@@ -572,14 +625,16 @@ private class NativeViewBottomBarHost private constructor(
     }.distinct().filter { it.visibility != View.GONE }.take(MAX_TABS)
 
     private fun setBackdropScreenBounds(screenBounds: ViewBackdropBounds) {
+        target.onNavigationBoundsChanged(activity, screenBounds)
         val decorLocation = IntArray(2)
         activity.window.decorView.getLocationOnScreen(decorLocation)
-        sampler.setNavigationBounds(
-            screenBounds.copy(
-                left = screenBounds.left - decorLocation[0],
-                top = screenBounds.top - decorLocation[1],
-            ),
+        val windowBounds = screenBounds.copy(
+            left = screenBounds.left - decorLocation[0],
+            top = screenBounds.top - decorLocation[1],
         )
+        gpuBackdrop?.setBounds(windowBounds)
+        videoSampler?.setBounds(windowBounds)
+        sampler.setNavigationBounds(windowBounds)
     }
 
     companion object {
@@ -618,15 +673,18 @@ private fun NativeViewBottomBarContent(
     state: NativeViewNavigationState,
     target: NativeViewBottomBarTarget,
     backdropSnapshot: ViewBackdropSnapshot?,
+    gpuBackdrop: NativeGpuBackdrop?,
     onBackdropBoundsChanged: (ViewBackdropBounds) -> Unit,
     onDestinationSelected: (Int) -> Unit,
 ) {
     if (!state.visible || state.tabs.isEmpty()) return
-    val dark = (androidx.compose.ui.platform.LocalConfiguration.current.uiMode and
-        Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    val dark = state.darkTheme ?: ((androidx.compose.ui.platform.LocalConfiguration.current.uiMode and
+        Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES)
     val materialColors = remember(dark) { MhmPresetColors.material(dark) }
     val miuixColors = remember(dark, materialColors) { MhmPresetColors.miuix(materialColors, dark) }
     val backdrop = rememberLayerBackdrop()
+    var nativeBackdropBounds by remember { mutableStateOf<ViewBackdropBounds?>(null) }
+    val opticalBackdrop = if (gpuBackdrop?.geometry != null || backdropSnapshot != null) backdrop else null
     val hiddenNavigationLift = state.navigationLiftDp.dp
     val navigationPadding = if (target.stableNavigationInset && state.navigationInsetPx > 0) {
         Modifier.padding(bottom = with(LocalDensity.current) { state.navigationInsetPx.toDp() })
@@ -676,17 +734,18 @@ private fun NativeViewBottomBarContent(
                         .height(MiuixFloatingTabBarDefaults.Height),
                     contentAlignment = Alignment.Center,
                 ) {
-                    ViewBackdropLayer(backdropSnapshot, backdrop)
+                    if (gpuBackdrop != null) NativeGpuBackdropLayer(gpuBackdrop, backdrop, nativeBackdropBounds)
+                    else ViewBackdropLayer(backdropSnapshot, backdrop)
                     val boundsModifier = Modifier.onGloballyPositioned { coordinates ->
                         val position = coordinates.positionOnScreen()
-                        onBackdropBoundsChanged(
-                            ViewBackdropBounds(
+                        val bounds = ViewBackdropBounds(
                                 left = position.x.roundToInt(),
                                 top = position.y.roundToInt(),
                                 width = coordinates.size.width,
                                 height = coordinates.size.height,
-                            ),
-                        )
+                            )
+                        onBackdropBoundsChanged(bounds)
+                        nativeBackdropBounds = gpuBackdrop?.targetBounds() ?: bounds
                     }
                     val action = state.detachedAction
                     if (action == null) {
@@ -697,7 +756,7 @@ private fun NativeViewBottomBarContent(
                             modifier = boundsModifier,
                             layout = MiuixFloatingTabLayout.Stacked,
                             selectionVisible = items.any { it.key == state.selectedIndex.toString() },
-                            backdrop = backdropSnapshot?.let { backdrop },
+                            backdrop = opticalBackdrop,
                         )
                     } else {
                         // Deadliner 4d1b755 MiuixFloatingNavigationDock geometry; native Views own routing.
@@ -715,7 +774,7 @@ private fun NativeViewBottomBarContent(
                                 modifier = Modifier.weight(1f),
                                 layout = MiuixFloatingTabLayout.Stacked,
                                 selectionVisible = items.any { it.key == state.selectedIndex.toString() },
-                                backdrop = backdropSnapshot?.let { backdrop },
+                                backdrop = opticalBackdrop,
                             )
                             SoftGlassFloatingActionButton(
                                 onClick = { onDestinationSelected(action.nativeIndex) },
@@ -723,7 +782,7 @@ private fun NativeViewBottomBarContent(
                                     ?: MiuixTheme.colorScheme.primary,
                                 contentColor = MiuixTheme.colorScheme.onPrimary,
                                 size = MiuixFloatingTabBarDefaults.Height,
-                                backdrop = backdropSnapshot?.let { backdrop },
+                                backdrop = opticalBackdrop,
                             ) {
                                 Icon(
                                     imageVector = target.fallbackIcon(action.label, action.nativeIndex),

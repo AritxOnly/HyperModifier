@@ -42,4 +42,50 @@ public class HyperMusicCoverAdapterTest {
         assertThrows(NoSuchMethodException.class, () -> new HyperMusicCoverAdapter(String.class));
         assertThrows(NoSuchMethodException.class, () -> new HyperMusicCoverAdapter(ChangedMain.class));
     }
+    static class RenamedHelper {
+        static float p = .75f;
+        static int a = 2;
+        static boolean b = true;
+        static float z(RectF box) { return 123f; }
+        static void r() { }
+        static boolean q(Object view) { return true; }
+    }
+    private static String descriptor(Class<?> owner) { return "L" + owner.getName().replace('.', '/') + ";"; }
+    static HyperMusicCoverDexSymbols splitSymbols() {
+        HyperMusicCoverDexSymbols s = new HyperMusicCoverDexSymbols();
+        String owner = descriptor(RenamedHelper.class);
+        s.members.put("glyphUnit", new HyperMusicCoverDexSymbols.Member(owner, "z", "(Landroid/graphics/RectF;)F"));
+        s.members.put("progress", new HyperMusicCoverDexSymbols.Member(owner, "p", "F"));
+        s.members.put("fpAvoid", new HyperMusicCoverDexSymbols.Member(owner, "a", "I"));
+        s.members.put("hideFp", new HyperMusicCoverDexSymbols.Member(owner, "b", "Z"));
+        s.members.put("applyHide", new HyperMusicCoverDexSymbols.Member(owner, "r", "()V"));
+        s.members.put("fodForKeyguard", new HyperMusicCoverDexSymbols.Member(owner, "q", "(Ljava/lang/Object;)Z"));
+        return s;
+    }
+    @Test public void splitAndRenamedHelpersUseResolvedMembersIncludingInlinedProgress() throws Exception {
+        HyperMusicCoverAdapter adapter = new HyperMusicCoverAdapter(RetainedMain.class, splitSymbols());
+        assertEquals(RenamedHelper.class, adapter.glyphUnit.getDeclaringClass());
+        assertEquals(.75f, adapter.progress(), 0f);
+        RenamedHelper.p = .25f;
+        assertEquals(.25f, adapter.progress(), 0f);
+        RenamedHelper.p = .75f;
+        assertEquals(2, adapter.fpAvoid.getInt(null));
+        assertTrue(adapter.hideFp.getBoolean(null));
+        assertEquals(RenamedHelper.class, adapter.applyHide.getDeclaringClass());
+    }
+    @Test public void resolvedFieldWithWrongTypeIsRejected() {
+        HyperMusicCoverDexSymbols symbols = splitSymbols();
+        symbols.members.put("progress", symbols.members.get("fpAvoid"));
+        assertThrows(NoSuchFieldException.class, () -> new HyperMusicCoverAdapter(RetainedMain.class, symbols));
+    }
+    static class FodParent { private final Object mMiuiGxzwAnimationView = "native-view"; }
+    static class FodChild extends FodParent { }
+    @Test public void inlinedFodViewHelperUsesCachedNativeFieldOnParent() throws Exception {
+        HyperMusicCoverAdapter adapter = new HyperMusicCoverAdapter(RetainedMain.class);
+        FodChild animation = new FodChild();
+        assertEquals("native-view", adapter.fodView(animation));
+        assertEquals("native-view", adapter.fodView(animation));
+        assertNull(adapter.fodView(new Object()));
+        assertNull(adapter.fodView(new Object()));
+    }
 }

@@ -100,9 +100,31 @@ public final class MyHyperModifier extends XposedModule {
         }
     }
 
+    // Package callbacks also arrive for embedded WebView/shared libraries. Isolate by process,
+    // otherwise a library callback installs global View hooks inside the Douyin-only adapter.
+    private static boolean isDouyinProcess() {
+        String process = Application.getProcessName();
+        return ModuleScopePackage.DOUYIN.equals(process)
+                || (process != null && process.startsWith(ModuleScopePackage.DOUYIN + ":"));
+    }
+
     @Override
     public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
         String packageName = param.getPackageName();
+        if (!ModuleScopePackage.INCALL_UI.equals(packageName)
+                && ModuleScopePackage.INCALL_UI.equals(Application.getProcessName())) return;
+        if (LocalWidgetCatalogHooks.PACKAGE.equals(packageName)) return;
+        if (ModuleScopePackage.INCALL_UI.equals(packageName)) {
+            // InCallUI receives only material adapters, never generic resource hooks or bridges.
+            if (!packageName.equals(Application.getProcessName())) return;
+            try {
+                ModuleSettings.setRemotePreferences(getRemotePreferences("modifier_settings"));
+                GlobalGlassBlurHooks.install(this, packageName);
+                InCallMaterialHooks.install(this, param.getDefaultClassLoader());
+            } catch (Throwable error) { HookDiagnostics.failure(packageName, "通话材质", error); }
+            return;
+        }
+        if (ModuleScopePackage.DOUYIN.equals(packageName) || isDouyinProcess()) return;
         // LSPosed delivers only selected packages. Glass radius must cover every selected UI process.
         if (BuildConfig.APPLICATION_ID.equals(packageName)) return;
         logSpotifyEntry(packageName, "before settings");
@@ -154,8 +176,6 @@ public final class MyHyperModifier extends XposedModule {
             installSafely(packageName, "全局 Glass 模糊半径", () -> GlobalGlassBlurHooks.install(this, packageName));
             if (SYSTEM_UI.equals(packageName)) installSafely(packageName, "通知清除按钮 Glass 半径",
                     () -> NotificationDismissGlassHooks.install(this, classLoader));
-            if (SYSTEM_UI.equals(packageName)) installSafely(packageName, "通知中心超级岛不透明度",
-                    () -> FocusNotificationGlassTintHooks.install(this, classLoader));
         } catch (Throwable throwable) {
             log(Log.ERROR, TAG, "Could not install early hooks for " + packageName, throwable);
             HookDiagnostics.failure(packageName, "提前注入", throwable);
@@ -165,6 +185,28 @@ public final class MyHyperModifier extends XposedModule {
     @Override
     public void onPackageReady(XposedModuleInterface.PackageReadyParam param) {
         String packageName = param.getPackageName();
+        if (!ModuleScopePackage.INCALL_UI.equals(packageName)
+                && ModuleScopePackage.INCALL_UI.equals(Application.getProcessName())) return;
+        if (isDouyinProcess() && !ModuleScopePackage.DOUYIN.equals(packageName)) return;
+        if (ModuleScopePackage.INCALL_UI.equals(packageName)) return;
+        if (LocalWidgetCatalogHooks.PACKAGE.equals(packageName)) {
+            // Catalogue-only scope: no resource/context Hooks, blur adapters or desktop bridge.
+            if (!packageName.equals(Application.getProcessName())) return;
+            try {
+                LocalWidgetCatalogHooks.install(this, param.getClassLoader(), getRemotePreferences("modifier_settings"));
+            } catch (Throwable error) { HookDiagnostics.failure(packageName, "本地小组件目录", error); }
+            return;
+        }
+        if (ModuleScopePackage.DOUYIN.equals(packageName)) {
+            // Only the main UI process needs this adapter; skip shared resource/context hooks.
+            if (!packageName.equals(Application.getProcessName())) return;
+            try {
+                ModuleSettings.setRemotePreferences(getRemotePreferences("modifier_settings"));
+                ModuleSettings.ensureLoaded();
+                installSafely(packageName, "抖音柔光底栏", () -> DouyinHooks.install(this, param.getClassLoader()));
+            } catch (Throwable error) { HookDiagnostics.failure(packageName, "抖音注入", error); }
+            return;
+        }
         if (ModuleScopePackage.VOICE_ASSIST.equals(packageName)) {
             try {
                 XiaoAiShortcutBridge.install(this, param.getClassLoader(), getRemotePreferences("modifier_settings"));
@@ -217,8 +259,6 @@ public final class MyHyperModifier extends XposedModule {
             installSafely(packageName, "全局 Glass 模糊半径", () -> GlobalGlassBlurHooks.install(this, packageName));
             if (SYSTEM_UI.equals(packageName)) installSafely(packageName, "通知清除按钮 Glass 半径",
                     () -> NotificationDismissGlassHooks.install(this, param.getClassLoader()));
-            if (SYSTEM_UI.equals(packageName)) installSafely(packageName, "通知中心超级岛不透明度",
-                    () -> FocusNotificationGlassTintHooks.install(this, param.getClassLoader()));
             boolean eagerTarget = SYSTEM_UI.equals(packageName)
                     || SYSTEM_UI_PLUGIN.equals(packageName) || MILINK.equals(packageName) || XMSF.equals(packageName);
             if (eagerTarget) {

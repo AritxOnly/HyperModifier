@@ -18,6 +18,9 @@ final class HyperMusicCoverClockHooks {
     private static final AtomicBoolean INSTALLED = new AtomicBoolean();
     private static volatile HyperMusicCoverClockPolicy policy;
     private static volatile boolean bindingFailed;
+    private static volatile boolean preparing, waitingForSource, needsSymbols;
+    private static final HyperMusicCoverBindingGate SOURCE = new HyperMusicCoverBindingGate();
+    private static volatile java.lang.ref.WeakReference<android.content.Context> hostContext = new java.lang.ref.WeakReference<>(null);
     private static volatile Class<?> discoveredMain;
 
     private HyperMusicCoverClockHooks() {}
@@ -44,6 +47,7 @@ final class HyperMusicCoverClockHooks {
                     "notifStateChange", handles);
             watch(module, loader, "com.android.keyguard.interactor.KeyguardClockNotifInteractor",
                     "setNotifY", handles);
+            watchSourceReady(module, loader, handles);
             HookDiagnostics.available("com.android.systemui", FEATURE);
         } catch (ReflectiveOperationException | RuntimeException error) {
             for (XposedInterface.HookHandle handle : handles) handle.unhook();
@@ -66,12 +70,14 @@ final class HyperMusicCoverClockHooks {
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
                         ModuleSettings.ensureLoaded();
-                        if (discoveredMain != null && HyperMusicCoverExtensions.enabled())
+                        if (discoveredMain != null && !preparing && !waitingForSource && !bindingFailed
+                                && (!needsSymbols || HyperMusicCoverSymbols.cached(discoveredMain) != null)
+                                && HyperMusicCoverExtensions.enabled())
                             HyperMusicCoverExtensions.bind(module, discoveredMain);
                         if ((!ModuleSettings.bypassHyperMusicCoverClockAdjustment
                                 && !ModuleSettings.progressiveLockscreenClockAvoidance
                                 && !HyperMusicCoverExtensions.enabled()) || policy != null
-                                || bindingFailed) return chain.proceed();
+                                || bindingFailed || preparing || waitingForSource) return chain.proceed();
                         Float previous = originalY.get();
                         originalY.set((Float) chain.getArg(0));
                         try { return chain.proceed(); }
@@ -84,7 +90,7 @@ final class HyperMusicCoverClockHooks {
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
                         Float raw = originalY.get();
-                        if (raw == null || policy != null || bindingFailed) return chain.proceed();
+                        if (raw == null || policy != null || bindingFailed || preparing || waitingForSource) return chain.proceed();
                         HyperMusicCoverClockPolicy discovered = bindFromStack(module);
                         if (discovered == null || !discovered.shouldBypass(
                                 ModuleSettings.bypassHyperMusicCoverClockAdjustment)) return chain.proceed();
@@ -102,9 +108,72 @@ final class HyperMusicCoverClockHooks {
 
     private static synchronized HyperMusicCoverClockPolicy bindFromStack(XposedModule module) {
         if (policy != null || bindingFailed) return policy;
-        Class<?> main = StackClasses.findMain();
+        Class<?> main = discoveredMain != null ? discoveredMain : StackClasses.findMain();
         if (main == null) return null; // HMC absent or not in this call; leave all arguments alone.
         discoveredMain = main;
+        needsSymbols = HyperMusicCoverSymbols.split(main);
+        if (needsSymbols && HyperMusicCoverSymbols.cached(main) == null) {
+            prepareSymbols(module, main);
+            return null;
+        }
+        return finishBind(module, main);
+    }
+    private static void watchSourceReady(XposedModule module, ClassLoader loader,
+                                         List<XposedInterface.HookHandle> handles) throws ReflectiveOperationException {
+        Class<?> container = Class.forName("com.android.keyguard.clock.KeyguardClockContainer", false, loader);
+        Method attached = null;
+        for (Class<?> c = container; c != null; c = c.getSuperclass()) {
+            try { attached = c.getDeclaredMethod("onAttachedToWindow"); break; }
+            catch (NoSuchMethodException inherited) { /* Some ROMs inherit this callback. */ }
+        }
+        if (attached == null) throw new NoSuchMethodException("Clock onAttachedToWindow");
+        handles.add(module.hook(attached).setId("hmc-symbol-source-ready")
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain -> {
+                    if (!container.isInstance(chain.getThisObject())) return chain.proceed();
+                    Object result = chain.proceed();
+                    android.content.Context context = ((android.view.View) chain.getThisObject()).getContext().getApplicationContext();
+                    hostContext = new java.lang.ref.WeakReference<>(context);
+                    SOURCE.sourceReady();
+                    new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                        Class<?> main = discoveredMain;
+                        if (main != null && waitingForSource && !preparing && !bindingFailed) {
+                            waitingForSource = false;
+                            prepareSymbols(module, main);
+                        }
+                    });
+                    return result;
+                }));
+        module.deoptimize(attached);
+    }
+    private static synchronized void prepareSymbols(XposedModule module, Class<?> main) {
+        if (!SOURCE.begin()) return;
+        preparing = true;
+        new Thread(() -> {
+            android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
+            try {
+                HyperMusicCoverSymbols.load(main, hostContext.get());
+                ui.post(() -> {
+                    try {
+                        finishBind(module, main); SOURCE.complete();
+                        HookDiagnostics.observed("com.android.systemui", "HMC 新版接口解析", "已解析 HMC APK 接口；无需等待时钟容器挂载");
+                    }
+                    finally { preparing = false; }
+                });
+            } catch (HyperMusicCoverSymbols.SourcePending pending) {
+                ui.post(() -> {
+                    boolean retry = SOURCE.defer();
+                    waitingForSource = !retry;
+                    preparing = false;
+                    if (retry) prepareSymbols(module, main);
+                });
+            } catch (Exception error) {
+                SOURCE.fail(); bindingFailed = true; preparing = false;
+                HookDiagnostics.failure("com.android.systemui", "HMC 新版接口解析", error);
+            }
+        }, "HyperModifier-HMC-symbols").start();
+    }
+    private static synchronized HyperMusicCoverClockPolicy finishBind(XposedModule module, Class<?> main) {
+        if (policy != null || bindingFailed) return policy;
         HyperMusicCoverExtensions.bind(module, main);
         List<XposedInterface.HookHandle> handles = new ArrayList<>();
         try {

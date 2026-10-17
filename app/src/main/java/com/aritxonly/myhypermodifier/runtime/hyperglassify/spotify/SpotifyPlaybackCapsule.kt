@@ -131,6 +131,9 @@ internal class SpotifyPlaybackCapsule(private val activity: Activity) {
     }
 
     fun updateBackdrop(snapshot: ViewBackdropSnapshot?) { glass?.update(snapshot) }
+    fun updateGpuBackdrop(scene: NativeGpuBackdrop?, target: ViewBackdropBounds?) {
+        glass?.updateGpu(scene, target)
+    }
 
     fun dispose() {
         coverContainer?.translationX = nativeCoverContainerTranslationX
@@ -242,6 +245,19 @@ private class SpotifyCapsuleDrawable(private val density: Float) : Drawable() {
         node.setRenderEffect(effect)
     }
     private var snapshot: ViewBackdropSnapshot? = null
+    private var gpuScene: NativeGpuBackdrop? = null
+    private var gpuRegion: ViewBackdropBounds? = null
+    private var gpuTarget: ViewBackdropBounds? = null
+
+    fun updateGpu(scene: NativeGpuBackdrop?, target: ViewBackdropBounds?) {
+        val region = scene?.geometry
+        if (gpuScene === scene && gpuTarget == target && gpuRegion == region) return
+        gpuScene = scene
+        gpuTarget = target
+        gpuRegion = region
+        dirty = true
+        invalidateSelf()
+    }
     private var dirty = true
     private var insetLeft = 0
     private var insetRight = 0
@@ -268,16 +284,24 @@ private class SpotifyCapsuleDrawable(private val density: Float) : Drawable() {
         val save = canvas.save()
         canvas.clipPath(Path().apply { addRoundRect(rect, radius, radius, Path.Direction.CW) })
         val sample = snapshot
-        if (sample != null && canvas.isHardwareAccelerated) {
+        val region = gpuRegion
+        val target = gpuTarget
+        val scene = gpuScene
+        if ((sample != null || (scene != null && region != null && target != null)) && canvas.isHardwareAccelerated) {
             if (dirty) {
                 updateOpticalEffect()
                 node.setPosition(bounds.left, bounds.top, bounds.right, bounds.bottom)
                 val recording = node.beginRecording(bounds.width(), bounds.height())
                 try {
+                    if (scene != null && region != null && target != null) {
+                        recording.translate((region.left - target.left).toFloat(), (region.top - target.top).toFloat())
+                        recording.drawRenderNode(scene.node)
+                    } else if (sample != null) {
                     val left = (bounds.width() - sample.sourceWidthPx) / 2f + sample.alignmentOffsetXPx
                     val top = (bounds.height() - sample.sourceHeightPx) / 2f + sample.alignmentOffsetYPx
                     recording.drawBitmap(sample.bitmap, null, RectF(left, top,
                         left + sample.sourceWidthPx, top + sample.sourceHeightPx), bitmapPaint)
+                    }
                 } finally { node.endRecording() }
                 dirty = false
             }

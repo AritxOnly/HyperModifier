@@ -540,3 +540,546 @@ Rust launcher 全文件指纹与该位置 8 字节指令均匹配时启用。
 保留在 `/private/tmp/mhm-picker-refresh-v2-appwidget.txt`。现有日志没有明确的
 列表重建计数，不能以缺少枚举日志推断必定没有重新枚举。后续复现应在重启
 前保存日志及 provider 状态，再检查刷新和过滤路径；当前不发布新的修复包。
+
+
+### 2026-10-15：改从澎湃组件目录接入的调查方向
+
+用户反馈桌面更新后安卓组件列表再次缺失，提出让所有 Android AppWidget 进入
+澎湃组件目录，放弃在安卓列表中维持分类修补。当前 reference 只有 7722 版本
+APK，未获得此次更新后的二进制，不能核对新版本准入条件或发布适配 Hook。
+
+现有实现已经给普通 provider 提供 MIUI 堆叠/尺寸/材质资格；目录接入与资格
+覆盖是不同问题。旧版已定位的 buildAppWidgetsItems 分支是安卓列表的分类读取，
+不是已确认的澎湃目录白名单。现有局部分支 detour 严格匹配旧 Dart 全文件和
+入口指令，不能复用到更新后的未知版本。是否因版本拒绝、目录过滤或缓存
+失效导致本次缺失尚未判定；不放宽指纹来猜测兼容。
+
+旧 Dart 对象池中 “DROPPED (not in whitelist)” 与 Action_ReflectionAction /
+ViewWidgetCovert 相邻，指向 RemoteViews 动作支持，不能作为目录应用白名单的
+证据。另有 “not in MAML white List, skip MAMLIcon” 文案，属于 MAML 图标路径；
+Rust set_white_list / KILL_SKIP_HOME_WHITELIST 属于进程/最近任务，也不是组件目录。
+目前没有确认只去掉一个统一应用白名单便能列出全部 provider。
+
+优先路线是定位新版澎湃目录的数据源和本地 AppWidget 条目构建入口：若目录
+枚举本地 provider 后再过滤，局部放开准入并保留系统分组/预览/去重；若目录
+仅接收商城或云端描述，需要将本地 provider 转成系统已有的 AppWidget 目录项，
+合并数据源而非仅将白名单判断改为 true。不得将 RemoteViews 伪造成 MAML，
+须保留 provider、用户/profile、配置 Activity、appWidgetId、绑定/更新/删除语义。
+
+实现后需验证首次进入与返回目录、provider 安装/卸载/变更后的刷新、运行一段
+时间后目录保留，以及添加/配置/点击/更新/堆叠/玻璃/移除和进程重启。目录路径
+只在初始化及 provider 变更时构建/增量更新，不加入轮询或每次打开时的 IPC 全量
+重建；动态数据不永久缓存。现有资格桥依赖 pickerReady，切换路线时必须同步
+调整激活条件及关闭后的原值恢复，不能只删掉安卓 picker Hook。
+
+本轮只有旧样本与代码检查，未修改生产 Hook、编译或安装 APK。
+
+
+### 2026-10-15：7748 更新包与前台适配提示的实机证据
+
+用户提供 Downloads 中 7748 APK，并连接手机停在适配提示页。本轮只读保存
+activity、appwidget、package、当前 logcat 与截图，未清日志、重启、安装或改库。
+材料目录 `/private/tmp/mhm-launcher-7748/`。实机桌面 versionCode 801027748，
+版本名与用户提供文件一致；未对实机 APK 全文件做同一性确认。
+
+| 文件 | 长度 | FNV-1a64 |
+| --- | --- | --- |
+| 新包 libapp.so | 29378704 | 440922566a4fe1f5 |
+| 新包 libapp_launcher.so | 16220456 | 53c28844c689a8a1 |
+| 新包 libnative_widget_sdk.so | 2679408 | e3273af9c63e9922 |
+| 实机 /system_ext/lib64/libhyper_os_schema_public.so | 601400 | f519ae5224ebc666 |
+
+APK SHA-256 为 70c986b426b2319ba1bbb75f6a3903a95f63b27804017f91e046e5e6a30136c0。
+新包不包含独立 schema 库；该库由系统提供且指纹仍匹配原桥。Dart/Rust/SDK
+则均变化：旧 Dart picker 指纹必定拒绝此文件，SDK 实例标签入口也不能按旧
+指纹激活。metadata bridge 的 active 与 pickerReady 独立，不能仅由 picker
+拒绝就推断所有 MIUI 能力都已关闭；这种组合有造成分类不一致的风险。
+当前 logcat 窗口没有启动安装记录，未直接观察本次进程安装结果。
+
+unflutter 解析新包自报 Dart 3.10.7、compressed pointers、snapshot hash
+5d85d85296400e9b3992193deed317c9，生成 102348 个函数。buildAppWidgetsItems
+含国际负一屏过滤与 needsHideFromPicker 路径；旧 MIUI 分类读取的候选对应新
+0x1a86990/0x1a86994，分支为 0x1a86998 的 TBNZ W0,#4。LLVM 原始 bytes
+核对该分支与随后 12 字节；此为研究地址，未安装 Hook，也不是目录白名单证据。
+
+截图对应智能助理 PickerHomeActivity，内部 PickerDetailFragment 的
+pa_picker_detail_app_widget_in_dev（0x7f1303e5）显示“正在努力适配中”。
+静态路径为 appDoUnableInMarket(false)，由详情状态错误码 32006/32007 对应
+下架/未在商城上架的分支进入。PickerDetailService.getPickerDetail 使用 Retrofit
+POST component/store/impl/tail，Repository 将 ApiException.getCode 写入响应状态。
+不能将这一页面直接等同于桌面 Dart 安卓列表为空；日志没有保留触发该页面的
+网络响应，因此未确认本次具体错误码或排除其他前置原因。
+
+系统 dumpsys appwidget 中 Deadliner Compact/Capsule provider 仍注册。智能助理
+25.40.34.00-09031710 的目录详情依赖商城响应；已找到 LocalWidgetCountHelper
+和 provider metadata 读取，但没有证明放开一个本地白名单可自动生成商城条目。
+MaMlAppWhiteList 仅列出部分系统应用，尚无它控制此 AppWidget 目录的证据。
+
+因此新的实现方向为本地 provider -> 现有目录项适配 -> 复用 AppWidget 添加链路，
+需继续核对智能助理目录/详情模型与桌面交接参数；若需要在智能助理注入，只
+安装该功能精确 Hook，不顺带安装 SystemUI/桌面通用 Hook 或桥接服务。目录枚举
+放在既有后台加载阶段，按 provider/profile 区分并去重，在包变更时失效，不用
+轮询或绘制回调做扫描。原有远程组件仍保持原路径。
+
+本轮只完成二进制差异、页面归属与目录数据源调查，没有发布功能修复或将候选
+地址加入生产配置。旧列表间歇消失与本次商城详情提示不能未经验证合并为同因。
+
+
+### 2026-10-15：本地 provider 接入澎湃目录首版
+
+新增 LocalWidgetCatalogHooks，复用“允许安卓小组件堆叠”开关，新增智能助理声明
+作用域及作用域面板项。仅智能助理主进程安装六个精确目录/点击/详情/添加 Hook；
+不启动 Context/resource 通用 Hook、全局玻璃适配或桌面广播桥。目标模型取自实机
+智能助理 versionCode 2540340，后台读取包版本不匹配时不生成本地目录。
+
+首页原有 PickerCardListResponseCallbackWrapper 的 shouldCacheFirstPage=true 路径
+代理实际 PagingResponseCallback：在系统缓存处理之后、交付首页之前合并本地
+AppGroup Card。所有本地 Card/详情使用 mhm-local-widget: 标识，重复交付时去重，
+云端条目保留；本地项不进入原商城磁盘缓存。网络失败且本机 provider 可用时
+交付本地目录，空目录或适配失败保留原失败回调。未修改搜索、分类或后续分页。
+
+本机已注册 provider 按当前用户、完整 ComponentName 去重，按应用分组，每卡
+最多四个应用。使用系统 AppGroup 布局/图标及详情布局，不新增 renderer 或模糊层。
+点击本地卡片期间仅向既有 detail URI 增补局部 groupId 标记；真实 appPackage
+不变，不替换远程应用详情。对应 Repository.getPickerData 由后台生成真实
+PickerDetailResponseWidget 与 Wrapper，并在原 launchOnUI 路径的主线程恢复
+Continuation；取消的 Job 不恢复，过期/关闭后的结果不继续覆盖有效目录。
+
+添加仍使用原 getAddTargetItemInfo 与添加/配置/绑定链；只为本地记录补回精确
+providerInfo/profile 和 MIUI 资格。不伪造 appWidgetId、MAML、更新 action 或暴露
+刷新契约。标准绑定权限、provider 配置 Activity、更新和删除继续由系统完成，
+是否所有 provider 都能正常添加/配置仍需真机回归。
+
+第一版仅枚举当前用户，不混合工作资料/其他用户的相同组件。优先使用
+AppWidgetProviderInfo.targetCellWidth/Height；缺省时从像素 minWidth/Height 转 dp
+后估算网格。目录样式复用系统固定尺寸表；非标准尺寸使用 2x2 目录卡片，保留
+真实 providerInfo 交给原 host，不能声称任意尺寸已完整适配。
+
+性能边界：provider 枚举、应用标签/图标读取、JSON 模型转换与分组均在单线程
+后台执行；线程按需创建、空闲十秒退出，没有轮询。只缓存不含 View/Context 的
+provider 数据，不缓存已经绑定 View 的 Drawable/Card。Context 为弱 application
+引用；包安装/卸载/变更及相关设置改变使数据失效，失效时不主动做全量枚举。
+回调去重并丢弃被后续请求替代的交付；UI 热路径仅做本地标识和缓存字段读取。
+关闭开关立即停止后续目录注入，已显示列表在下一次目录加载时恢复原数据。
+
+新版桌面 Dart profile 新增 29378704 / 440922566a4fe1f5、局部分支 0x1a86998，
+保留旧 profile 的精确全文件/入口校验。新增 SDK 指纹 e3273af9c63e9922 允许实例
+标签链，已核对旧文档三个 ABI 调用点机器码与旧包一致；schema 指纹不放宽。
+SDK 两个允许指纹一次读取校验，避免相同长度库重复计算整文件指纹。未知版本
+仍拒绝地址 Hook。保留安卓旧目录的局部保护，但本地澎湃目录不依赖它返回候选。
+
+验证范围：目录标识/尺寸策略与声明作用域三项 JUnit 通过，native 策略及
+metadata 生命周期 ASan/UBSan 通过，picker 汇编 96 项 ABI 通过；新旧实际 SDK
+指纹接受、错误指纹拒绝和新 Dart 指纹验证通过。APK ZIP/压缩/损坏拒绝回归通过。
+这些是主机测试与静态 ABI 检查，不等同于手机目录显示、配置、堆叠或材质验证。
+
+
+最终 Release/lintVital 与 APK v2 签名验证通过，相关 JUnit 三项通过。反编译最终
+APK 确认 target 的 kotlinx.coroutines.n1/n1$a 名称保留，CoroutineSingletons 名称
+仍在运行时拼接，没有重演模块 Kotlin 类名被 R8 重写到目标 ClassLoader 的问题。
+随后用独立 app_process + PathClassLoader 在手机只读加载已安装智能助理：真实
+构造器、Continuation/Job 接口、Gson Card/AppGroup 模型及 provider 字段校验全部
+PASS；运行后删除临时 dex。没有安装模块、运行真正目录 Hook、重启系统进程或
+改变现有 widget。类/模型校验不等同于界面/生命周期验证。
+
+交付 `HyperModifier-local-widget-catalog-7748.apk`，SHA-256：
+3cf14f1d85b8da9f521fdf28192a3e60575a5b195a7d5a4e47ac041e3fb593dd。
+安装后需新增智能助理作用域、保持系统桌面/系统界面作用域，开启已有堆叠开关并
+重启智能助理与系统桌面。检查澎湃目录首页“本机小组件”应用分组、Deadliner
+两类 provider 的详情/预览/添加，随后配置、点击、更新、堆叠、两种玻璃和移除。
+联网/离线、退出重进、安装卸载应用与关闭开关重开目录也需回归。未提交 Git。
+
+
+### 2026-10-15：点击崩溃与目录没有合并的修正
+
+用户截图表明首版插入了独立 AppGroup 卡片，未进入原有“支持小部件应用”扁平
+列表。实机 crash buffer 的两次智能助理异常（11:10:49 / 11:10:55）均为
+NullPointerException -> v8.a.a(ArgumentParser.kt:188) -> g8.a.s(AppGroupCard.kt:206)。
+原因是自建 AppGroupEntity 没有 BasePropertyEntity.title，点击解析强制非空。
+之前仅验证构造器和模型反序列化没有覆盖点击协议，不能据此声称目录可用。
+
+撤掉 AppGroup 卡片、首页分页 callback 代理及 URI groupId 标记。接入点改为
+PickerAppListRepositoryKt.traversalAppListDataSetLocalIcon 的现有后台加载阶段：
+首页请求在 List 内携带局部分页标记，后台图标协程准备原生 PickerListAppData，
+仍由 PickerMainViewModel.convertAppListToCards 生成 cardType=20 的标准扁平行。
+标题、行布局、点击及分页展示均复用系统原链路，原商城缓存不写入本地条目。
+
+分页原始数据计数与待转换行独立保留，避免本地应用数量改变远程 hasNext。
+首个空云端页面有本地数据时用一个真实本地记录进入原标题/成功分支；后续
+远程页面排除首页已经列出的本机 provider 应用，减少跨页重复。仅首页请求
+适配，搜索及其他组件分类不额外插入分组。重复 package 合并，当前用户边界保留。
+
+详情使用真实 appPackage，应用概览返回后按完整 provider 身份合并本地记录；
+远程失败且本地可用时提供本地详情。已有 MAML/付费记录及授权字段保持原数据，
+指定 implUniqueCode/productId/groupId 的单项请求不拦截。相对/短 provider 类名
+规范化后去重，已有远程 provider 不重复添加。数据恢复通过目标自身 intercepted
+Continuation 的 dispatcher，取消也交回 CancellationException 让原 finally 清理，
+不再简单丢弃取消的 continuation。异步请求有设置/包变化 generation 保护。
+
+智能助理 AppWidgetItemInfo.parseWidgetMetaData 只为本机登记的 provider 补充
+isMIUIWidget=true，getAddTargetItemInfo 补回精确 providerInfo/profile；不改安装包
+metadata、商城/服务器资格、更新 action、PendingIntent 或已分配 appWidgetId。
+这是智能助理本地模型的 MIUI 资格兼容，不能等同于服务端收录或任意 provider
+实现了全部 MIUI 专用接口。原桌面 native 堆叠/尺寸/材质桥继续复用。
+
+性能检查：去掉额外卡片构造、Gson 模型转换和首页 callback 额外重放。枚举、
+图标、详情合并继续在原 IO 阶段/按需后台线程；UI 转换只传递准备好的列表。
+冷枚举在后台串行并复用 snapshot，主线程及资格读取不等待该锁。新增资格覆盖
+只是 cached component 查询与布尔字段写入，没有绘制 Hook、轮询或常驻采样。
+这是结构检查，未测量帧率、耗电或函数耗时，不能报告真机性能改善。
+
+实机独立 app_process 校验扩展为调用真实 convertAppListToCards 生成扁平 Card，
+再调用此次崩溃的 v8.a.a 点击参数解析器，PASS；构造器及协程 ABI 仍 PASS。
+这些不运行应用真实 Activity、目录 Hook 或配置流程，仍需安装后的端到端回归。
+新增远程分页计数/空首页/尾页与 provider 别名去重回归，相关 JUnit 共五项通过。
+
+
+最终扁平列表修复 Release/lintVital、五项相关 JUnit 与 APK v2 签名校验通过。
+最终 APK 反编译确认 BaseContinuationImpl/ContinuationImpl/Result$Failure 等目标
+Kotlin 类名仍动态拼接，原生列表与 metadata 方法名保留。编译类时间晚于最终源码。
+独立进程验证完成后删除手机临时 dex。未安装模块、未提交 Git；真实目录注入、
+实际点击详情和添加仍需用户安装后验证。
+
+交付 `HyperModifier-local-widget-unified-list-fix.apk`，SHA-256：
+59d2a0e3e708d1de23500be648232df6154c10852d551bd6958a5c87cf432c08。
+安装并重启智能助理/系统桌面后，检查原有“支持小部件应用”扁平列表包含本机
+provider 应用、同一应用不重复分组，点击后可进入合并详情并完成添加/配置。
+
+
+### 2026-10-15 第二次点击崩溃：修正详情 Flow 返回值约定
+
+用户安装扁平列表版本后仍崩溃。此次 11:31:54、PID 30185 堆栈为
+PickerDetailResponseWrapper cannot be cast to kotlinx.coroutines.flow.d，发生于
+PickerDetailViewModel$getPickerDetailList$2.invokeSuspend。上次仅检查构造器、
+点击参数和协程 ABI，未覆盖 getPickerData 实际返回类型，验证范围不足。
+
+完整 smali 确认 suspend getPickerData 返回 Flow<PickerDetailResponseWrapper>，
+而不是单个 Wrapper；正常、空数据和 ApiException 分支均构建不可变
+kotlinx.coroutines.flow.q（flowOf），其 final Object a 为负载，d(collector,
+continuation) 负责原生 emit，并原样传播 COROUTINE_SUSPENDED。
+
+新增 LocalWidgetCatalogFlow：绑定时校验目标 Flow/collector/continuation 与
+单值实现布局；仅对已验证的精确 q 实例读取负载，在按需后台任务中合并详情，
+重新构造同类型 Flow。原 Flow 不修改，无变化不分配新 Flow。未知 Flow（含其他
+模块包装）与 Result.Failure/取消原样透传；不代理 collect/emit，不替代其挂起
+状态机。远程成功 Wrapper 的付费/MAML 字段仍保留。另处理远程 responseList
+为 null 的情况。关闭或包变化时，异步结果仍按 generation 回退原 Flow。
+
+验证：Release/lintVital 构建成功，5 项目录/作用域 JUnit 通过，APK v2 签名通过。
+在手机独立 app_process 中加载当前安装的智能助理 APK，运行仓库内
+`tools/tests/LocalWidgetCatalogFlowDeviceTest.java`（与真实生产 adapter 同编译）：
+实际 Flow 立即/挂起 collect、Wrapper 与 continuation 身份、收集器异常、取消、
+未知 Flow 透传、无变化不分配和原 Flow 不变全部 PASS。已有原生扁平 Card 转换
+与 v8.a 点击参数解析也再次 PASS。此测试未运行真实 Activity/LSPosed Hook，
+不等同于用户页面点击和添加小组件端到端通过；未代用户安装或重启作用域。
+
+性能为代码结构检查：反射访问方案在绑定时缓存；新增操作仅详情请求完成时
+运行，合并在原有按需 worker，保留空闲 10 秒退出；不增加常驻任务、绘制/动画
+Hook、GPU 层或周期性 IPC。未测量帧率、功耗或前后耗时，不声称性能改善。
+手机临时诊断 dex 已清理。
+
+交付 `HyperModifier-local-widget-detail-flow-fix.apk`，SHA-256：
+fe53d7bfb33d4acc47507f9e1f38fb9d4231aa9a0cee3f7c570b9468e06f1e78。
+
+
+### 2026-10-15 第三次点击崩溃：本地详情的默认付费状态
+
+11:39:15/11:39:27 新堆栈已通过 Flow.collect，崩于
+PickerDetailFragment.updateShow:184。完整 smali 指向
+getPriceInCent() 后 Intrinsics.checkNotNull，而该分支条件为 isPay && !isBought。
+手机已安装 APK SHA-256 与前次交付 fe53d7bf…06f1e78 完全一致。
+
+根因是系统 PickerDetailResponseWrapper 五参数简化构造器默认 isPay=true、
+priceInCent=null。本地目录此前只设应用和列表，遗漏了这个与 UI 耦合的默认值。
+这不是上次 Flow 类型错误重现；独立 Flow 协议验证并未覆盖详情 UI 模型语义。
+
+新增 LocalWidgetCatalogModels 缓存完整 19 参数构造器及本地行状态 setter，
+为新建本地 Wrapper 显式传 isPay=false、priceInCent=0、isBought=false、
+非空安装提示和下载列表；本地行同样设免费、零价格，并为已登记本地 provider
+设置可添加状态。仅作用于新建的本地行，不修改现有商城记录或其授权信息。
+云端空记录 Wrapper 采用完整本地状态；非空远程记录仍复制其所有字段后合并
+provider，保留 MAML/付费状态。没有给远程付费产品补授权或绕过购买流程。
+
+tools/tests/LocalWidgetCatalogFlowDeviceTest.java 已扩展，直接加载真机目标
+APK 并与生产 Models/Flow 类同编译：先断言旧短构造器的默认付费/空价格组合，
+再验证修复模型免费/零价格/安装提示/下载列表、本地行可添加且未伪造购买状态、
+旧对象未被修改；原 Flow collect 的立即/挂起/异常/取消等回归仍 PASS。
+验证仍为独立进程模型与协议测试，未运行真实 Fragment/LSPosed 页面，不能
+宣称安装后详情、预览或添加流程已经端到端通过。
+
+性能检查为静态结构检查：方法/构造器仅绑定时查找；增加的字段初始化只在
+详情按需 worker 执行，不增加启动进程、主线程 Hook、动画/触摸 Hook、IPC、
+GPU 层、持有界面的缓存或定时轮询。未进行功耗/帧时间前后测量。
+
+Release/lintVital 构建成功，5 项目录/作用域 JUnit 通过。交付已签名
+`HyperModifier-local-widget-detail-state-fix.apk`，SHA-256：
+16eaf685e4d6b09c8c6c7a51087dcff592bcf880d6540747e288431a4b9d9f6a。
+手机临时诊断 dex 已清理。未代安装、未提交，真实详情页和添加流程待安装回归。
+
+
+### 2026-10-15 详情空白预览与“加载中，请稍后添加”
+
+用户能打开 Deadliner 详情但预览为空，添加弹出 pa_picker_detail_preview_load_fail_can_not_add_widget。
+定位字符串 0x7f130403 到 DragHelper（d9.a.b/c）：ObserveGlideLoadStatusImageView.a
+未就绪时阻止添加。PickerItemContainer.showPreviewImage 使用应用条目的 light/darkPreviewUrl，
+经 picker.util.l0.i → u6.c.f → Glide asBitmap；空 URL 仅走占位符分支，未完成实际预览加载。
+本地条目此前两个 URL 均为空，因此不是继续等待就会完成的网络请求。
+
+改为在详情后台构造时填入 android.resource://package/resourceId：优先 provider.previewImage，
+然后 provider.icon、applicationInfo.icon；均不存在时使用 android 的默认应用图标资源。
+light/dark URL 同源，Widget 构造器第三个 String 是 desc，第四/第五个才是 light/dark。
+没有新增加载状态 Hook，没有直接写成功布尔值，没有移除 DragHelper 检查。
+继续由原 Glide 异步解码、缩放与缓存，原成功/失败回调负责是否允许添加。
+资源选择仅读取已有 provider/AppInfo 整数并构造 URI；不在主线程解码或查询 provider，
+不新增截图、文件缓存、View 持有、实时小组件宿主、轮询或更新广播。
+
+从手机读取 Deadliner APK 并用 aapt2 检查两个 provider XML，均未声明 previewImage，
+只有 Glance initialLayout 与配置 Activity。因此此应用先显示图标作为静态兜底，
+不声称显示了实时内容或已配置后的实际预览。添加后的实际 widget/configure 链路保持系统行为。
+
+tools/tests/LocalWidgetCatalogPreviewDeviceTest.java 在手机独立 app_process 加载当前
+智能助理 APK 和 Deadliner 已安装资源，用目标 s2.e ResourceDrawableDecoder 与目标
+ResourceBitmapDecoder 解码出真实 Bitmap，再调用原生 ObserveGlideLoadStatusImageView
+成功监听器和实际 d9.a.b 检查。Deadliner 自适应图标 URI 与 android 默认图标 URI 均 PASS。
+测试为隔离环境：未附加/渲染 View，未运行真实页面或 LSPosed Hook，也未分配、绑定或
+添加 widget。测试初次因目标 BitmapPoolAdapter 构造器被裁剪失败；改用有已验证构造器的
+LruBitmapPool(0) 后通过。不能把隔离检查等同于安装后的完整页面添加验证。
+新增本地预览来源优先级及空资源兜底回归；原 Flow/模型修复保持。
+性能结论为代码结构审查，未取得帧时间或功耗前后对照。
+
+Release/lintVital、6 项目录/作用域 JUnit、APK v2 签名通过。交付
+`HyperModifier-local-widget-preview-fix.apk`，SHA-256：
+03a474b1ef2c47c61b5777c07885f665a6134a726ca06482dc10148d47a9f0f6。
+未代安装/重启作用域、未提交。实际页面添加及配置仍需安装后回归。
+
+
+### 2026-10-15 修复 4×2 本地组件被压成 2×2
+
+用户反馈唯品会等原本 4×2 的组件被注入为 2×2，转换后的 MIUI 小组件不能
+自由缩放，导致内容异常。根因在本地目录的固定 70dp 格数估算：唯品会未声明
+Android targetCellWidth/Height，minWidth/minHeight 推出的 6×3 等格数不在
+MIUI 枚举内，随后此前的 style==0 → style=1 回退把它永久变成了 2×2。
+“保留 providerInfo 就能保留尺寸”的原判断不成立，因为 getAddTargetItemInfo
+从 originStyle 转换 span/configSpan，而不是从 provider minWidth 重新计算。
+
+移除固定 dp 格数估算及强制 2×2 回退，新增 LocalWidgetCatalogSizes：明确声明
+且系统支持的 targetCell 优先；缺省轴按智能助理实际 pa_widget_size_type_* 的
+像素宽高选能容纳 provider 最小尺寸的最小支持容器。显式但不支持的格数仅允许
+向上匹配；无对应容器或缺少有效尺寸不注入，避免添加不可调整的错误大小。
+8×4 为特殊缩放/平板样式，不用作普通手机尺寸估算的“大容器”。Widget 内格数、
+style、originStyle 使用同一个选择结果，不再出现预览样式和添加格数不一致。
+既有非空远程 MIUI 记录及授权状态不改。既有已添加错误尺寸未自动修改桌面数据库，
+安装后需要移除再重新添加，才能让新 ItemInfo 尺寸生效。
+
+真机独立 app_process 读取 AppWidgetManager 返回的已换算像素（非 dumpsys 的
+complex dimension 编码）：密度 3.25，唯品会 Multi=1063×494、DeskHeler=993×477、
+Style4=1027×477，匹配 4×2；其余四个 provider=477×477，保持 2×2。
+Deadliner Compact target=2×2 / min=358×358、Capsule target=2×1 / min=358×130，
+继续保持 2×2 与 2×1。系统实际 4×2 容器在此配置为 344×160dp。
+
+tools/tests/LocalWidgetCatalogSizesDeviceTest.java 直接调用当前智能助理原生
+picker.util.g.a(ItemInfo, style)，逐个断言 spanX/Y 及 configSpanX/Y 与选择结果一致，
+9 个真实 provider 全部 PASS。此测试未实际修改桌面、添加/绑定组件或跑真实页面；
+仍需要安装后的显示回归。新增 JUnit 覆盖唯品会三种横向尺寸、显式格数优先、
+不支持尺寸不缩小、纵向/大组件、无尺寸/超大尺寸拒绝及样式与格数一致。
+
+性能审查：尺寸比较是详情后台每 provider 固定至多 9 次的整数比较；资源 ID 和
+像素容器尺寸按配置缓存，Configuration 变化时才重建。无 View/Activity/Context
+强引用缓存，不增加主线程反射/IPC、布局/绘制 Hook、轮询或常驻任务。
+只是结构性检查及功能回归，未测量耗电/帧时间改善。手机临时 dex 与残留的尺寸
+只读诊断进程已清理。
+
+Release/lintVital、11 项目录/尺寸/作用域 JUnit 与 APK v2 签名通过。
+交付 `HyperModifier-local-widget-size-fix.apk`，SHA-256：
+fbd385406cf48caab24ebc00aee9354f708bf8803028784a2250108e4db12169。
+未代安装/重启作用域、未提交。实际显示与重新添加后的布局待用户回归。
+
+### 2026-10-15：schema ABI 兼容与桌面运行状态
+
+用户反馈 7748 在其他 ROM 上无法获得堆叠/玻璃资格。提交的系统 schema 库为
+601320 字节、FNV-1a64 `5332d3708a06060d`，旧设备库为 601400 字节、
+`f519ae5224ebc666`。此前整库长度/指纹校验会拒绝用户库。
+
+改为保守的 ARM64 ABI 结构契约：19 个实际依赖的导出接口、12 个关联内部辅助
+函数（共 8076 字节代码）验证指令、导出尺寸、调用关系和 PLT 的语义导入符号。
+地址重定位与内部 Rust panic 源位置 ADR 可移动；返回值编码、对象字段偏移、
+局部分支、clone/drop 路径变化均拒绝。安装前另核对实时公开入口与磁盘代码，
+检测到先前的 inline 改写时标为安装失败，避免误报为 ROM ABI 不兼容。
+两份 schema 可生成完全相同的契约，不再按整库哈希加入逐 ROM 白名单。
+这不是通用 ABI 推断：相关指令或依赖 Rust 符号改变后仍需人工审核新契约。
+
+Dart picker 不再以 APK 整库哈希为唯一安装条件。在加载的可执行段中一次性
+查找经过审核的 128 字节上下文，仅允许 BL 调用重定位变化，要求唯一命中、
+调用目标与两个分支后继均在可执行段内。寄存器、对象池访问和分支距离保持
+精确匹配。无匹配、歧义或 detour 失败时不启用 picker override；安装失败尝试
+用 Native API 的 unhook 回滚。7722/7748 命中已知位置；提供的 8244 安全拒绝。
+本轮不宣称 8244 已获支持，也不把 native 崩溃描述为可被异常捕获兜底。
+
+新增只读本地状态通道：复用原安装 worker，启动期间最多每 500ms 重试、总计
+不超过 60 秒；安装结束后阻塞等待诊断请求，无定时唤醒，线程栈设为 256KiB。库加载回调仅合并 eventfd 信号，ABI 校验、Dart 扫描
+与 detour 安装全部交给该 worker，不在加载回调线程执行。
+状态响应只允许 UID 1000 读取；SystemUI 验证对端为本机桌面 UID，模块请求
+继续复用已有 inventory 接收器的包名/UID 校验、异步执行器和 ResultReceiver。
+该通道不接受配置命令。schema 未通过验证时也不安装设置广播桥，避免使用
+未验证的 getter ABI。未加载/不可达/超时与 ABI 不兼容分别呈现。
+
+桌面设置页按需查询 schema、picker、实例规则、设置桥及配置送达状态。打开
+已启用功能的页面自动查询一次，支持点击刷新；确认 schema 不兼容才自动弹出
+提取引导，同原因在当前页面保存状态中仅自动提示一次。Dialog 提供电脑 ADB
+提取命令、root 文件管理器替代步骤和诊断复制，不自行申请 root 或更改系统库。
+状态不可达不会被当作 schema 不兼容。
+
+性能检查为结构审查与主机回归：安装期读取最多 4MiB schema（当前约 0.6MiB），
+Dart 可执行扫描限制总计 64MiB，校验缓存为本进程一次；高频 metadata/布尔值/
+绘制/动画路径未加入扫描、磁盘访问、IPC 或状态查询。新增成本是一个复用的
+阻塞安装线程和按需诊断连接；无真机帧率、耗电或分配采样对照数据。
+
+验证：两份真实 schema、返回值/入口/内部 helper/导入符号破坏、无关 Build ID
+变化与截断 ELF；Dart 两套上下文、寄存器破坏、歧义与范围上限；真实 7722、
+7748、8244 APK 扫描；原 picker 汇编 96 个 ABI 用例与 widget policy 回归。
+Android 编译及状态解析 JUnit 另行执行。尚需真机验证 SELinux 下的状态通道、
+Dialog 呈现，以及启停、原背景恢复和实际堆叠/材质行为。
+
+本轮最终验证：Release 构建及 APK v2 签名校验通过；兼容状态、原玻璃匹配与
+材质规则共 16 项 JUnit 通过，主机 ASan/UBSan 兼容回归与原 picker 96 个 ABI
+用例通过。两份真实 schema 生成的契约文件逐字节相同。交付包为
+`app/build/outputs/apk/release/HyperModifier-widget-abi-compat.apk`，SHA-256：
+`d227f64f2443725665cf0da1a6c2cc9ff71be1b1dcb8588c8cc0d946880d3280`。
+未安装到用户手机，未完成上述真机验收，也没有帧率或耗电改善的测量结论。
+
+### 2026-10-15：8244 与 Dart／SDK 结构定位第二版
+
+8244（RELEASE-8.01.02.8244-260915-09172210-R）Dart SDK 为 3.10.7，
+分析得到 103074 个代码入口。小组件列表函数位于 `0x1ac01f8`（1560 字节），
+分类读取分支为 `0x1ac047c`。经实际对象池 offset 校正，邻近字符串依次对应
+`buildAppWidgetsItems, needsHideFromPicker `、`buildAppWidgetsItems, isMiuiWidget `
+及 `WidgetsVerticalList`。其压缩布尔读取仍为 ItemInfo 的 `+251` 字段，x28
+解压，x22 为 NULL，false 为 x22+0x30；TBNZ W0,#4 的两个后继未改变。
+7748 与 8244 的原 128 字节窗口差异是调用重定位、对象池页/索引及静态字段槽，
+不是此处的寄存器 ABI 或分类逻辑变化。
+
+上一轮按两份指令窗口匹配，改为三版共用的一份结构契约：保持操作码、寄存器、
+分类字段、帧槽与局部分支精确；解码对象池 ADD/LDR、静态字段 LDR 与 BL。
+新增多处独立交叉约束：两条日志路径读取同一静态字段、使用同一 logger 池项，
+两条分类日志字面量池项相邻且与 logger 相差五项，support/isPad 调试字面量池项
+为另一对相邻项；核对同函数的 false 构造以及条件跳转目标。池项的角色来自
+离线反汇编审核，运行时验证操作数关系，不声称在运行时读取了字符串内容。
+所有 witness 必须位于同一可读可执行段，调用目标位于可执行段且不能回落到
+当前分类块，扫描必须唯一命中，否则拒绝安装。没有加入新的版本 RVA 白名单。
+
+真实 Dart 镜像的同一生产定位器结果：7722 `0x1a83de0`、7748 `0x1a86998`、
+8244 `0x1ac047c`。新增 128 组对象池页/索引、静态槽与调用地址变动测试，包括
+跨池页边界；破坏分类寄存器/字段、false 构造、静态槽或池项关系、调用越界/
+跳入当前块、重复匹配和地址溢出均拒绝。这能自动容纳这些操作数与代码地址
+变化；若编译器改变寄存器分配、字段布局或控制流，仍需审核新结构，不能保证
+未知 Dart 编译器版本无需维护。
+
+8244 SDK 为 2689096 字节，旧 SDK 哈希门槛会阻止实例 ID 跟踪。改用 SDK 的
+实际调用点验证两项外部接口：`AppWidgetManager_get_app_widget_info` 以 x0
+低位 tag 判断成功并取 x1 owned pointer；`AppWidgetProviderInfo_get_providerInfo`
+直接使用 x0 pointer。PLT 解码后核对 GOT 与实际 dlsym 目标，不能仅凭类似指令
+或存在导入符号通过。无需调用这些外部函数或分配系统对象。旧版、7748、8244
+SDK 均通过同一契约；错误导入目标、返回 tag 或 pointer 使用方式均拒绝。
+此处也移除了整份 SDK 长度/哈希白名单及其启动期磁盘读取。
+
+性能范围：仍在已有后台安装 worker 中一次性执行；Dart 扫描总可执行段上限
+64MiB，昂贵 witness 验证只用于 exact bool triplet 候选；SDK 可读映射总量上限
+16MiB，快速指令筛选后才解码少量 PLT/GOT。没有新线程、轮询、Hook 或每帧/
+每次 metadata 调用的额外逻辑。现有设置热更新、关闭恢复及独立能力降级路径
+保持不变。验证是主机结构/ABI 回归与 Android 编译，不是真机帧率或耗电测量。
+
+本轮交付验证：Release、Debug native 构建通过；相关 16 项 JUnit 无失败。
+两份 schema、三份真实 Dart 镜像、三份真实 SDK 镜像、128 组自适应操作数
+变动及拒绝路径均通过主机 ASan/UBSan 回归，原 picker 96 个 ABI 用例与
+widget policy 测试通过。发布包 `HyperModifier-widget-8244-adaptive.apk`，
+SHA-256：`03365e1beb652b5eb409fd1cb1ca41170376caff13b1c7f3e663759be2dd9e60`。未安装至真机，实际 8244 小组件添加、绑定、
+堆叠、材质、实时启停与重启恢复仍需设备验收。
+
+### 2026-10-16：OS4.0.2.0 正式版现场诊断（尚未修复）
+
+设备 fingerprint 为 `Xiaomi/pudding/pudding:17/CP2A.260605.016/OS4.0.2.0.XPCCNXM:user/release-keys`。
+系统桌面是随 ROM 提供的 7751（801027751，10100945），并非之前的 7748。
+实际安装模块包含 `PICKER structural-v2`。诊断材料保存在
+`/private/tmp/mhm-widget-os4020/`，现有日志先保存，随后记录完整桌面启动；未清
+logcat、未清桌面数据、未安装或变更模块。用户复现反馈没有玻璃效果。
+
+10:24:58（pid 2066）与 10:25:57（pid 4110）的两次启动都记录：
+- `INIT launcher uid=10139 api=2`，确认模块 native 注入发生。
+- `HOOK rejected: schema ABI incompatible (live-entry:AppWidgetProviderInfo_clone)`。
+- `PICKER structural-v2 branch result=0 ready=1 rva=0x1a86e20`，确认 Dart 安装成功。
+- MAML build ID / Calendar 指纹拒绝属于独立桌面时钟路径，不是上述拒绝的原因。
+
+导出的 schema 为 601384 字节，现有生产 schema ABI 校验通过。7751 的真实
+Dart 与 SDK 镜像也分别通过生产定位器及返回值 ABI probe 的主机回归，包含
+拒绝路径与 ASan/UBSan。阻断发生在额外的 live-entry 验证，不能把日志中的
+“schema ABI incompatible”直接解释为文件 ABI 不兼容。
+
+新 ROM 的 `libhyper_os_schema_public.so` 和 `libhyper_os_appwidget_public.so`
+都导出 GLOBAL DEFAULT 的 AppWidgetProviderInfo_clone/drop。schema 的 clone
+为 636 字节、drop 为 168 字节；appwidget 的 clone 为 636 字节、drop 为 24 字节。
+桌面和 SDK 的 DT_NEEDED 中 appwidget 库均在 schema 库之前。
+
+现有 matchingSchema 用 ActivityInfo_get_meta_data 的 dladdr 决定单一 schema
+base，然后强制要求全部 19 个 dlsym(launcher, name) 等于该 base+schema RVA。
+同名导出来自其他合法库时也会被拒绝；这是上一轮实现的错误假设。依赖顺序与
+同名导出证据强烈指向该误判，但当前日志将“解析地址不同”和“实时字节变化”
+合并成 live-entry，尚未取得实际 resolved 地址的 dladdr 来源，不能据此彻底
+排除入口被其他模块改写。
+
+修复应先分开记录符号来源与代码变化，再按实际符号所在库验证相应 ABI，
+避免删除 live-code 检查或直接跳过 clone/drop 生命周期验证。本次只诊断和保存
+证据，未修改运行时代码或向手机部署修复。日志采集已停止；未做性能对照测量。
+
+### 2026-10-16：正式版同名导出来源误判修复与真机恢复
+
+matchingSchema 不再把 ActivityInfo_get_meta_data 的 schema base 当作全部接口的
+唯一来源。逐接口 dlsym + dladdr 取得实际 ELF，并按来源缓存文件和 RX 映射；
+每份文件只读取/解析一次，总缓存上限 8MiB（单文件仍为 4MiB）。实际导出必须
+满足对应 ABI 结构契约，地址必须等于其自身 ELF 导出地址；公共入口以及该根
+可达的所有内部 helper 都与实时 RX 代码比较，入口或 helper 改写仍拒绝。
+
+通用 Image 校验支持选择一个根并遍历完整 helper 图，允许其他合法 DSO 只导出
+相关接口，而不要求同时具备所有 19 项 schema 接口。为本机 appwidget 库审核并
+生成 clone/drop 的额外结构契约，覆盖两个包装与 8 个内部 helper，包括 4988
+字节的内部 clone 路径和 drop 24 字节跳板实际调用的释放路径。不是按库名或
+函数尺寸放行，也未简单跳过生命周期接口。ABI 不兼容与 live-origin/address/
+range/code 失败分别记录；日志不再一概描述为 schema ABI incompatible。
+
+主机 ASan/UBSan 回归：19 个原 schema 导出、两个真实 appwidget 替代导出均
+通过；逐一修改替代根可达函数、模拟 live 改写、错误导出名均拒绝。原 schema
+突变/截断检查、7722/7748/8244/7751 Dart 镜像与 128 组操作数变动、7751 SDK
+ABI probe 和原 picker 96 个寄存器 ABI 用例通过。Release 与 Debug native
+构建通过，修复包与已安装模块签名相同，已覆盖安装并重启桌面。
+
+真机 10:37:27（pid 18601）确认：
+- AppWidgetProviderInfo_clone/drop 的实际来源均为
+  `/system_ext/lib64/libhyper_os_appwidget_public.so`，其余 17 个接口来自 schema。
+- `INSTANCE SDK return/call ABI verified`。
+- `HOOK metadata capability bridge ready`。
+- `PICKER structural-v2 branch result=0 ready=1 rva=0x1a86e20`。
+- `BRIDGE install result=0 ready=1`，并已观察到真实第三方 provider metadata。
+用户随后反馈“OK，回来了”，确认功能恢复。此时同名来源误判已由实际 dladdr
+日志证实。未对全部堆叠绑定/移除、实时禁用恢复或所有其他模块组合逐项验收；
+独立的 MAML Calendar 指纹拒绝仍存在，本次未修改该时钟功能。
+
+性能检查：新增来源解析、契约遍历与 live 比较仅执行于现有后台安装阶段；
+没有新增线程、周期轮询、同步 IPC 或高频 metadata/绘制/动画逻辑。源文件缓存
+与范围检查均为安装期局部对象，完成后释放。未做帧率或耗电对照测量。
+材料 `/private/tmp/mhm-widget-os4020/fix-device-log.txt`。交付包
+`app/build/outputs/apk/release/HyperModifier-schema-origin-fix.apk`，SHA-256：
+`f9b3747ee5879d4c025b122f95f5ea78432eac4132d4f921d7ef39dae8d5b0e0`。
+
+### 2026-10-16：澎湃目录 2540371 缺失本地组件
+
+用户确认目录完全没有本地安卓组件。实际智能助理为 25.40.37.10-10082009 / 2540371，旧参考为 2540340；新包提取到 `reference/MIUIPersonalAssistantPhoneOS4-2540371.apk`，反汇编目录 `reference/personalassistant-2540371/`。模块和安卓堆叠开关均为开启。
+
+发现两个独立阻断：
+
+1. `Binding` 先按混淆名 `kotlinx.coroutines.n1$a` 解析 Job.Key，新包中此类不存在，独立 app_process 复现 ClassNotFoundException，安装未能完成。新包 Job 为 m1，Key 为 m1$a；n1 已变为其他 Job 实现。
+2. 即使越过初始化，load() 仍用 `versionCode == 2540340` 拒绝新版，直接返回 null 且没有说明。
+
+修复不再使用应用版本白名单，也不换成另一组混淆常量：从保留的 `JobCancellationException.job` 字段取得 Job 类型，再校验 CoroutineContext.Element、isActive():boolean、Key 接口及静态 final 单例。元数据在安装阶段一次性解析，后续取消检查复用 Method/Key，无 DEX 扫描或高频反射查找。其余列表/模型/详情签名和字段也先完整解析/校验，全部成功才安装 Hook。安装收集 7 个句柄，中途失败撤销已装句柄、清理监听和 worker 并重置安装标记；运行时失败递增代际、停用本地逻辑并报告，保留原生目录流程。
+
+真实 2540371 APK 的生产 Binding 构造/回滚检查通过；使用无操作诊断 shim，未执行 Hook 安装。原生 Flow 的 collect、挂起、异常、取消及外部 Flow 保留检查通过；9 个安装 provider 的尺寸与原生 ItemInfo/configSpan 转换一致。新包把部分购买/付费 getter 固定为常量，因此测试比较原始私有字段和已有对象状态，不强制覆盖原生 getter；生产代码不修改这些 getter 或远程商品。
+
+实际列表交付增加一次性诊断：只有首页包含本地 provider 且原生转换器返回后，才记录“本地小组件目录已交付”。首次获取真实应用 Context 时接入现有诊断队列，无通用 Context Hook、无新轮询。修复签名包已安装并重启组件目录进程，用户明确确认本地安卓组件已重新出现；未取得自动化完整 UI 列表，恢复结论以用户确认为依据。323 项 JVM 测试及 Release 构建/签名验证通过；详情添加全流程及性能对照不由此推断通过。修复 APK SHA-256：`09072e5353278d9719013fa170c857a634a7338ac8277de8029535a06c55c78f`。

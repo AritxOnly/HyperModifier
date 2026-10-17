@@ -799,3 +799,22 @@ internal fun SpotifySettingsPage(
         )
     }
 }
+
+@Composable
+internal fun DouyinSettingsPage(
+    padding: PaddingValues,
+    settings: ModifierSettings,
+    update: (ModifierSettings) -> Unit,
+    onScroll: (Float) -> Unit,
+) = SettingsScrollPage(padding, onScroll) {
+    SettingsSection(topLabel = "抖音") {
+        SettingsSwitchItem(
+            "柔光玻璃悬浮底栏", "系统风格图标与独立发布按钮",
+            settings.douyinFloatingNavigationEnabled,
+            { update(settings.copy(douyinFloatingNavigationEnabled = it)) },
+        )
+    }
+    SettingsSection(topLabel = "兼容性") {
+        SettingItem("当前适配版本", "40.7.0")
+    }
+}

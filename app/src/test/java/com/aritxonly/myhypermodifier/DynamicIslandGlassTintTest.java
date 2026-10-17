@@ -43,29 +43,15 @@ public class DynamicIslandGlassTintTest {
         assertEquals(1f, state.recipe(100)[14], 0f);
     }
 
-    @Test public void bothSurfacesKeepIndependentOpacityAndCanRestoreIndependently() {
-        DynamicIslandGlassTint.State expanded = new DynamicIslandGlassTint.State(false);
-        DynamicIslandGlassTint.State notification = new DynamicIslandGlassTint.State(true);
-        float[] expandedStock = new float[42]; expandedStock[14] = .6f;
-        float[] notificationStock = new float[42]; notificationStock[14] = .1f;
-        expanded.record(expandedStock); notification.record(notificationStock);
-        int expandedConfig = DynamicIslandGlassTint.effectiveOpacity(expanded.notification, true, 17, true, 83);
-        int notificationConfig = DynamicIslandGlassTint.effectiveOpacity(notification.notification, true, 17, true, 83);
-        assertEquals(.17f, expanded.recipe(expandedConfig)[14], 0f);
-        assertEquals(.83f, notification.recipe(notificationConfig)[14], 0f);
-        // Disable expanded customization while changing notification's setting.
-        expandedConfig = DynamicIslandGlassTint.effectiveOpacity(false, false, 17, true, 0);
-        notificationConfig = DynamicIslandGlassTint.effectiveOpacity(true, false, 17, true, 0);
-        assertArrayEquals(expandedStock, expanded.recipe(expandedConfig), 0f);
-        assertEquals(0f, notification.recipe(notificationConfig)[14], 0f);
-        // Turning notification off restores its own stock, independently of expanded.
-        notificationConfig = DynamicIslandGlassTint.effectiveOpacity(true, true, 100, false, 0);
-        assertArrayEquals(notificationStock, notification.recipe(notificationConfig), 0f);
-        assertEquals(100, DynamicIslandGlassTint.effectiveOpacity(false, true, 100, false, 0));
+    @Test public void expandedOpacityCanBeDisabledAndClampsConfiguredValues() {
+        assertEquals(-1, DynamicIslandGlassTint.effectiveOpacity(false, 65));
+        assertEquals(65, DynamicIslandGlassTint.effectiveOpacity(true, 65));
+        assertEquals(0, DynamicIslandGlassTint.effectiveOpacity(true, -10));
+        assertEquals(100, DynamicIslandGlassTint.effectiveOpacity(true, 110));
     }
 
     @Test public void repeatedNativeWritesClaimGenericCardOwnershipOnlyOnTransitions() {
-        DynamicIslandGlassTint.State state = new DynamicIslandGlassTint.State(true);
+        DynamicIslandGlassTint.State state = new DynamicIslandGlassTint.State();
         float[] recipe = new float[42]; recipe[14] = .6f;
         assertTrue(state.record(recipe, 30));
         float[] stock = state.stock;

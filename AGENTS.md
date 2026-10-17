@@ -12,3 +12,7 @@
 - 性能修改必须保持实时启停、系统原值恢复、兼容模式和多模块共存的既有边界，并运行相应回归验证。
 - 交付时说明性能检查范围、发现的热点、所做优化及验证结果。区分代码审查、结构性开销减少、微基准与真机测量；没有前后对照数据时，不声称帧率、卡顿率或耗电已改善。
 - 对高风险或无法静态判定的热点，优先用 Perfetto、FrameTimeline、CPU/分配采样等获取证据。对照实验应保持设备、刷新率、温度、功能设置和操作一致；累计 gfxinfo 和不同渲染管线的数据不可直接归因于模块。
+
+## SystemUI 参考基线
+
+SystemUI 与系统界面插件后续兼容分析以 `OS4.0.2.0.XPCCNXM` 正式版为基线。默认包位于 `reference/MiuiSystemUI.apk`、`reference/MIUISystemUIPlugin.apk`；版本和哈希见 `reference/SYSTEMUI_BASELINE.json` 及 `docs/investigations/SYSTEMUI_4.0.2.0_BASELINE.md`。提取新包前保留旧包，避免混用旧版反汇编或资源 ID；`reference/` 中 APK 和反汇编保持本地，不提交到 Git。

@@ -110,6 +110,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 
 internal enum class SettingsDestination(val key: String, val label: String) {
     Home("home", "主页"),
+    Donation("donation", "捐赠"),
     Compatibility("compatibility", "兼容与恢复"),
     NotificationsControlCenter("notifications-control-center", "通知/控制中心"),
     GlobalMaterialBlur("global-material-blur", "全局材质模糊"),
@@ -122,6 +123,7 @@ internal enum class SettingsDestination(val key: String, val label: String) {
     Market("market", "应用商店"),
     MiHome("mi-home", "米家"),
     Amap("amap", "高德地图"),
+    Douyin("douyin", "抖音"),
     XiaomiCommunity("xiaomi-community", "小米社区"),
     Bilibili("bilibili", "哔哩哔哩"),
     Spotify("spotify", "Spotify"),
@@ -142,7 +144,7 @@ internal enum class SettingsDestination(val key: String, val label: String) {
     ;
 
     val isTopLevel: Boolean get() = this == Home || this == About
-    val supportsRestore: Boolean get() = this != About
+    val supportsRestore: Boolean get() = this != About && this != Donation
 
     companion object {
         fun fromKey(key: String?): SettingsDestination? = entries.firstOrNull {
@@ -163,6 +165,7 @@ private data class RestartScopeDefaults(
     val amap: Boolean = false,
     val xiaomiCommunity: Boolean = false,
     val bilibili: Boolean = false,
+    val douyin: Boolean = false,
     val spotify: Boolean = false,
     val systemSettings: Boolean = false,
 )
@@ -171,7 +174,7 @@ private fun SettingsDestination.requiredRestartScopes(): RestartScopeDefaults = 
     SettingsDestination.Compatibility -> RestartScopeDefaults(
         systemUi = true, launcher = true, plugin = true, miLink = true, xiaomiHealth = true,
         market = true, miHome = true, amap = true, xiaomiCommunity = true,
-        bilibili = true, spotify = true, systemSettings = true,
+        bilibili = true, douyin = true, spotify = true, systemSettings = true,
     )
     SettingsDestination.NotificationsControlCenter,
     SettingsDestination.GlobalMaterialBlur -> RestartScopeDefaults(systemUi = true, plugin = true, miLink = true)
@@ -182,6 +185,7 @@ private fun SettingsDestination.requiredRestartScopes(): RestartScopeDefaults = 
     SettingsDestination.MiHome -> RestartScopeDefaults(miHome = true)
     SettingsDestination.Amap -> RestartScopeDefaults(amap = true)
     SettingsDestination.XiaomiCommunity -> RestartScopeDefaults(xiaomiCommunity = true)
+    SettingsDestination.Douyin -> RestartScopeDefaults(douyin = true)
     SettingsDestination.Bilibili -> RestartScopeDefaults(bilibili = true)
     SettingsDestination.HomeEntries,
     SettingsDestination.AboutPhone,
@@ -201,6 +205,7 @@ private fun SettingsDestination.requiredRestartScopes(): RestartScopeDefaults = 
     SettingsDestination.WidgetGlassApps -> RestartScopeDefaults(systemUi = true, launcher = true)
     SettingsDestination.KeyShortcuts -> RestartScopeDefaults()
     SettingsDestination.Home,
+    SettingsDestination.Donation,
     SettingsDestination.About -> RestartScopeDefaults()
 }
 
@@ -261,6 +266,7 @@ fun MyHyperModifierSettingsApp() {
     var restartAmap by remember { mutableStateOf(false) }
     var restartXiaomiCommunity by remember { mutableStateOf(false) }
     var restartBilibili by remember { mutableStateOf(false) }
+    var restartDouyin by remember { mutableStateOf(false) }
     var restartSpotify by remember { mutableStateOf(false) }
     var restartSettings by remember { mutableStateOf(false) }
     var restartSystem by remember { mutableStateOf(false) }
@@ -347,6 +353,7 @@ fun MyHyperModifierSettingsApp() {
                             restartAmap = restartAmap,
                             restartXiaomiCommunity = restartXiaomiCommunity,
                             restartBilibili = restartBilibili,
+                            restartDouyin = restartDouyin,
                             restartSpotify = restartSpotify,
                             restartSettings = restartSettings,
                             restartSystem = restartSystem,
@@ -365,6 +372,7 @@ fun MyHyperModifierSettingsApp() {
                             onAmapChange = { restartAmap = it },
                             onXiaomiCommunityChange = { restartXiaomiCommunity = it },
                             onBilibiliChange = { restartBilibili = it },
+                            onDouyinChange = { restartDouyin = it },
                             onSpotifyChange = { restartSpotify = it },
                             onSettingsChange = { restartSettings = it },
                             onSystemChange = { checked ->
@@ -380,6 +388,7 @@ fun MyHyperModifierSettingsApp() {
                                     restartAmap = false
                                     restartXiaomiCommunity = false
                                     restartBilibili = false
+                                    restartDouyin = false
                                     restartSpotify = false
                                     restartSettings = false
                                 }
@@ -387,7 +396,7 @@ fun MyHyperModifierSettingsApp() {
                             onDismiss = { showRestartDialog = false },
                             onConfirm = {
                                 restartState = ScopeRestartState.Restarting
-                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem, restartSettings, launcher = restartLauncher) {
+                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem, restartSettings, launcher = restartLauncher, douyin = restartDouyin) {
                                     restartState = if (it) ScopeRestartState.Succeeded else ScopeRestartState.Failed
                                 }
                             },
@@ -469,6 +478,7 @@ internal fun MyHyperModifierDetailSettingsApp(
     var restartAmap by remember { mutableStateOf(defaultScopes.amap) }
     var restartXiaomiCommunity by remember { mutableStateOf(defaultScopes.xiaomiCommunity) }
     var restartBilibili by remember { mutableStateOf(defaultScopes.bilibili) }
+    var restartDouyin by remember { mutableStateOf(defaultScopes.douyin) }
     var restartSpotify by remember { mutableStateOf(defaultScopes.spotify) }
     var restartSettings by remember { mutableStateOf(defaultScopes.systemSettings) }
     var restartSystem by remember { mutableStateOf(false) }
@@ -499,7 +509,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                             titleColor = MiuixTheme.colorScheme.onSurface,
                             navigationIcon = { BackIconButton(onBack) },
                             actions = {
-                                RestartScopeTopBarButton {
+                                if (destination != SettingsDestination.Donation) RestartScopeTopBarButton {
                                     restartState = ScopeRestartState.Ready
                                     restartSystemUi = defaultScopes.systemUi
                                     restartLauncher = defaultScopes.launcher
@@ -511,6 +521,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                                     restartAmap = defaultScopes.amap
                                     restartXiaomiCommunity = defaultScopes.xiaomiCommunity
                                     restartBilibili = defaultScopes.bilibili
+                                    restartDouyin = defaultScopes.douyin
                                     restartSpotify = defaultScopes.spotify
                                     restartSettings = defaultScopes.systemSettings
                                     restartSystem = false
@@ -545,6 +556,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                             restartAmap = restartAmap,
                             restartXiaomiCommunity = restartXiaomiCommunity,
                             restartBilibili = restartBilibili,
+                            restartDouyin = restartDouyin,
                             restartSpotify = restartSpotify,
                             restartSettings = restartSettings,
                             restartSystem = restartSystem,
@@ -561,6 +573,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                             onAmapChange = { restartAmap = it },
                             onXiaomiCommunityChange = { restartXiaomiCommunity = it },
                             onBilibiliChange = { restartBilibili = it },
+                            onDouyinChange = { restartDouyin = it },
                             onSpotifyChange = { restartSpotify = it },
                             onSettingsChange = { restartSettings = it },
                             onSystemChange = { checked ->
@@ -576,6 +589,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                                     restartAmap = false
                                     restartXiaomiCommunity = false
                                     restartBilibili = false
+                                    restartDouyin = false
                                     restartSpotify = false
                                     restartSettings = false
                                 }
@@ -583,7 +597,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                             onDismiss = { showRestartDialog = false },
                             onConfirm = {
                                 restartState = ScopeRestartState.Restarting
-                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem, restartSettings, launcher = restartLauncher) {
+                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem, restartSettings, launcher = restartLauncher, douyin = restartDouyin) {
                                     restartState = if (it) ScopeRestartState.Succeeded else ScopeRestartState.Failed
                                 }
                             },
@@ -612,6 +626,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                 },
             ) { padding ->
                 when (destination) {
+                    SettingsDestination.Donation -> DonationSettingsPage(padding) { scrollProgress = it }
                     SettingsDestination.Compatibility -> CompatibilitySettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.NotificationsControlCenter -> NotificationControlCenterSettingsPage(
                         padding = padding,
@@ -658,6 +673,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                     SettingsDestination.MiHome -> MiHomeSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Amap -> AmapSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Bilibili -> BilibiliSettingsPage(padding, settings, ::update) { scrollProgress = it }
+                    SettingsDestination.Douyin -> DouyinSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.XiaomiCommunity -> XiaomiCommunitySettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Spotify -> SpotifySettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Media -> MediaSettingsPage(
@@ -848,6 +864,7 @@ private fun scopeStatuses(
             settings.statusBarHideMobileTypeOnWifi,
             settings.statusBarHideMobileActivity,
             settings.statusBarHideWifiActivity,
+            settings.statusBarShowSeconds,
             settings.statusBarHideWifiStandard,
             settings.statusBarMobileActivityOffsetX != 0f,
             settings.statusBarMobileActivityOffsetY != 0f,
@@ -861,9 +878,15 @@ private fun scopeStatuses(
             settings.volumePanelRadius > 0f,
             settings.islandEnabled,
             settings.superIslandWhitelistDisabled,
-            !settings.disableShadeGlassHooks && (settings.dynamicIslandOpacityEnabled || settings.dynamicIslandNotificationOpacityEnabled),
+            !settings.disableShadeGlassHooks && settings.dynamicIslandOpacityEnabled,
         ).any { it },
         isActive = framework.isActive(ModuleScopePackage.SYSTEM_UI),
+    ),
+    ScopeStatus(
+        appName = "智能助理",
+        packageName = ModuleScopePackage.PERSONAL_ASSISTANT,
+        hasModification = settings.androidWidgetStackEnabled,
+        isActive = framework.isActive(ModuleScopePackage.PERSONAL_ASSISTANT),
     ),
     ScopeStatus(
         appName = "系统桌面",
@@ -884,6 +907,13 @@ private fun scopeStatuses(
         packageName = ModuleScopePackage.XMSF,
         hasModification = settings.superIslandWhitelistDisabled,
         isActive = framework.isActive(ModuleScopePackage.XMSF),
+    ),
+    ScopeStatus(
+        appName = "通话界面",
+        packageName = ModuleScopePackage.INCALL_UI,
+        hasModification = settings.globalBackgroundBlurPercent != 100f || settings.globalBackgroundDimEnabled ||
+            (!settings.disableShadeGlassHooks && settings.globalGlassBlurEnabled),
+        isActive = framework.isActive(ModuleScopePackage.INCALL_UI),
     ),
     ScopeStatus(
         appName = "小米互联服务",
@@ -929,6 +959,12 @@ private fun scopeStatuses(
         isActive = framework.isActive(ModuleScopePackage.SPOTIFY),
     ),
     ScopeStatus(
+        appName = "抖音",
+        packageName = ModuleScopePackage.DOUYIN,
+        hasModification = settings.douyinFloatingNavigationEnabled,
+        isActive = framework.isActive(ModuleScopePackage.DOUYIN),
+    ),
+    ScopeStatus(
         appName = "哔哩哔哩",
         packageName = ModuleScopePackage.BILIBILI,
         hasModification = settings.bilibiliFloatingNavigationEnabled,
@@ -947,7 +983,8 @@ private fun scopeStatuses(
             ModuleScopePackage.SYSTEM_UI, ModuleScopePackage.PLUGIN,
         ) -> scope.copy(hasModification = false)
         settings.globalGlassBlurEnabled && !settings.disableShadeGlassHooks &&
-            scope.packageName != ModuleScopePackage.SYSTEM_FRAMEWORK -> scope.copy(hasModification = true)
+            scope.packageName != ModuleScopePackage.SYSTEM_FRAMEWORK &&
+            scope.packageName != ModuleScopePackage.DOUYIN -> scope.copy(hasModification = true)
         else -> scope
     }
 }
@@ -968,6 +1005,12 @@ private fun HomeDashboardPage(
 
     ModuleStatusHero(scopes, framework, settings, showScopeStatus) { showScopeStatus = !showScopeStatus }
     SettingsSection {
+        NavigationSettingItem(
+            "捐赠",
+            "支持 HyperModifier 的持续开发",
+            onClick = { onNavigate(SettingsDestination.Donation) },
+            leadingContent = { HomeSystemIcon(R.drawable.ic_home_donation, Color(0xFFC52C79)) },
+        )
         NavigationSettingItem(
             "兼容与恢复",
             when {
@@ -1008,6 +1051,7 @@ private fun HomeDashboardPage(
             NavigationSettingItem("高德地图", "实验功能", onClick = { onNavigate(SettingsDestination.Amap) }, leadingContent = { HomeAppIcon(ModuleScopePackage.AMAP) })
             NavigationSettingItem("Spotify", "媒体卡片按钮", onClick = { onNavigate(SettingsDestination.Spotify) }, leadingContent = { HomeAppIcon(ModuleScopePackage.SPOTIFY) })
             NavigationSettingItem("哔哩哔哩", "", onClick = { onNavigate(SettingsDestination.Bilibili) }, leadingContent = { HomeAppIcon(ModuleScopePackage.BILIBILI) })
+            NavigationSettingItem("抖音", "", onClick = { onNavigate(SettingsDestination.Douyin) }, leadingContent = { HomeAppIcon(ModuleScopePackage.DOUYIN) })
             NavigationSettingItem("小米社区", "", onClick = { onNavigate(SettingsDestination.XiaomiCommunity) }, leadingContent = { HomeAppIcon(ModuleScopePackage.XIAOMI_COMMUNITY) })
         }
     } else {
@@ -1066,7 +1110,7 @@ private fun ModuleStatusHero(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
-            .height(176.dp)
+            .heightIn(min = 144.dp)
             .clip(RoundedCornerShape(28.dp))
             .background(if (fullyActive) successContainer else MiuixTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick),
@@ -1079,37 +1123,37 @@ private fun ModuleStatusHero(
                 tint = accent,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .offset(x = 32.dp, y = 32.dp)
-                    .size(154.dp),
+                    .offset(x = 28.dp, y = 28.dp)
+                    .size(128.dp),
             )
         }
         Column(
             modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(horizontal = 24.dp, vertical = 22.dp),
+                .fillMaxWidth()
+                .padding(horizontal = 22.dp, vertical = 18.dp),
         ) {
             Text(
                 text = status,
-                style = MiuixTheme.textStyles.title2,
+                style = MiuixTheme.textStyles.title3,
             )
             Text(
                 text = "版本：${BuildConfig.VERSION_NAME}",
-                style = MiuixTheme.textStyles.body1,
-                modifier = Modifier.padding(top = 8.dp),
+                style = MiuixTheme.textStyles.body2,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            Spacer(Modifier.height(20.dp))
+            Text(
+                text = when {
+                    showScopeStatus -> "点击收起作用域状态"
+                    modifiedScopes.isEmpty() -> "从下方选择修改位置"
+                    !framework.connected -> "请确认模块已在 LSPosed 中启用 · 点击查看"
+                    framework.apiVersion < ModuleFrameworkState.MIN_SUPPORTED_API ->
+                        "需要 LSPosed API ${ModuleFrameworkState.MIN_SUPPORTED_API} 或更高版本"
+                    else -> "${activeModifiedScopes}/${modifiedScopes.size} 个已修改作用域激活 · 点击查看"
+                },
+                style = MiuixTheme.textStyles.body2,
             )
         }
-        Text(
-            text = when {
-                showScopeStatus -> "点击收起作用域状态"
-                modifiedScopes.isEmpty() -> "从下方选择修改位置"
-                !framework.connected -> "请确认模块已在 LSPosed 中启用 · 点击查看"
-                framework.apiVersion < ModuleFrameworkState.MIN_SUPPORTED_API ->
-                    "需要 LSPosed API ${ModuleFrameworkState.MIN_SUPPORTED_API} 或更高版本"
-                else -> "${activeModifiedScopes}/${modifiedScopes.size} 个已修改作用域激活 · 点击查看"
-            },
-            style = MiuixTheme.textStyles.body1,
-            modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 24.dp, vertical = 22.dp),
-        )
     }
 }
 

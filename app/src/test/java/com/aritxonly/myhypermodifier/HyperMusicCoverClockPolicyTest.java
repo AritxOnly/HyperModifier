@@ -49,4 +49,27 @@ public class HyperMusicCoverClockPolicyTest {
         assertThrows(NoSuchMethodException.class,
                 () -> new HyperMusicCoverClockPolicy(String.class));
     }
+    static class RenamedRoom {
+        static boolean e = true;
+        static float shown = 123, raw = 456, soft = 10;
+        static float x(float y) { return y; }
+        static float y(float y) { return y; }
+        static void z() { }
+    }
+    @Test public void splitRoomPolicyClearsMovedEasingWithoutChangingMainOwnership() throws Exception {
+        HyperMusicCoverDexSymbols s = new HyperMusicCoverDexSymbols();
+        String owner = "L" + RenamedRoom.class.getName().replace('.', '/') + ";";
+        for (String[] role : new String[][]{{"roomForRows", "x", "(F)F"}, {"roomForRowsNow", "y", "(F)F"},
+                {"reassertClockRoom", "z", "()V"}, {"roomEasing", "e", "Z"}, {"roomShown", "shown", "F"},
+                {"roomRaw", "raw", "F"}, {"roomSoft", "soft", "F"}})
+            s.members.put(role[0], new HyperMusicCoverDexSymbols.Member(owner, role[1], role[2]));
+        HyperMusicCoverClockPolicy p = new HyperMusicCoverClockPolicy(CompatibleMain.class, s);
+        CompatibleMain.sHoldY = 800f;
+        assertEquals(RenamedRoom.class, p.roomForRows.getDeclaringClass());
+        p.clearRoomEase();
+        assertFalse(RenamedRoom.e); assertTrue(Float.isNaN(RenamedRoom.shown));
+        assertTrue(Float.isNaN(RenamedRoom.raw)); assertEquals(0f, RenamedRoom.soft, 0f);
+        assertEquals(Float.valueOf(800), CompatibleMain.sHoldY);
+        CompatibleMain.sHoldY = null;
+    }
 }

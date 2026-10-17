@@ -22,6 +22,7 @@ class FreshInstallDefaultsTest {
             assertTrue(settings.bilibiliFloatingNavigationEnabled)
             assertTrue(settings.spotifyFloatingNavigationEnabled)
             assertFalse(settings.superIslandWhitelistDisabled)
+            assertFalse(settings.statusBarShowSeconds)
             assertFalse(settings.lowerLockscreenPasswordPage)
             assertFalse(settings.progressiveLockscreenClockAvoidance)
         }

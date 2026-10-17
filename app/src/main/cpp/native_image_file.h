@@ -7,7 +7,7 @@
 
 // Android may map an uncompressed library directly from base.apk!/lib/...
 // Fingerprint the ZIP entry bytes, never the surrounding APK or a virtual path.
-inline bool matchingNativeImageFile(const char *path, size_t expectedSize, uint64_t expectedHash) {
+inline bool matchingNativeImageFile(const char *path, size_t expectedSize, uint64_t expectedHash, uint64_t alternativeHash = 0) {
     if (!path) return false;
     std::string filename(path);
     size_t separator = filename.find("!/");
@@ -86,5 +86,5 @@ inline bool matchingNativeImageFile(const char *path, size_t expectedSize, uint6
         for (size_t i = 0; i < count; ++i) fingerprint = (fingerprint ^ buffer[i]) * 0x100000001b3ULL;
         bytes -= count;
     }
-    return fingerprint == expectedHash;
+    return fingerprint == expectedHash || (alternativeHash != 0 && fingerprint == alternativeHash);
 }

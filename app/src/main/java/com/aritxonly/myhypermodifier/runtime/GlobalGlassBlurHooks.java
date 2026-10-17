@@ -30,12 +30,13 @@ final class GlobalGlassBlurHooks {
     static void install(XposedModule module, String packageName) {
         if (disableShadeGlassHooks || !INSTALLED.compareAndSet(false, true)) return;
         try {
+            final boolean preserveClear = ModuleScopePackage.INCALL_UI.equals(packageName);
             Method method = View.class.getMethod("setMiGlassBlurRadius", int.class, int.class);
             module.hook(method).setId("global-glass-blur-radius")
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
                         if (Boolean.TRUE.equals(REPLAYING.get())) return chain.proceed();
-                        if (!moduleHooksEnabled || disableShadeGlassHooks) return chain.proceed();
+                        if ((!moduleHooksEnabled && !preserveClear) || disableShadeGlassHooks) return chain.proceed();
                         Object receiver = chain.getThisObject();
                         if (!(receiver instanceof View)) return chain.proceed();
                         View view = (View) receiver;
@@ -57,6 +58,9 @@ final class GlobalGlassBlurHooks {
                                 state.recordStock(small, big);
                             }
                         }
+                        // InCallUI clearGlassMaterial explicitly sends 0/0. Preserve that lifecycle
+                        // boundary and allow a later positive stock call to reactivate the owner.
+                        if (preserveClear) state.active = InCallBlurPolicy.glassActive(small, big);
                         // Keep stock tracking while off so enabling can update already-created Views.
                         // Reuse the per-View state and allocate arguments only when replacement is needed.
                         int radius = GlobalGlassBlurState.clamp(shadeCardGlassBlurRadius);

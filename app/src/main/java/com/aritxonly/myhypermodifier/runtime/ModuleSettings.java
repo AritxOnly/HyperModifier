@@ -49,8 +49,6 @@ final class ModuleSettings {
     static volatile boolean globalGlassBlurEnabled = false;
     static volatile int dynamicIslandExpandedOpacity = 30;
     static volatile boolean dynamicIslandOpacityEnabled = false;
-    static volatile boolean dynamicIslandNotificationOpacityEnabled = false;
-    static volatile int dynamicIslandNotificationOpacity = 30;
     private static volatile float[] shadeCardGlassParameters = ShadeCardGlassPolicy.defaults();
     static volatile int shadeCardGlassBlurRadius = 20;
     static volatile boolean headsUpBackgroundBlurRadiusEnabled = false;
@@ -134,6 +132,7 @@ final class ModuleSettings {
     static volatile boolean statusBarHideMobileTypeOnWifi = false;
     static volatile boolean statusBarHideMobileActivity = false;
     static volatile boolean statusBarHideWifiActivity = false;
+    static volatile boolean statusBarShowSeconds = false;
     static volatile boolean statusBarHideWifiStandard = false;
     static volatile float statusBarMobileActivityOffsetX = 0f;
     static volatile float statusBarMobileActivityOffsetY = 0f;
@@ -167,6 +166,7 @@ final class ModuleSettings {
     static volatile boolean amapMiuixIconsEnabled = false;
     static volatile boolean amapMonochromeIconsEnabled = true;
     static volatile boolean amapHideLongPressVoiceTabEnabled = ModuleDefaultValues.AMAP_HIDE_LONG_PRESS_VOICE_TAB_ENABLED;
+    static volatile boolean douyinFloatingNavigationEnabled = ModuleDefaultValues.DOUYIN_FLOATING_NAVIGATION_ENABLED;
     static volatile boolean xiaomiCommunityFloatingNavigationEnabled = ModuleDefaultValues.XIAOMI_COMMUNITY_FLOATING_NAVIGATION_ENABLED;
     static volatile boolean xiaomiCommunityMiuixIconsEnabled = false;
     static volatile boolean xiaomiCommunityMonochromeIconsEnabled = true;
@@ -249,14 +249,16 @@ final class ModuleSettings {
             String token = preferences.getString("diagnostic_token", "");
             diagnosticToken = token == null ? "" : token;
             disableShadeGlassHooks = preferences.getBoolean("disable_shade_glass_hooks", false);
+            globalBackgroundBlurPercent = Math.max(0, Math.min(200, Math.round(preferences.getFloat(
+                    "global_background_blur_percent", 100f))));
+            globalBackgroundDimEnabled = preferences.getBoolean("global_background_dim_enabled", false);
+            globalBackgroundDimPercent = BackgroundDimPolicy.normalizePercent(preferences.getFloat(
+                    "global_background_dim_percent", 20f));
             globalGlassBlurEnabled = preferences.getBoolean("global_glass_blur_enabled",
                     preferences.getBoolean("shade_card_glass_parameters_enabled", false));
             dynamicIslandOpacityEnabled = preferences.getBoolean("dynamic_island_opacity_enabled", globalGlassBlurEnabled);
             dynamicIslandExpandedOpacity = Math.round(ShadeCardGlassPolicy.normalize(preferences.getFloat(
                     "dynamic_island_expanded_opacity", 30f), 100f, 30f));
-            dynamicIslandNotificationOpacityEnabled = preferences.getBoolean("dynamic_island_notification_opacity_enabled", dynamicIslandOpacityEnabled);
-            dynamicIslandNotificationOpacity = Math.round(ShadeCardGlassPolicy.normalize(preferences.getFloat(
-                    "dynamic_island_notification_opacity", preferences.getFloat("dynamic_island_expanded_opacity", 30f)), 100f, 30f));
             shadeCardGlassBlurRadius = Math.round(ShadeCardGlassPolicy.normalize(preferences.getFloat(
                     "shade_card_glass_blur_radius", 20f), ShadeCardGlassPolicy.MAX_GLASS_BLUR_RADIUS, 20f));
         } catch (Throwable throwable) {
@@ -497,9 +499,6 @@ final class ModuleSettings {
             dynamicIslandOpacityEnabled = values.getBoolean("dynamic_island_opacity_enabled", globalGlassBlurEnabled);
             dynamicIslandExpandedOpacity = Math.round(ShadeCardGlassPolicy.normalize(values.getFloat(
                     "dynamic_island_expanded_opacity", 30f), 100f, 30f));
-            dynamicIslandNotificationOpacityEnabled = values.getBoolean("dynamic_island_notification_opacity_enabled", dynamicIslandOpacityEnabled);
-            dynamicIslandNotificationOpacity = Math.round(ShadeCardGlassPolicy.normalize(values.getFloat(
-                    "dynamic_island_notification_opacity", values.getFloat("dynamic_island_expanded_opacity", 30f)), 100f, 30f));
             shadeCardGlassBlurRadius = Math.round(ShadeCardGlassPolicy.normalize(values.getFloat(
                     "shade_card_glass_blur_radius", 20f), ShadeCardGlassPolicy.MAX_GLASS_BLUR_RADIUS, 20f));
             headsUpGlassParameters = parseHeadsUpGlassParameters(values.getString(
@@ -616,6 +615,7 @@ final class ModuleSettings {
             statusBarHideMobileTypeOnWifi = values.getBoolean("status_bar_hide_mobile_on_wifi", false);
             statusBarHideMobileActivity = values.getBoolean("status_bar_hide_mobile_activity", false);
             statusBarHideWifiActivity = values.getBoolean("status_bar_hide_wifi_activity", false);
+            statusBarShowSeconds = values.getBoolean("status_bar_show_seconds", false);
             statusBarHideWifiStandard = values.getBoolean("status_bar_hide_wifi_standard", false);
             statusBarMobileActivityOffsetX = values.getFloat("status_bar_mobile_activity_offset_x", 0f);
             statusBarMobileActivityOffsetY = values.getFloat("status_bar_mobile_activity_offset_y", 0f);
@@ -661,6 +661,7 @@ final class ModuleSettings {
                     "amap_monochrome_icons_enabled", true);
             amapHideLongPressVoiceTabEnabled = values.getBoolean(
                     "amap_hide_long_press_voice_tab_enabled", ModuleDefaultValues.AMAP_HIDE_LONG_PRESS_VOICE_TAB_ENABLED);
+            douyinFloatingNavigationEnabled = values.getBoolean("douyin_floating_navigation_enabled", ModuleDefaultValues.DOUYIN_FLOATING_NAVIGATION_ENABLED);
             xiaomiCommunityFloatingNavigationEnabled = values.getBoolean(
                     "xiaomi_community_floating_navigation_enabled", ModuleDefaultValues.XIAOMI_COMMUNITY_FLOATING_NAVIGATION_ENABLED);
             xiaomiCommunityMiuixIconsEnabled = values.getBoolean(

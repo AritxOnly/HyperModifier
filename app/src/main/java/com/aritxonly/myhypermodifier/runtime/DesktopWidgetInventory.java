@@ -36,6 +36,10 @@ public final class DesktopWidgetInventory {
                     EXECUTOR.execute(() -> {
                         File file = null;
                         try {
+                            if (intent.getBooleanExtra("compatibility", false)) {
+                                reply.send(0, DesktopWidgetCompatibility.read(context));
+                                return;
+                            }
                             IBinder service = (IBinder) Class.forName("android.os.ServiceManager")
                                     .getDeclaredMethod("getService", String.class).invoke(null, "appwidget");
                             if (service == null) throw new IllegalStateException("小组件服务不可用");
@@ -46,7 +50,9 @@ public final class DesktopWidgetInventory {
                             ArrayList<String> entries = DesktopWidgetInventoryParser.parse(dump, Process.myUid() / 100000);
                             Bundle result = new Bundle(); result.putStringArrayList("widgets", entries); reply.send(0, result);
                         } catch (Throwable failure) {
-                            reply.send(1, error("无法读取桌面小组件，请确认系统界面作用域已启用并重启系统界面"));
+                            reply.send(1, error(intent.getBooleanExtra("compatibility", false)
+                                    ? "桌面兼容状态不可用，请确认系统桌面与系统界面作用域，并在更新模块后重启两者。请勿据此判断 schema 不兼容。"
+                                    : "无法读取桌面小组件，请确认系统界面作用域已启用并重启系统界面"));
                         } finally {
                             if (file != null) file.delete();
                             BUSY.set(false); pending.finish();

@@ -5,6 +5,8 @@ import org.json.JSONObject
 /** Portable, versioned configuration only; callers supply the current supported key/type schema. */
 internal object SettingsBackupCodec {
     const val MAX_BYTES = 4 * 1024 * 1024
+    // Retired notification tint values are ignored so existing full backups remain importable.
+    private val RETIRED_KEYS = setOf("dynamic_island_notification_opacity_enabled", "dynamic_island_notification_opacity")
     private const val FORMAT = "com.aritxonly.myhypermodifier.config"
 
     fun encode(values: Map<String, Any>): String = JSONObject().apply {
@@ -23,6 +25,7 @@ internal object SettingsBackupCodec {
         require(values.length() > 0) { "备份中没有配置" }
         return buildMap {
             values.keys().forEach { key ->
+                if (key in RETIRED_KEYS) return@forEach
                 val expected = schema[key] ?: error("备份包含不支持的配置：$key")
                 val value = values.get(key)
                 val converted: Any = when (expected) {

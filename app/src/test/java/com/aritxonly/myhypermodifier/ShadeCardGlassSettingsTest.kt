@@ -109,7 +109,7 @@ class ShadeCardGlassSettingsTest {
 
     @Test fun presetsForBothMaterialPagesNeverChangeSharedBlur() {
         val settings = ModifierSettings(globalGlassBlurEnabled = true,
-            shadeCardGlassBlurEnabled = true, shadeCardGlassBlurRadius = 500f, dynamicIslandExpandedOpacity = 17f, dynamicIslandOpacityEnabled = true, dynamicIslandNotificationOpacityEnabled = true, dynamicIslandNotificationOpacity = 83f,
+            shadeCardGlassBlurEnabled = true, shadeCardGlassBlurRadius = 500f, dynamicIslandExpandedOpacity = 17f, dynamicIslandOpacityEnabled = true,
             shadeCardBackgroundBlurPercent = 60f, globalBackgroundBlurPercent = 80f,
             globalBackgroundDimEnabled = true, globalBackgroundDimPercent = 35f)
         for (editor in GlassParameterScope.entries) {
@@ -120,8 +120,6 @@ class ShadeCardGlassSettingsTest {
                 assertEquals(500f, changed.shadeCardGlassBlurRadius, 0f)
                 assertEquals(17f, changed.dynamicIslandExpandedOpacity, 0f)
                 assertTrue(changed.dynamicIslandOpacityEnabled)
-                assertTrue(changed.dynamicIslandNotificationOpacityEnabled)
-                assertEquals(83f, changed.dynamicIslandNotificationOpacity, 0f)
                 assertEquals(60f, changed.shadeCardBackgroundBlurPercent, 0f)
                 assertEquals(80f, changed.globalBackgroundBlurPercent, 0f)
                 assertTrue(changed.globalBackgroundDimEnabled)

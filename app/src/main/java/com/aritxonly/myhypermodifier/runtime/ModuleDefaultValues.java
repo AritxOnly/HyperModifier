@@ -23,6 +23,7 @@ public final class ModuleDefaultValues {
     public static final boolean AMAP_FLOATING_NAVIGATION_ENABLED = true;
     public static final boolean AMAP_HIDE_LONG_PRESS_VOICE_TAB_ENABLED = true;
     public static final boolean XIAOMI_COMMUNITY_FLOATING_NAVIGATION_ENABLED = true;
+    public static final boolean DOUYIN_FLOATING_NAVIGATION_ENABLED = true;
     public static final boolean BILIBILI_FLOATING_NAVIGATION_ENABLED = true;
     public static final boolean SPOTIFY_FLOATING_NAVIGATION_ENABLED = true;
     public static final boolean SPOTIFY_FAVORITE_BUTTON_ENABLED = true;
