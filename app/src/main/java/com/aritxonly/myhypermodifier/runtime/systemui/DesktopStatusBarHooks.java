@@ -28,6 +28,9 @@ import io.github.libxposed.api.XposedModule;
 /** Repairs the launcher/recents status-bar appearance handoff without changing stock sampling. */
 final class DesktopStatusBarHooks {
     private static final AtomicBoolean INSTALLED = new AtomicBoolean();
+    // The tablet recents-appearance repair is isolated until it is proven safe across SystemUI
+    // restarts. Keep the original desktop icon decision path active.
+    private static final boolean RECENTS_APPEARANCE_REPAIR_ENABLED = false;
     private static final String PHONE = "com.android.systemui.statusbar.phone.";
     private static final String REPO = "com.android.systemui.statusbar.data.repository."
             + "StatusBarModePerDisplayRepositoryImpl";
@@ -42,8 +45,7 @@ final class DesktopStatusBarHooks {
 
     static void install(XposedModule module, ClassLoader loader, Application application)
             throws Throwable {
-        if (!LargeScreenDevicePolicy.isLargeScreenDevice()
-                || Build.VERSION.SDK_INT < 36
+        if (Build.VERSION.SDK_INT < 36
                 || !INSTALLED.compareAndSet(false, true)) return;
         module.log(Log.INFO, "MyHyperModifier", "Installing desktop status bar hooks");
         Class<?> controller = Class.forName(PHONE + "LightBarControllerImpl", false, loader);
@@ -95,8 +97,10 @@ final class DesktopStatusBarHooks {
                     binding.applied = false;
                     return chain.proceed();
                 });
-        installRecentsReceiver(module, application, binding);
-        installMiuiFullscreenReceiver(module, application, binding);
+        if (RECENTS_APPEARANCE_REPAIR_ENABLED) {
+            installRecentsReceiver(module, application, binding);
+            installMiuiFullscreenReceiver(module, application, binding);
+        }
         ModuleSettings.onChanged(binding::settingsChanged);
         HookDiagnostics.available("com.android.systemui", "桌面状态栏取色");
     }
@@ -374,12 +378,20 @@ final class DesktopStatusBarHooks {
             Class<?> dispatch = Class.forName(PHONE + "DarkIconDispatcherImpl", false, loader);
             transitions = field(dispatch, "mTransitionsController");
             appearanceRegions = field(owner, "mAppearanceRegions");
-            appearance = field(owner, "mAppearance");
-            regionClass = regions.getComponentType();
-            regionConstructor = regionClass.getDeclaredConstructor(
-                    int.class, android.graphics.Rect.class);
-            regionAppearance = regionClass.getMethod("getAppearance");
-            regionBounds = regionClass.getMethod("getBounds");
+            if (RECENTS_APPEARANCE_REPAIR_ENABLED) {
+                appearance = field(owner, "mAppearance");
+                regionClass = regions.getComponentType();
+                regionConstructor = regionClass.getDeclaredConstructor(
+                        int.class, android.graphics.Rect.class);
+                regionAppearance = regionClass.getMethod("getAppearance");
+                regionBounds = regionClass.getMethod("getBounds");
+            } else {
+                appearance = null;
+                regionClass = null;
+                regionConstructor = null;
+                regionAppearance = null;
+                regionBounds = null;
+            }
             // Resolve from the ROM field type. A literal Kotlin class name can be rewritten by
             // R8 to our bundled Kotlin class name, which the target ClassLoader cannot load.
             value = keyguard.getType().getMethod("getValue");
@@ -400,7 +412,7 @@ final class DesktopStatusBarHooks {
             shadeMode = Class.forName("com.android.systemui.statusbar.data.model.StatusBarMode",
                     false, loader).getField("SEMI_TRANSPARENT").get(null);
             update.setAccessible(true);
-            regionConstructor.setAccessible(true);
+            if (regionConstructor != null) regionConstructor.setAccessible(true);
             cancelDelay.setAccessible(true);
             darkArea.setAccessible(true);
             iconsDark.setAccessible(true);

@@ -101,25 +101,24 @@ public final class MyHyperModifier extends XposedModule {
     @Override
     public void onSystemServerStarting(XposedModuleInterface.SystemServerStartingParam param) {
         log(Log.INFO, TAG, "Entered system_server for framework hooks");
-        android.content.SharedPreferences serverPreferences =
-                getRemotePreferences("modifier_settings");
-        ModuleSettings.setRemotePreferences(serverPreferences);
+        android.content.SharedPreferences serverPreferences = null;
         try {
-            KeyShortcutHooks.install(this, param.getClassLoader(), serverPreferences);
+            serverPreferences = getRemotePreferences("modifier_settings");
+            ModuleSettings.setRemotePreferences(serverPreferences);
         } catch (Throwable error) {
-            log(Log.ERROR, TAG, "Could not install key shortcut hooks", error);
+            log(Log.WARN, TAG, "Could not load system_server preferences", error);
         }
-        try {
-            GestureHandleAppTransitionHooks.install(this, param.getClassLoader(),
-                    serverPreferences);
-        } catch (Throwable error) {
-            log(Log.ERROR, TAG, "Could not install gesture handle app transition hook", error);
-        }
-        if (LargeScreenDevicePolicy.isLargeScreenDevice()) {
+        if (serverPreferences != null) {
             try {
-                RecentsInputConsumerHooks.install(this, param.getClassLoader());
+                KeyShortcutHooks.install(this, param.getClassLoader(), serverPreferences);
             } catch (Throwable error) {
-                log(Log.WARN, TAG, "Could not install recents handoff hook", error);
+                log(Log.ERROR, TAG, "Could not install key shortcut hooks", error);
+            }
+            try {
+                GestureHandleAppTransitionHooks.install(this, param.getClassLoader(),
+                        serverPreferences);
+            } catch (Throwable error) {
+                log(Log.ERROR, TAG, "Could not install gesture handle app transition hook", error);
             }
         }
     }

@@ -463,6 +463,12 @@ fun MyHyperModifierSettingsApp() {
                             onDismiss = { showRestartDialog = false },
                             onConfirm = {
                                 restartState = ScopeRestartState.Restarting
+                                if (restartSystemUi || restartPlugin || restartSystem) {
+                                    update(settings.copy(
+                                        systemUiRetryGeneration =
+                                            settings.systemUiRetryGeneration + 1,
+                                    ))
+                                }
                                 restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem, restartSettings, launcher = restartLauncher, douyin = restartDouyin, kuaishou = restartKuaishou, alipay = restartAlipay, socialApps = restartSocialApps, qqMusic = restartQQMusic, ecommerceApps = restartEcommerceApps, piliPlus = restartPiliPlus) {
                                     restartState = if (it) ScopeRestartState.Succeeded else ScopeRestartState.Failed
                                 }
@@ -695,6 +701,12 @@ internal fun MyHyperModifierDetailSettingsApp(
                             onDismiss = { showRestartDialog = false },
                             onConfirm = {
                                 restartState = ScopeRestartState.Restarting
+                                if (restartSystemUi || restartPlugin || restartSystem) {
+                                    update(settings.copy(
+                                        systemUiRetryGeneration =
+                                            settings.systemUiRetryGeneration + 1,
+                                    ))
+                                }
                                 restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem, restartSettings, launcher = restartLauncher, douyin = restartDouyin, kuaishou = restartKuaishou, alipay = restartAlipay, socialApps = restartSocialApps, qqMusic = restartQQMusic, ecommerceApps = restartEcommerceApps, piliPlus = restartPiliPlus) {
                                     restartState = if (it) ScopeRestartState.Succeeded else ScopeRestartState.Failed
                                 }
