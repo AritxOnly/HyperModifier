@@ -18,6 +18,7 @@ internal object XiaomiCommunityFloatingNavigation {
             bottomBarClassNames = setOf(
                 "com.xiaomi.vipaccount.ui.widget.tab.BottomNavView",
             ),
+            resolveNativeChromeShells = ::compactNativeChromeShells,
             tabClassNames = setOf(
                 "com.xiaomi.vipaccount.ui.widget.tab.NavItemView",
             ),

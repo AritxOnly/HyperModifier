@@ -36,7 +36,7 @@ final class DouyinPlayerTextureHooks {
         Method output = outputMethod(factory);
         module.hook(feed.getDeclaredMethod("LJJIJIIJIL"))
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain -> {
-                    if (!ModuleSettings.moduleHooksEnabled || !ModuleSettings.douyinFloatingNavigationEnabled)
+                    if (!DouyinTargetPolicy.enabled())
                         return chain.proceed();
                     ViewGroup group = (ViewGroup) parent.get(chain.getThisObject());
                     if (group == null || !homepage(group.getContext())) return chain.proceed();
@@ -46,7 +46,7 @@ final class DouyinPlayerTextureHooks {
                     finally { if (depth == 0) FEED.remove(); else FEED.set(depth); }
                 });
         module.hook(create).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain -> {
-            if (!ModuleSettings.moduleHooksEnabled || !ModuleSettings.douyinFloatingNavigationEnabled || FEED.get() == 0)
+            if (!DouyinTargetPolicy.enabled() || FEED.get() == 0)
                 return chain.proceed();
             // Verified false branch wraps KeepSurfaceTextureView; preserve native ownership.
             Object result = chain.proceed(new Object[] {chain.getArg(0), false});

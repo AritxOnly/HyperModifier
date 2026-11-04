@@ -18,6 +18,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.util.Xml;
+import android.view.Choreographer;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
@@ -35,6 +36,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.xmlpull.v1.XmlPullParser;
@@ -78,6 +82,16 @@ public final class MyHyperModifier extends XposedModule {
     private static final AtomicBoolean SYSTEM_UI_RUNTIME_ENTRY_LOGGED = new AtomicBoolean();
     private static final AtomicBoolean EARLY_SYSTEM_UI_HOOKS_INSTALLED = new AtomicBoolean();
     private static final AtomicBoolean EARLY_PLUGIN_HOOKS_INSTALLED = new AtomicBoolean();
+    private static final AtomicBoolean DEFERRED_SYSTEM_UI_HOOKS_SCHEDULED = new AtomicBoolean();
+    private static final AtomicBoolean DEFERRED_SYSTEM_UI_HOOKS_RUNNING = new AtomicBoolean();
+    private static final ScheduledExecutorService DEFERRED_SYSTEM_UI_WORKER =
+            Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "MyHyperModifier-systemui-deferred");
+                thread.setDaemon(true);
+                return thread;
+            });
+    private static final long DEFERRED_SYSTEM_UI_FALLBACK_DELAY_MS = 10_000L;
+    private static final long DEFERRED_SYSTEM_UI_FRAME_SETTLE_DELAY_MS = 300L;
 
     /**
      * PackageReady is late enough on HyperOS for the plugin factory and several first-frame
@@ -111,7 +125,10 @@ public final class MyHyperModifier extends XposedModule {
     private static boolean isDouyinProcess() {
         String process = Application.getProcessName();
         return ModuleScopePackage.DOUYIN.equals(process)
-                || (process != null && process.startsWith(ModuleScopePackage.DOUYIN + ":"));
+                || ModuleScopePackage.DOUYIN_LITE.equals(process)
+                || (process != null && (
+                    process.startsWith(ModuleScopePackage.DOUYIN + ":")
+                        || process.startsWith(ModuleScopePackage.DOUYIN_LITE + ":")));
     }
 
     @Override
@@ -121,6 +138,23 @@ public final class MyHyperModifier extends XposedModule {
                 && ModuleScopePackage.INCALL_UI.equals(Application.getProcessName())) return;
         if (ModuleScopePackage.ALIPAY.equals(packageName) || isAlipayProcess()) return;
         if (ModuleScopePackage.PILIPLUS.equals(packageName)) return;
+        if (KuaishouHooks.isTarget(packageName)) {
+            if (!packageName.equals(Application.getProcessName())) return;
+            installSafely(packageName, "快手悬浮底栏提前注入",
+                    () -> KuaishouHooks.install(this, param.getDefaultClassLoader(), packageName));
+            return;
+        }
+        if (ModuleScopePackage.QQ_MUSIC.equals(packageName)) {
+            if (!packageName.equals(Application.getProcessName())) return;
+            installSafely(packageName, "QQ音乐悬浮底栏提前注入",
+                    () -> QQMusicHooks.install(this, param.getDefaultClassLoader()));
+            return;
+        }
+        if (SocialHooks.isTarget(packageName)) {
+            installSafely(packageName, "微信/QQ 悬浮底栏提前注入",
+                    () -> SocialHooks.install(this, param.getDefaultClassLoader(), packageName));
+            return;
+        }
         if (EcommerceHooks.isTarget(packageName)) {
             // Taobao can create TBMainActivity before PackageReady. Install only the focused
             // lifecycle adapter here; PackageReady retries if the Activity class is not loaded yet.
@@ -205,7 +239,7 @@ public final class MyHyperModifier extends XposedModule {
         String packageName = param.getPackageName();
         if (!ModuleScopePackage.INCALL_UI.equals(packageName)
                 && ModuleScopePackage.INCALL_UI.equals(Application.getProcessName())) return;
-        if (isDouyinProcess() && !ModuleScopePackage.DOUYIN.equals(packageName)) return;
+        if (isDouyinProcess() && !packageName.equals(Application.getProcessName())) return;
         if (ModuleScopePackage.INCALL_UI.equals(packageName)) return;
         if (LocalWidgetCatalogHooks.PACKAGE.equals(packageName)) {
             // Catalogue-only scope: no resource/context Hooks, blur adapters or desktop bridge.
@@ -213,6 +247,19 @@ public final class MyHyperModifier extends XposedModule {
             try {
                 LocalWidgetCatalogHooks.install(this, param.getClassLoader(), getRemotePreferences("modifier_settings"));
             } catch (Throwable error) { HookDiagnostics.failure(packageName, "本地小组件目录", error); }
+            return;
+        }
+        if (SocialHooks.isTarget(packageName)) {
+            try {
+                ModuleSettings.setRemotePreferences(getRemotePreferences("modifier_settings"));
+                ModuleSettings.ensureLoaded();
+                if (!ModuleSettings.moduleHooksEnabled) return;
+                installSafely(packageName, "微信/QQ 悬浮底栏",
+                        () -> SocialHooks.install(this, param.getClassLoader(), packageName));
+                HookDiagnostics.ready(packageName);
+            } catch (Throwable error) {
+                HookDiagnostics.failure(packageName, "微信/QQ 悬浮底栏注入", error);
+            }
             return;
         }
         if (ModuleScopePackage.PILIPLUS.equals(packageName)) {
@@ -254,14 +301,44 @@ public final class MyHyperModifier extends XposedModule {
             } catch (Throwable error) { HookDiagnostics.failure(packageName, "支付宝注入", error); }
             return;
         }
-        if (ModuleScopePackage.DOUYIN.equals(packageName)) {
+        if (ModuleScopePackage.DOUYIN.equals(packageName)
+                || ModuleScopePackage.DOUYIN_LITE.equals(packageName)) {
             // Only the main UI process needs this adapter; skip shared resource/context hooks.
             if (!packageName.equals(Application.getProcessName())) return;
             try {
                 ModuleSettings.setRemotePreferences(getRemotePreferences("modifier_settings"));
                 ModuleSettings.ensureLoaded();
-                installSafely(packageName, "抖音柔光底栏", () -> DouyinHooks.install(this, param.getClassLoader()));
+                installSafely(packageName, "抖音柔光底栏",
+                        () -> DouyinHooks.install(this, param.getClassLoader(), packageName));
             } catch (Throwable error) { HookDiagnostics.failure(packageName, "抖音注入", error); }
+            return;
+        }
+        if (KuaishouHooks.isTarget(packageName)) {
+            if (!packageName.equals(Application.getProcessName())) return;
+            try {
+                ModuleSettings.setRemotePreferences(getRemotePreferences("modifier_settings"));
+                ModuleSettings.ensureLoaded();
+                if (!ModuleSettings.moduleHooksEnabled) return;
+                installSafely(packageName, "快手柔光底栏",
+                        () -> KuaishouHooks.install(this, param.getClassLoader(), packageName));
+                HookDiagnostics.ready(packageName);
+            } catch (Throwable error) {
+                HookDiagnostics.failure(packageName, "快手悬浮底栏注入", error);
+            }
+            return;
+        }
+        if (ModuleScopePackage.QQ_MUSIC.equals(packageName)) {
+            if (!packageName.equals(Application.getProcessName())) return;
+            try {
+                ModuleSettings.setRemotePreferences(getRemotePreferences("modifier_settings"));
+                ModuleSettings.ensureLoaded();
+                if (!ModuleSettings.moduleHooksEnabled) return;
+                installSafely(packageName, "QQ音乐柔光底栏",
+                        () -> QQMusicHooks.install(this, param.getClassLoader()));
+                HookDiagnostics.ready(packageName);
+            } catch (Throwable error) {
+                HookDiagnostics.failure(packageName, "QQ音乐悬浮底栏注入", error);
+            }
             return;
         }
         if (ModuleScopePackage.VOICE_ASSIST.equals(packageName)) {
@@ -393,38 +470,13 @@ public final class MyHyperModifier extends XposedModule {
                 return;
             }
             installSafely(packageName, "资源覆盖", this::installResourceValueHooks);
-            if (SYSTEM_UI.equals(packageName) || SYSTEM_UI_PLUGIN.equals(packageName)) {
-                installSafely(packageName, "卡片玻璃效果", () -> ShadeCardGlassHooks.install(this));
-            }
             if (SYSTEM_UI.equals(packageName)) {
-                installSafely(packageName, "超级岛通知深色材质", () -> FocusNotificationGlassTintHooks.install(this, param.getClassLoader()));
-                if (SYSTEM_UI.equals(packageName)) installSafely(packageName, "超级岛白名单", () ->
-                        SuperIslandWhitelistHooks.installSystemUi(this, param.getClassLoader()));
-                installSafely(packageName, "Spotify 媒体卡片", () -> SpotifyMediaCardHooks.install(this, param.getClassLoader()));
-                installSafely(packageName, "手势提示线", () -> GestureHandleHooks.install(this, param.getClassLoader()));
-                installSafely(packageName, "悬浮通知迷你栏", () -> HeadsUpMiniBarHooks.install(this, param.getClassLoader()));
-                installSafely(packageName, "悬浮通知底部间距", () -> HeadsUpBottomMarginHooks.install(this, param.getClassLoader()));
-                installSafely(packageName, "息屏时钟字重", () -> AodClockWeightHooks.install(this, param.getClassLoader()));
-                installSafely(packageName, "锁屏时钟冒号", () -> LockscreenClockColonHooks.install(this, param.getClassLoader()));
-                installSafely(packageName, "锁屏时钟小时前导零", () -> LockscreenClockLeadingZeroHooks.install(this, param.getClassLoader()));
-                installSafely(packageName, "绕过 HyperMusicCover 时钟避让", () -> HyperMusicCoverClockHooks.install(this, param.getClassLoader()));
-                installSafely(packageName, "HyperMusicCover 扩展", () -> HyperMusicCoverExtensions.install(this, param.getClassLoader()));
-                installSafely(packageName, "锁屏时钟渐进避让通知", () -> LockscreenClockAvoidanceHooks.install(this, param.getClassLoader()));
-                if (LOCKSCREEN_PASSWORD_BACKGROUND_EXPERIMENT_ENABLED) {
-                    installSafely(packageName, "锁屏密码背景模糊", () ->
-                            lockscreenHooks().installLockscreenBouncerBlurCompatHook(param.getClassLoader()));
-                    installSafely(packageName, "锁屏密码壁纸", () ->
-                            lockscreenHooks().installLockscreenPasswordWallpaperRatioHook(param.getClassLoader()));
-                }
                 installSafely(packageName, "插件加载器", () ->
                         pluginHooks().installSystemUiPluginLoaderFactoryHook(param.getClassLoader()));
-                installSafely(packageName, "插件类加载器", () ->
-                        pluginHooks().installSystemUiPluginClassLoaderResolver());
-                installSafely(packageName, "SystemUI", () ->
-                        systemUiHooks().installSystemUiHooks(param.getClassLoader()));
+                scheduleDeferredSystemUiHooks(param.getClassLoader());
             } else if (SYSTEM_UI_PLUGIN.equals(packageName)) {
                 installSafely(packageName, "控制中心圆角", () ->
-                        pluginHooks().installSystemUiPluginCornerHooks(param.getClassLoader()));
+                        pluginHooks().scheduleSystemUiPluginCornerHooks(param.getClassLoader()));
                 installSafely(packageName, "全局背景模糊", () ->
                         systemUiHooks().installGlobalBackgroundBlurHook());
             } else if (MILINK.equals(packageName)) {
@@ -497,41 +549,88 @@ public final class MyHyperModifier extends XposedModule {
     private void startEarlySystemUiHooks(ClassLoader classLoader) {
         if (!ModuleSettings.moduleHooksEnabled || systemUiCompatibilityFor(SYSTEM_UI)) return;
         if (classLoader == null || !EARLY_SYSTEM_UI_HOOKS_INSTALLED.compareAndSet(false, true)) return;
-        installSafely(SYSTEM_UI, "超级岛白名单", () -> SuperIslandWhitelistHooks.installSystemUi(this, classLoader));
+        installSafely(SYSTEM_UI, "插件加载器", () ->
+                pluginHooks().installSystemUiPluginLoaderFactoryHook(classLoader));
+        scheduleDeferredSystemUiHooks(classLoader);
+    }
+
+    private void startEarlyPluginHooks(ClassLoader classLoader) {
+        if (!ModuleSettings.moduleHooksEnabled || systemUiCompatibilityFor(SYSTEM_UI_PLUGIN)) return;
+        if (classLoader == null || !EARLY_PLUGIN_HOOKS_INSTALLED.compareAndSet(false, true)) return;
+        installSafely(SYSTEM_UI_PLUGIN, "控制中心圆角", () ->
+                pluginHooks().scheduleSystemUiPluginCornerHooks(classLoader));
+        installSafely(SYSTEM_UI_PLUGIN, "全局背景模糊", () ->
+                systemUiHooks().installGlobalBackgroundBlurHook());
+    }
+
+    /**
+     * Other LSPosed modules also hook ClassLoader.loadClass. Installing SystemUI hooks while
+     * those callbacks are nested on the startup thread can exceed Android's process-startup ANR
+     * deadline. Wait for the first frame, then install on our own worker; keep a timed fallback
+     * for SystemUI processes that do not schedule a frame callback.
+     */
+    private void scheduleDeferredSystemUiHooks(ClassLoader classLoader) {
+        if (classLoader == null
+                || !DEFERRED_SYSTEM_UI_HOOKS_SCHEDULED.compareAndSet(false, true)) {
+            return;
+        }
+        Runnable install = () -> {
+            if (!DEFERRED_SYSTEM_UI_HOOKS_RUNNING.compareAndSet(false, true)) return;
+            try {
+                if (!ModuleSettings.moduleHooksEnabled || systemUiCompatibilityFor(SYSTEM_UI)) return;
+                installDeferredSystemUiHooks(classLoader);
+            } catch (Throwable error) {
+                log(Log.ERROR, TAG, "Could not install deferred SystemUI hooks", error);
+                HookDiagnostics.failure(SYSTEM_UI, "延迟 SystemUI Hook", error);
+            }
+        };
+        try {
+            DEFERRED_SYSTEM_UI_WORKER.schedule(
+                    install, DEFERRED_SYSTEM_UI_FALLBACK_DELAY_MS, TimeUnit.MILLISECONDS);
+            Choreographer.getInstance().postFrameCallback(frame ->
+                    DEFERRED_SYSTEM_UI_WORKER.schedule(
+                            install, DEFERRED_SYSTEM_UI_FRAME_SETTLE_DELAY_MS, TimeUnit.MILLISECONDS));
+            HookDiagnostics.observed(SYSTEM_UI, "SystemUI Hook 调度",
+                    "等待首帧后在后台安装，避免参与启动阶段的类加载回调链");
+        } catch (Throwable error) {
+            DEFERRED_SYSTEM_UI_HOOKS_SCHEDULED.set(false);
+            HookDiagnostics.failure(SYSTEM_UI, "SystemUI Hook 调度", error);
+        }
+    }
+
+    private void installDeferredSystemUiHooks(ClassLoader classLoader) {
+        installSafely(SYSTEM_UI, "超级岛白名单", () ->
+                SuperIslandWhitelistHooks.installSystemUi(this, classLoader));
         installSafely(SYSTEM_UI, "卡片玻璃效果", () -> ShadeCardGlassHooks.install(this));
-        installSafely(SYSTEM_UI, "超级岛通知深色材质", () -> FocusNotificationGlassTintHooks.install(this, classLoader));
+        installSafely(SYSTEM_UI, "超级岛通知深色材质", () ->
+                FocusNotificationGlassTintHooks.install(this, classLoader));
+        installSafely(SYSTEM_UI, "Spotify 媒体卡片", () ->
+                SpotifyMediaCardHooks.install(this, classLoader));
         installSafely(SYSTEM_UI, "手势提示线", () -> GestureHandleHooks.install(this, classLoader));
-        installSafely(SYSTEM_UI, "悬浮通知迷你栏", () -> HeadsUpMiniBarHooks.install(this, classLoader));
-        installSafely(SYSTEM_UI, "悬浮通知底部间距", () -> HeadsUpBottomMarginHooks.install(this, classLoader));
+        installSafely(SYSTEM_UI, "悬浮通知迷你栏", () ->
+                HeadsUpMiniBarHooks.install(this, classLoader));
+        installSafely(SYSTEM_UI, "悬浮通知底部间距", () ->
+                HeadsUpBottomMarginHooks.install(this, classLoader));
         installSafely(SYSTEM_UI, "息屏时钟字重", () -> AodClockWeightHooks.install(this, classLoader));
-        installSafely(SYSTEM_UI, "锁屏时钟冒号", () -> LockscreenClockColonHooks.install(this, classLoader));
-        installSafely(SYSTEM_UI, "锁屏时钟小时前导零", () -> LockscreenClockLeadingZeroHooks.install(this, classLoader));
-        installSafely(SYSTEM_UI, "绕过 HyperMusicCover 时钟避让", () -> HyperMusicCoverClockHooks.install(this, classLoader));
-        installSafely(SYSTEM_UI, "HyperMusicCover 扩展", () -> HyperMusicCoverExtensions.install(this, classLoader));
-        installSafely(SYSTEM_UI, "锁屏时钟渐进避让通知", () -> LockscreenClockAvoidanceHooks.install(this, classLoader));
+        installSafely(SYSTEM_UI, "锁屏时钟冒号", () ->
+                LockscreenClockColonHooks.install(this, classLoader));
+        installSafely(SYSTEM_UI, "锁屏时钟小时前导零", () ->
+                LockscreenClockLeadingZeroHooks.install(this, classLoader));
+        installSafely(SYSTEM_UI, "绕过 HyperMusicCover 时钟避让", () ->
+                HyperMusicCoverClockHooks.install(this, classLoader));
+        installSafely(SYSTEM_UI, "HyperMusicCover 扩展", () ->
+                HyperMusicCoverExtensions.install(this, classLoader));
+        installSafely(SYSTEM_UI, "锁屏时钟渐进避让通知", () ->
+                LockscreenClockAvoidanceHooks.install(this, classLoader));
         if (LOCKSCREEN_PASSWORD_BACKGROUND_EXPERIMENT_ENABLED) {
             installSafely(SYSTEM_UI, "锁屏密码背景模糊", () ->
                     lockscreenHooks().installLockscreenBouncerBlurCompatHook(classLoader));
             installSafely(SYSTEM_UI, "锁屏密码壁纸", () ->
                     lockscreenHooks().installLockscreenPasswordWallpaperRatioHook(classLoader));
         }
-        installSafely(SYSTEM_UI, "插件加载器", () ->
-                pluginHooks().installSystemUiPluginLoaderFactoryHook(classLoader));
-        installSafely(SYSTEM_UI, "插件类加载器", () ->
-                pluginHooks().installSystemUiPluginClassLoaderResolver());
         installSafely(SYSTEM_UI, "SystemUI", () -> systemUiHooks().installSystemUiHooks(classLoader));
         HookDiagnostics.ready(SYSTEM_UI);
-    }
-
-    private void startEarlyPluginHooks(ClassLoader classLoader) {
-        if (!ModuleSettings.moduleHooksEnabled || systemUiCompatibilityFor(SYSTEM_UI_PLUGIN)) return;
-        if (classLoader == null || !EARLY_PLUGIN_HOOKS_INSTALLED.compareAndSet(false, true)) return;
-        installSafely(SYSTEM_UI_PLUGIN, "卡片玻璃效果", () -> ShadeCardGlassHooks.install(this));
-        installSafely(SYSTEM_UI_PLUGIN, "控制中心圆角", () ->
-                pluginHooks().installSystemUiPluginCornerHooks(classLoader));
-        installSafely(SYSTEM_UI_PLUGIN, "全局背景模糊", () ->
-                systemUiHooks().installGlobalBackgroundBlurHook());
-        HookDiagnostics.ready(SYSTEM_UI_PLUGIN);
+        log(Log.INFO, TAG, "Installed deferred SystemUI hooks after startup");
     }
 
     /** Reads saved appearance options after the target process receives its base context. */

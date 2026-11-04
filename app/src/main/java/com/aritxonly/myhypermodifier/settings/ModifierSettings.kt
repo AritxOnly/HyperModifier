@@ -168,6 +168,19 @@ data class ModifierSettings(
     val amapHideLongPressVoiceTabEnabled: Boolean = ModuleDefaultValues.AMAP_HIDE_LONG_PRESS_VOICE_TAB_ENABLED,
     val alipayFloatingNavigationEnabled: Boolean = ModuleDefaultValues.ALIPAY_FLOATING_NAVIGATION_ENABLED,
     val douyinFloatingNavigationEnabled: Boolean = ModuleDefaultValues.DOUYIN_FLOATING_NAVIGATION_ENABLED,
+    val douyinLiteFloatingNavigationEnabled: Boolean =
+        ModuleDefaultValues.DOUYIN_LITE_FLOATING_NAVIGATION_ENABLED,
+    val kuaishouFloatingNavigationEnabled: Boolean =
+        ModuleDefaultValues.KUAISHOU_FLOATING_NAVIGATION_ENABLED,
+    val kuaishouLiteFloatingNavigationEnabled: Boolean =
+        ModuleDefaultValues.KUAISHOU_LITE_FLOATING_NAVIGATION_ENABLED,
+    val wechatFloatingNavigationEnabled: Boolean =
+        ModuleDefaultValues.WECHAT_FLOATING_NAVIGATION_ENABLED,
+    val wechatNavigationBadgesEnabled: Boolean = true,
+    val qqFloatingNavigationEnabled: Boolean = ModuleDefaultValues.QQ_FLOATING_NAVIGATION_ENABLED,
+    val qqNavigationBadgesEnabled: Boolean = true,
+    val qqMusicFloatingNavigationEnabled: Boolean =
+        ModuleDefaultValues.QQ_MUSIC_FLOATING_NAVIGATION_ENABLED,
     val xiaomiCommunityFloatingNavigationEnabled: Boolean = ModuleDefaultValues.XIAOMI_COMMUNITY_FLOATING_NAVIGATION_ENABLED,
     val xiaomiCommunityMiuixIconsEnabled: Boolean = false,
     val xiaomiCommunityMonochromeIconsEnabled: Boolean = true,
@@ -357,6 +370,14 @@ object ModifierSettingsPresets {
         amapHideLongPressVoiceTabEnabled = false,
         alipayFloatingNavigationEnabled = false,
         douyinFloatingNavigationEnabled = false,
+        douyinLiteFloatingNavigationEnabled = false,
+        kuaishouFloatingNavigationEnabled = false,
+        kuaishouLiteFloatingNavigationEnabled = false,
+        wechatFloatingNavigationEnabled = false,
+        wechatNavigationBadgesEnabled = false,
+        qqFloatingNavigationEnabled = false,
+        qqNavigationBadgesEnabled = false,
+        qqMusicFloatingNavigationEnabled = false,
         xiaomiCommunityFloatingNavigationEnabled = false,
         xiaomiCommunityMiuixIconsEnabled = false,
         xiaomiCommunityMonochromeIconsEnabled = false,
@@ -567,6 +588,16 @@ object ModifierSettingsStore {
         "amap_hide_long_press_voice_tab_enabled"
     private const val KEY_ALIPAY_FLOATING_NAVIGATION = "alipay_floating_navigation_enabled"
     private const val KEY_DOUYIN_FLOATING_NAVIGATION = "douyin_floating_navigation_enabled"
+    private const val KEY_DOUYIN_LITE_FLOATING_NAVIGATION =
+        "douyin_lite_floating_navigation_enabled"
+    private const val KEY_KUAISHOU_FLOATING_NAVIGATION = "kuaishou_floating_navigation_enabled"
+    private const val KEY_KUAISHOU_LITE_FLOATING_NAVIGATION =
+        "kuaishou_lite_floating_navigation_enabled"
+    private const val KEY_WECHAT_FLOATING_NAVIGATION = "wechat_floating_navigation_enabled"
+    private const val KEY_WECHAT_NAVIGATION_BADGES = "wechat_navigation_badges_enabled"
+    private const val KEY_QQ_FLOATING_NAVIGATION = "qq_floating_navigation_enabled"
+    private const val KEY_QQ_NAVIGATION_BADGES = "qq_navigation_badges_enabled"
+    private const val KEY_QQ_MUSIC_FLOATING_NAVIGATION = "qq_music_floating_navigation_enabled"
     private const val KEY_XIAOMI_COMMUNITY_FLOATING_NAVIGATION =
         "xiaomi_community_floating_navigation_enabled"
     private const val KEY_XIAOMI_COMMUNITY_MIUIX_ICONS =
@@ -865,6 +896,32 @@ object ModifierSettingsStore {
             ),
             alipayFloatingNavigationEnabled = prefs.getBoolean(KEY_ALIPAY_FLOATING_NAVIGATION, ModuleDefaultValues.ALIPAY_FLOATING_NAVIGATION_ENABLED),
             douyinFloatingNavigationEnabled = prefs.getBoolean(KEY_DOUYIN_FLOATING_NAVIGATION, ModuleDefaultValues.DOUYIN_FLOATING_NAVIGATION_ENABLED),
+            douyinLiteFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_DOUYIN_LITE_FLOATING_NAVIGATION,
+                ModuleDefaultValues.DOUYIN_LITE_FLOATING_NAVIGATION_ENABLED,
+            ),
+            kuaishouFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_KUAISHOU_FLOATING_NAVIGATION,
+                ModuleDefaultValues.KUAISHOU_FLOATING_NAVIGATION_ENABLED,
+            ),
+            kuaishouLiteFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_KUAISHOU_LITE_FLOATING_NAVIGATION,
+                ModuleDefaultValues.KUAISHOU_LITE_FLOATING_NAVIGATION_ENABLED,
+            ),
+            wechatFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_WECHAT_FLOATING_NAVIGATION,
+                ModuleDefaultValues.WECHAT_FLOATING_NAVIGATION_ENABLED,
+            ),
+            wechatNavigationBadgesEnabled = prefs.getBoolean(KEY_WECHAT_NAVIGATION_BADGES, true),
+            qqFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_QQ_FLOATING_NAVIGATION,
+                ModuleDefaultValues.QQ_FLOATING_NAVIGATION_ENABLED,
+            ),
+            qqNavigationBadgesEnabled = prefs.getBoolean(KEY_QQ_NAVIGATION_BADGES, true),
+            qqMusicFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_QQ_MUSIC_FLOATING_NAVIGATION,
+                ModuleDefaultValues.QQ_MUSIC_FLOATING_NAVIGATION_ENABLED,
+            ),
             xiaomiCommunityFloatingNavigationEnabled = prefs.getBoolean(
                 KEY_XIAOMI_COMMUNITY_FLOATING_NAVIGATION,
                 ModuleDefaultValues.XIAOMI_COMMUNITY_FLOATING_NAVIGATION_ENABLED,
@@ -1245,6 +1302,20 @@ object ModifierSettingsStore {
             )
             .putBoolean(KEY_ALIPAY_FLOATING_NAVIGATION, value.alipayFloatingNavigationEnabled)
             .putBoolean(KEY_DOUYIN_FLOATING_NAVIGATION, value.douyinFloatingNavigationEnabled)
+            .putBoolean(
+                KEY_DOUYIN_LITE_FLOATING_NAVIGATION,
+                value.douyinLiteFloatingNavigationEnabled,
+            )
+            .putBoolean(KEY_KUAISHOU_FLOATING_NAVIGATION, value.kuaishouFloatingNavigationEnabled)
+            .putBoolean(
+                KEY_KUAISHOU_LITE_FLOATING_NAVIGATION,
+                value.kuaishouLiteFloatingNavigationEnabled,
+            )
+            .putBoolean(KEY_WECHAT_FLOATING_NAVIGATION, value.wechatFloatingNavigationEnabled)
+            .putBoolean(KEY_WECHAT_NAVIGATION_BADGES, value.wechatNavigationBadgesEnabled)
+            .putBoolean(KEY_QQ_FLOATING_NAVIGATION, value.qqFloatingNavigationEnabled)
+            .putBoolean(KEY_QQ_NAVIGATION_BADGES, value.qqNavigationBadgesEnabled)
+            .putBoolean(KEY_QQ_MUSIC_FLOATING_NAVIGATION, value.qqMusicFloatingNavigationEnabled)
             .putBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, value.spotifyFloatingNavigationEnabled)
             .putBoolean(KEY_SPOTIFY_FAVORITE_BUTTON, value.spotifyFavoriteButtonEnabled)
             .putBoolean(KEY_SPOTIFY_SHUFFLE_BUTTON, value.spotifyShuffleButtonEnabled)
@@ -1670,6 +1741,20 @@ object ModifierSettingsStore {
         )
         putBoolean(KEY_ALIPAY_FLOATING_NAVIGATION, value.alipayFloatingNavigationEnabled)
         putBoolean(KEY_DOUYIN_FLOATING_NAVIGATION, value.douyinFloatingNavigationEnabled)
+        putBoolean(
+            KEY_DOUYIN_LITE_FLOATING_NAVIGATION,
+            value.douyinLiteFloatingNavigationEnabled,
+        )
+        putBoolean(KEY_KUAISHOU_FLOATING_NAVIGATION, value.kuaishouFloatingNavigationEnabled)
+        putBoolean(
+            KEY_KUAISHOU_LITE_FLOATING_NAVIGATION,
+            value.kuaishouLiteFloatingNavigationEnabled,
+        )
+        putBoolean(KEY_WECHAT_FLOATING_NAVIGATION, value.wechatFloatingNavigationEnabled)
+        putBoolean(KEY_WECHAT_NAVIGATION_BADGES, value.wechatNavigationBadgesEnabled)
+        putBoolean(KEY_QQ_FLOATING_NAVIGATION, value.qqFloatingNavigationEnabled)
+        putBoolean(KEY_QQ_NAVIGATION_BADGES, value.qqNavigationBadgesEnabled)
+        putBoolean(KEY_QQ_MUSIC_FLOATING_NAVIGATION, value.qqMusicFloatingNavigationEnabled)
         putBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, value.spotifyFloatingNavigationEnabled)
         putBoolean(KEY_SPOTIFY_FAVORITE_BUTTON, value.spotifyFavoriteButtonEnabled)
         putBoolean(KEY_SPOTIFY_SHUFFLE_BUTTON, value.spotifyShuffleButtonEnabled)

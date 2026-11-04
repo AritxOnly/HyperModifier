@@ -56,6 +56,7 @@ final class DesktopStatusBarHooks {
                     if (binding.controller.get() != target) {
                         binding.controller = new WeakReference<>(target);
                     }
+                    binding.pendingRefresh.set(false);
                     if (binding.override(target)) {
                         binding.applied = true;
                         return null;
@@ -79,6 +80,7 @@ final class DesktopStatusBarHooks {
         final Object[] lightArgs = {false, false, true};
         final Object[] darkArgs = {true, false, true};
         final AtomicBoolean queued = new AtomicBoolean();
+        final AtomicBoolean pendingRefresh = new AtomicBoolean();
         final AtomicBoolean failed = new AtomicBoolean();
         volatile WeakReference<Object> repository = new WeakReference<>(null);
         volatile WeakReference<Object> controller = new WeakReference<>(null);
@@ -94,6 +96,7 @@ final class DesktopStatusBarHooks {
         private void refresh() {
             Object target = controller.get();
             if (target == null || failed.get()) return;
+            pendingRefresh.set(false);
             try {
                 // Stock region cache is never replaced, so SYSTEM immediately restores the ROM.
                 update.invoke(target, appearanceRegions.get(target));
@@ -192,7 +195,11 @@ final class DesktopStatusBarHooks {
         }
 
         void requestRefresh() {
-            if (queued.compareAndSet(false, true)) main.post(refresh);
+            pendingRefresh.set(true);
+            Object target = controller.get();
+            if (target != null && !failed.get() && queued.compareAndSet(false, true)) {
+                main.post(refresh);
+            }
         }
 
         void fail(Throwable error) {

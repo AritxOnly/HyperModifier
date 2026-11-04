@@ -21,6 +21,8 @@ internal class WindowGpuBackdropSampler(
     private val source: View,
     private val excludedView: View,
     private val window: Window,
+    private val minimumCaptureIntervalMs: Long = 0L,
+    private val continuousSampling: Boolean = false,
     private val publish: (ViewBackdropSnapshot?) -> Unit,
 ) : NavigationGlassObserver {
     private val self = WeakReference(this)
@@ -142,7 +144,11 @@ internal class WindowGpuBackdropSampler(
         if (disposed || failed || scheduled || bounds == null || !gate.ready()) return
         scheduled = true
         // Runs after traversal, not another postOnAnimation frame later.
-        val interval = maxOf(16L, BackdropCaptureCadence.intervalMs(source.display?.refreshRate ?: 60f))
+        val interval = maxOf(
+            16L,
+            minimumCaptureIntervalMs,
+            BackdropCaptureCadence.intervalMs(source.display?.refreshRate ?: 60f),
+        )
         val delay = if (lastCaptureAt == Long.MIN_VALUE) 0L else
             (interval - (SystemClock.uptimeMillis() - lastCaptureAt)).coerceAtLeast(0L)
         main.postDelayed(captureTask, delay)
@@ -226,7 +232,7 @@ internal class WindowGpuBackdropSampler(
             publish(ViewBackdropSnapshot(bitmap, width, height, x, y, ++generation))
             if (generation == 1L) android.util.Log.i("MyHyperModifier",
                 "Window GPU backdrop active: ${bitmap.width}x${bitmap.height}, HARDWARE")
-            if (SystemClock.uptimeMillis() < burstUntil) gate.request()
+            if (continuousSampling || SystemClock.uptimeMillis() < burstUntil) gate.request()
             schedule()
         }
     }

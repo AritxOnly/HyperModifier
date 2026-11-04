@@ -181,6 +181,20 @@ final class ModuleSettings {
     static volatile boolean amapHideLongPressVoiceTabEnabled = ModuleDefaultValues.AMAP_HIDE_LONG_PRESS_VOICE_TAB_ENABLED;
     static volatile boolean alipayFloatingNavigationEnabled = ModuleDefaultValues.ALIPAY_FLOATING_NAVIGATION_ENABLED;
     static volatile boolean douyinFloatingNavigationEnabled = ModuleDefaultValues.DOUYIN_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean douyinLiteFloatingNavigationEnabled =
+            ModuleDefaultValues.DOUYIN_LITE_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean kuaishouFloatingNavigationEnabled =
+            ModuleDefaultValues.KUAISHOU_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean kuaishouLiteFloatingNavigationEnabled =
+            ModuleDefaultValues.KUAISHOU_LITE_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean weChatFloatingNavigationEnabled =
+            ModuleDefaultValues.WECHAT_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean weChatNavigationBadgesEnabled = true;
+    static volatile boolean qqFloatingNavigationEnabled =
+            ModuleDefaultValues.QQ_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean qqNavigationBadgesEnabled = true;
+    static volatile boolean qqMusicFloatingNavigationEnabled =
+            ModuleDefaultValues.QQ_MUSIC_FLOATING_NAVIGATION_ENABLED;
     static volatile boolean xiaomiCommunityFloatingNavigationEnabled = ModuleDefaultValues.XIAOMI_COMMUNITY_FLOATING_NAVIGATION_ENABLED;
     static volatile boolean xiaomiCommunityMiuixIconsEnabled = false;
     static volatile boolean xiaomiCommunityMonochromeIconsEnabled = true;
@@ -703,6 +717,27 @@ final class ModuleSettings {
                     "amap_hide_long_press_voice_tab_enabled", ModuleDefaultValues.AMAP_HIDE_LONG_PRESS_VOICE_TAB_ENABLED);
             alipayFloatingNavigationEnabled = values.getBoolean("alipay_floating_navigation_enabled", ModuleDefaultValues.ALIPAY_FLOATING_NAVIGATION_ENABLED);
             douyinFloatingNavigationEnabled = values.getBoolean("douyin_floating_navigation_enabled", ModuleDefaultValues.DOUYIN_FLOATING_NAVIGATION_ENABLED);
+            douyinLiteFloatingNavigationEnabled = values.getBoolean(
+                    "douyin_lite_floating_navigation_enabled",
+                    ModuleDefaultValues.DOUYIN_LITE_FLOATING_NAVIGATION_ENABLED);
+            kuaishouFloatingNavigationEnabled = values.getBoolean(
+                    "kuaishou_floating_navigation_enabled",
+                    ModuleDefaultValues.KUAISHOU_FLOATING_NAVIGATION_ENABLED);
+            kuaishouLiteFloatingNavigationEnabled = values.getBoolean(
+                    "kuaishou_lite_floating_navigation_enabled",
+                    ModuleDefaultValues.KUAISHOU_LITE_FLOATING_NAVIGATION_ENABLED);
+            weChatFloatingNavigationEnabled = values.getBoolean(
+                    "wechat_floating_navigation_enabled",
+                    ModuleDefaultValues.WECHAT_FLOATING_NAVIGATION_ENABLED);
+            weChatNavigationBadgesEnabled =
+                    values.getBoolean("wechat_navigation_badges_enabled", true);
+            qqFloatingNavigationEnabled = values.getBoolean(
+                    "qq_floating_navigation_enabled",
+                    ModuleDefaultValues.QQ_FLOATING_NAVIGATION_ENABLED);
+            qqNavigationBadgesEnabled = values.getBoolean("qq_navigation_badges_enabled", true);
+            qqMusicFloatingNavigationEnabled = values.getBoolean(
+                    "qq_music_floating_navigation_enabled",
+                    ModuleDefaultValues.QQ_MUSIC_FLOATING_NAVIGATION_ENABLED);
             xiaomiCommunityFloatingNavigationEnabled = values.getBoolean(
                     "xiaomi_community_floating_navigation_enabled", ModuleDefaultValues.XIAOMI_COMMUNITY_FLOATING_NAVIGATION_ENABLED);
             xiaomiCommunityMiuixIconsEnabled = values.getBoolean(

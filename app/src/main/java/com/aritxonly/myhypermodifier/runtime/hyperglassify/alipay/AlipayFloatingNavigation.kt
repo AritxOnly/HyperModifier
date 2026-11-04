@@ -66,7 +66,6 @@ internal object AlipayFloatingNavigation {
             .getMethod("isTabBarNormalMode")
         val aiMode = loader.loadClass("com.alipay.android.launcher.tab.AiTabManager")
             .getMethod("JinniModeBarStyle")
-        val dark = manager.getMethod("isTabBarDarkMode")
         val restoreMargin = manager.getMethod("setTabContentBottomMargin")
     }
 
@@ -116,7 +115,7 @@ internal object AlipayFloatingNavigation {
         showBadges = { true },
         fallbackIcon = { _, _ -> MiuixIcons.Home },
         nativeBarVisible = { bars[it]?.let { session -> session.foreground && session.classic } == true },
-        resolveDarkTheme = { activity, _, _, _ -> sessions[activity]?.dark },
+        resolveDarkTheme = { activity, _, _, _ -> HostThemeResolver.resolve(activity) },
         nativeRefreshIntervalMs = 100L,
         stableNavigationInset = true,
         // Same-window retained display list, as used by Douyin/Spotify. Never read pixels back.
@@ -184,14 +183,14 @@ internal object AlipayFloatingNavigation {
         sessions[activity] = session
         bars[bar] = session
         contentOwners[content] = session
-        updateStyle(session)
+        updateStyle(activity, session)
         if (session.classic && enabled()) delegate.attach(activity)
     }
 
     @JvmStatic fun resume(activity: Activity) {
         val session = sessions[activity] ?: return
         session.foreground = true
-        updateStyle(session)
+        updateStyle(activity, session)
         if (session.classic && enabled()) {
             delegate.attach(activity)
             delegate.setForeground(activity, true)
@@ -224,7 +223,7 @@ internal object AlipayFloatingNavigation {
                 session.styleRefreshQueued = false
                 val current = owner.get() ?: return@post
                 if (sessions[current] !== session) return@post
-                updateStyle(session)
+                updateStyle(current, session)
                 if (session.classic && session.foreground && enabled()) {
                     delegate.attach(current)
                     delegate.refresh(current)
@@ -235,14 +234,13 @@ internal object AlipayFloatingNavigation {
 
     @JvmStatic fun invalidateIcon(tab: View) { icons.remove(tab) }
 
-    private fun updateStyle(session: Session) {
-        val manager = session.manager.get() ?: return
+    private fun updateStyle(activity: Activity, session: Session) {
         // "YoungStyle" is icon typography and is also used by classic mode.
         // Gate on the app's actual normal/Jinni mode instead.
         session.classic = runCatching {
             metadata.normalMode.invoke(null) == true && metadata.aiMode.invoke(null) == false
         }.getOrDefault(false)
-        session.dark = runCatching { metadata.dark.invoke(manager) == true }.getOrDefault(false)
+        session.dark = HostThemeResolver.resolve(activity)
     }
 
     /** Called at Alipay's own margin write, before any raised layout can be submitted. */

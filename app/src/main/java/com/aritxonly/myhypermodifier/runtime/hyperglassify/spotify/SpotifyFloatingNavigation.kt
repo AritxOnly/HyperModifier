@@ -147,6 +147,7 @@ private data class SpotifyNavigationState(
     val selectedIndex: Int = 0,
     val visible: Boolean = false,
     val navigationInsetPx: Int = 0,
+    val darkTheme: Boolean = false,
 )
 
 private data class SpotifyAccessibilityTab(
@@ -314,6 +315,7 @@ private class SpotifyNavigationHost private constructor(
                 composeView,
                 activity.window.decorView,
             ),
+            darkTheme = HostThemeResolver.resolve(activity),
         )
         state = next
         visibility.setVisible(next.visible)
@@ -560,8 +562,7 @@ private fun SpotifyNavigationContent(
     onDestinationSelected: (Int) -> Unit,
 ) {
     if (!state.visible || state.tabs.isEmpty()) return
-    // Spotify's content remains dark even when Android uses a light theme.
-    val dark = true
+    val dark = state.darkTheme
     val materialColors = remember(dark) { MhmPresetColors.material(dark) }
     val miuixColors = remember(dark, materialColors) { MhmPresetColors.miuix(materialColors, dark) }
     val backdrop = rememberLayerBackdrop()

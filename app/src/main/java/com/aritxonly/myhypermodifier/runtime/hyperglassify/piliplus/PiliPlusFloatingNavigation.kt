@@ -3,6 +3,7 @@ package com.aritxonly.myhypermodifier
 import android.app.Activity
 import android.content.Context
 import android.graphics.PixelFormat
+import android.os.FileObserver
 import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
@@ -46,6 +47,10 @@ import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabItem
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabLayout
 import com.aritxonly.deadliner.ui.theme.AdvancedMaterialSpec
 import com.aritxonly.deadliner.ui.theme.LocalAdvancedMaterialSpec
+import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.charset.StandardCharsets
 import java.util.WeakHashMap
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
@@ -140,6 +145,47 @@ internal object PiliPlusFloatingNavigation {
     private const val VIEW_WAIT_TIMEOUT_MS = 8_000L
 }
 
+internal object PiliPlusThemeSetting {
+    private const val LIGHT = 0
+    private const val DARK = 1
+    private val KEY = "themeMode".toByteArray(StandardCharsets.UTF_8)
+
+    fun file(activity: Activity): File = File(activity.filesDir, "hive/setting.hive")
+
+    fun dark(activity: Activity, mode: Int?): Boolean = when (mode) {
+        LIGHT -> false
+        DARK -> true
+        else -> HostThemeResolver.resolve(activity)
+    }
+
+    fun read(activity: Activity): Int? = runCatching {
+        val source = file(activity)
+        if (!source.isFile) return null
+        themeModeFromHive(source.readBytes())
+    }.getOrNull()
+
+    internal fun themeModeFromHive(bytes: ByteArray): Int? {
+        var offset = bytes.size - KEY.size - 10
+        while (offset >= 0) {
+            val valueOffset = offset + 2 + KEY.size
+            if (bytes[offset] == 1.toByte() && bytes[offset + 1] == KEY.size.toByte() &&
+                KEY.indices.all { bytes[offset + 2 + it] == KEY[it] }
+            ) {
+                if (valueOffset + 9 > bytes.size || bytes[valueOffset] != 1.toByte()) {
+                    return null
+                }
+                val value = ByteBuffer.wrap(bytes, valueOffset + 1, 8)
+                    .order(ByteOrder.LITTLE_ENDIAN)
+                    .double
+                    .toInt()
+                return value.takeIf { it in LIGHT..2 }
+            }
+            offset--
+        }
+        return null
+    }
+}
+
 private data class PiliPlusNavigationState(
     val tabs: List<PiliPlusNavigationCandidate> = emptyList(),
     val selectedLabel: String = "",
@@ -165,6 +211,21 @@ private class PiliPlusNavigationHost(
     private val refreshPolicy = NavigationRefreshPolicy(250L)
     private val stableNavigationInset = StableNavigationBarInset()
     private val density = activity.resources.displayMetrics.density
+    private var themeMode: Int? = null
+    @Volatile private var themeSettingDirty = true
+    private val themeFile = PiliPlusThemeSetting.file(activity)
+    private val themeObserver = runCatching {
+        object : FileObserver(
+            themeFile.parentFile,
+            CREATE or MODIFY or CLOSE_WRITE or MOVED_TO or DELETE,
+        ) {
+            override fun onEvent(event: Int, path: String?) {
+                if (path == null || path == themeFile.name) {
+                    themeSettingDirty = true
+                }
+            }
+        }
+    }.getOrNull()
     private var composeWindowAttached = false
     private var foreground = true
     private var semanticsRequested = false
@@ -219,6 +280,7 @@ private class PiliPlusNavigationHost(
             setFitInsetsTypes(0)
         }
         windowManager.addView(composeView, params)
+        themeObserver?.startWatching()
         composeWindowAttached = true
         visibility.onAttached()
         visibility.setVisible(false)
@@ -244,6 +306,7 @@ private class PiliPlusNavigationHost(
     fun dispose() {
         if (disposing) return
         disposing = true
+        themeObserver?.stopWatching()
         visibility.dispose()
         sampler.dispose()
         if (overlayParent.viewTreeObserver.isAlive) {
@@ -272,6 +335,10 @@ private class PiliPlusNavigationHost(
         if (!PiliPlusFloatingNavigation.enabled()) {
             applyHiddenState()
             return
+        }
+        if (themeSettingDirty) {
+            themeSettingDirty = false
+            themeMode = PiliPlusThemeSetting.read(activity)
         }
         if (!semanticsRequested) {
             semanticsRequested = PiliPlusSemanticsBridge.requestSemantics(
@@ -322,12 +389,7 @@ private class PiliPlusNavigationHost(
             navigationLiftDp =
                 ModuleSettings.hyperGlassifyHiddenNavigationLift.coerceIn(0f, 48f),
             navigationInsetPx = stableNavigationInset.bottomPx(composeView, overlayParent),
-            darkTheme = HostThemeResolver.resolve(
-                activity = activity,
-                nativeBar = flutterView,
-                tabs = emptyList(),
-                selectedIndex = -1,
-            ),
+            darkTheme = PiliPlusThemeSetting.dark(activity, themeMode),
         )
         if (next != state) state = next
         windowImmersion.apply(composeView)

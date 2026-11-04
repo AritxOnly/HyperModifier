@@ -22,6 +22,7 @@ internal data class EcommerceNavigationSpec(
     val logName: String,
     val testedVersion: String,
     val activityClassNames: List<String>,
+    val allowSecondaryActivities: Boolean = false,
 )
 
 internal object EcommerceNavigationTargets {
@@ -40,6 +41,9 @@ internal object EcommerceNavigationTargets {
             logName = "淘宝",
             testedVersion = "10.65.10",
             activityClassNames = listOf("com.taobao.tao.TBMainActivity"),
+            // Taobao hosts the real home container behind several dynamic Activity wrappers.
+            // Dynamic hosts are allowed, but product-page action rows are rejected below.
+            allowSecondaryActivities = true,
         ),
         EcommerceNavigationSpec(
             packageName = "com.jingdong.app.mall",
@@ -52,6 +56,9 @@ internal object EcommerceNavigationTargets {
             logName = "闲鱼",
             testedVersion = "7.28.10",
             activityClassNames = listOf("com.taobao.idlefish.maincontainer.activity.MainActivity"),
+            // Product details are a second Activity in the same task. It has no app tab bar and
+            // must never run the semantic/geometric home-bar fallback on its touch stream.
+            allowSecondaryActivities = false,
         ),
         EcommerceNavigationSpec(
             packageName = "com.ss.android.ugc.livelite",
@@ -129,6 +136,10 @@ internal object EcommerceNavigationTargets {
         return NativeViewBottomBarTarget(
             logName = spec.logName,
             testedVersion = spec.testedVersion,
+            // Taobao already supplies a page-colored native surface. The shared gradient becomes
+            // a visible full-width rectangle behind the floating capsule in both themes.
+            bottomEdgeMask = spec.packageName != "com.taobao.taobao",
+            showNavigationShadowInLight = spec.packageName != "com.taobao.taobao",
             bottomBarClassNames = classNames,
             resolveBottomBar = { root ->
                 when (spec.packageName) {
@@ -139,6 +150,13 @@ internal object EcommerceNavigationTargets {
                         root.findCainiaoNavigation(classNames)
                             ?: root.findBestBottomBar(classNames, fallbackLabels)
                     else -> root.findBestBottomBar(classNames, fallbackLabels)
+                }
+            },
+            resolveNativeChromeShells = { bar ->
+                if (spec.packageName == "com.taobao.taobao") {
+                    findTaobaoChromeShells(bar)
+                } else {
+                    emptyList()
                 }
             },
             tabClassNames = emptySet(),
@@ -208,50 +226,63 @@ internal object EcommerceNavigationTargets {
                     .firstOrNull()
                     ?: fallbackLabels.getOrNull(index)
             },
-            resolveDarkTheme = { activity, bar, tabs, selected ->
-                val explicit = when (spec.packageName) {
-                    "com.ss.android.ugc.livelite" ->
-                        tabs.getOrNull(selected)?.invokeBoolean("isCurrentDarkMode")
-                    "com.jingdong.app.mall" ->
-                        tabs.getOrNull(selected)?.invokeDeclaredBoolean("getDarkMode")
-                            ?: tabs.firstOrNull()?.invokeDeclaredBoolean("getDarkMode")
-                    "com.cainiao.wireless" -> CainiaoThemeAccess.isDarkMode(activity)
-                    else -> null
-                }
+            resolveDarkTheme = { activity, _, _, _ ->
                 HostThemeResolver.resolve(
-                    activity = activity,
-                    nativeBar = bar,
-                    tabs = tabs,
-                    selectedIndex = selected,
-                    explicitDark = explicit,
-                    // The selected labels in Jingdong and Xianyu retain a dark/red palette in
-                    // both themes, so they are not reliable dark-mode votes. Prefer evidence
-                    // owned by the host window before falling back to sampled label colors.
-                    preferHostWindow = spec.packageName == "com.jingdong.app.mall" ||
-                        spec.packageName == "com.taobao.idlefish",
-                    // Cainiao paints NavigationView itself white for light mode and black for
-                    // dark mode in refreshTabStripBackground(). Its fixed labels must never
-                    // override that authoritative theme state.
-                    preferNativeBackground = spec.packageName == "com.cainiao.wireless",
+                    activity,
+                    appSettingDark = if (spec.packageName == "com.cainiao.wireless") {
+                        CainiaoThemeAccess.isDarkMode(activity)
+                    } else {
+                        null
+                    },
                 )
             },
             nativeBarVisible = { bar ->
                 // The shared host intentionally lowers native alpha after attaching.
-                bar.isShown && bar.height > 0
+                bar.isShown && bar.height > 0 &&
+                    if (spec.packageName == "com.taobao.idlefish") {
+                        bar.translationY < bar.height * 0.5f
+                    } else {
+                        true
+                    }
             },
             nativeRefreshIntervalMs =
-                if (spec.packageName == "com.ss.android.ugc.livelite") 240L else 160L,
+                when (spec.packageName) {
+                    "com.ss.android.ugc.livelite" -> 240L
+                    "com.taobao.idlefish" -> 200L
+                    else -> 160L
+                },
             minimumCaptureIntervalMs =
-                if (spec.packageName == "com.ss.android.ugc.livelite") 100L else 48L,
-            allowSoftwareBackdrop = spec.packageName != "com.ss.android.ugc.livelite",
+                when (spec.packageName) {
+                    "com.ss.android.ugc.livelite" -> 100L
+                    "com.taobao.idlefish" -> 120L
+                    else -> 48L
+                },
+            allowSoftwareBackdrop = spec.packageName != "com.ss.android.ugc.livelite" &&
+                spec.packageName != "com.taobao.idlefish",
             sampleBackdropOnSourceFrame = true,
             sampleBackdropForTabs = { _, _ -> true },
-            useHardwareBackdrop = spec.packageName == "com.ss.android.ugc.livelite",
+            useHardwareBackdrop = spec.packageName == "com.ss.android.ugc.livelite" ||
+                spec.packageName == "com.taobao.idlefish",
             pixelCopyRetryDelayMs =
-                if (spec.packageName == "com.ss.android.ugc.livelite") 1_000L else 700L,
+                when (spec.packageName) {
+                    "com.ss.android.ugc.livelite" -> 1_000L
+                    "com.taobao.idlefish" -> 800L
+                    else -> 700L
+                },
+            resolveContentHost = { root ->
+                val id = root.resources.getIdentifier(
+                    "tbTabFragment",
+                    "id",
+                    "com.taobao.taobao",
+                )
+                root.findViewById(id)
+            },
+            removeContentHostBottomMargin = spec.packageName == "com.taobao.taobao",
+            ignoreBottomNavigationInset = spec.packageName == "com.taobao.taobao",
             stableNavigationInset = true,
             lateAttachWindowMs = 30_000L,
-            manageWindowImmersion = spec.packageName != "com.ss.android.ugc.livelite",
+            manageWindowImmersion = spec.packageName != "com.ss.android.ugc.livelite" &&
+                spec.packageName != "com.taobao.idlefish",
             overlayAllowed = { activity ->
                 spec.packageName != "com.ss.android.ugc.livelite" || activity.hasWindowFocus()
             },
@@ -287,6 +318,66 @@ internal object EcommerceNavigationTargets {
     )
 }
 
+internal fun findTaobaoChromeShells(bar: View): List<View> = buildList {
+    val root = bar.rootView
+    val density = bar.resources.displayMetrics.density
+    val maximumHeight = bar.height + (32f * density).toInt()
+    val backgroundId = bar.resources.getIdentifier(
+        "uik_navigation_tab_background",
+        "id",
+        "com.taobao.taobao",
+    )
+    if (backgroundId != View.NO_ID) {
+        root.findViewById<View>(backgroundId)?.let(::add)
+    }
+    val divideId = bar.resources.getIdentifier(
+        "uik_navigation_tab_divide",
+        "id",
+        "com.taobao.taobao",
+    )
+    if (divideId != View.NO_ID) {
+        root.findViewById<View>(divideId)?.let(::add)
+    }
+    (bar.findTabHostAncestor() as? ViewGroup)?.let { tabHost ->
+        if (tabHost.width >= bar.width * 0.82f &&
+            tabHost.height in 1..maximumHeight
+        ) {
+            add(tabHost)
+        }
+        repeat(tabHost.childCount) { index ->
+            val child = tabHost.getChildAt(index)
+            if (child.id != View.NO_ID &&
+                runCatching { child.resources.getResourceEntryName(child.id) }
+                    .getOrNull()
+                    ?.startsWith("uik_navigation_tab_") == true
+            ) {
+                add(child)
+            }
+        }
+    }
+    val contentHostId = bar.resources.getIdentifier(
+        "tb_main_fragment",
+        "id",
+        "com.taobao.taobao",
+    )
+    if (contentHostId != View.NO_ID) {
+        root.findViewById<ViewGroup>(contentHostId)?.let { contentHost ->
+            val location = IntArray(2)
+            repeat(contentHost.childCount) { index ->
+                val child = contentHost.getChildAt(index)
+                if (child.id != View.NO_ID || !child.isShown) return@repeat
+                child.getLocationOnScreen(location)
+                if (location[1] + child.height >= root.height - 200 &&
+                    child.width in 1..root.width
+                ) {
+                    add(child)
+                }
+            }
+        }
+    }
+    addAll(compactNativeChromeShells(bar))
+}.distinct()
+
 internal class EcommerceNavigationDelegate(
     target: NativeViewBottomBarTarget,
 ) {
@@ -303,9 +394,10 @@ internal class EcommerceNavigationDelegate(
     fun hasNavigationTarget(activity: Activity) = navigation.hasNavigationTarget(activity)
 }
 
-private fun View.findBestBottomBar(
+internal fun View.findBestBottomBar(
     exactClassNames: Set<String>,
     labels: List<String>,
+    allowGeometricFallback: Boolean = true,
 ): View? {
     val exact = ArrayList<View>()
     this.collectMatchingDescendants(exactClassNames, exact)
@@ -335,6 +427,7 @@ private fun View.findBestBottomBar(
             semantic.firstOrNull { it.second === selected }?.first
         })?.let { return it }
     }
+    if (!allowGeometricFallback) return null
 
     val geometric = ArrayList<Pair<View, EcommerceTabCandidate>>()
     this.collectClickableCandidates(0, geometric)
@@ -344,11 +437,27 @@ private fun View.findBestBottomBar(
         screenHeight,
         density,
         minimum,
+        requireSelection = false,
     ) ?: return null
+    if (geometricRow.tabs.count { isProductActionLabel(it.label) } >= 2) return null
+    if (geometricRow.tabs.none { it.selected || EcommerceNavigationPolicy.labelsMatch(it.label, labels) }) {
+        return null
+    }
     return commonTabAncestor(geometricRow.tabs.mapNotNull { selected ->
         geometric.firstOrNull { it.second === selected }?.first
     })
 }
+
+private fun isProductActionLabel(label: String): Boolean {
+    val normalized = EcommerceNavigationPolicy.normalize(label)
+    if (normalized.isBlank() || normalized.startsWith("tab-")) return false
+    return PRODUCT_ACTION_LABEL_HINTS.any(normalized::contains) ||
+        normalized == "评价"
+}
+
+private val PRODUCT_ACTION_LABEL_HINTS = listOf(
+    "下单", "购买", "拼单", "加入购物车", "领券", "补贴", "商品评价", "店铺", "客服",
+)
 
 internal fun View.findCainiaoNavigation(classNames: Set<String>): View? {
     val resourceContext = context ?: return null
@@ -436,7 +545,9 @@ private fun View.collectLabelCandidates(
     target: MutableList<Pair<View, EcommerceTabCandidate>>,
 ) {
     if (!isShown || alpha <= 0f) return
-    val viewLabel = (this as? TextView)?.text?.toString()?.trim()
+    val text = (this as? TextView)?.text?.toString()?.trim()
+    val description = contentDescription?.toString()?.trim()
+    val viewLabel = (text?.takeIf { it.isNotEmpty() } ?: description)
         ?.takeIf { EcommerceNavigationPolicy.labelsMatch(it, expectedLabels) }
     if (viewLabel != null) {
         val clickable = this.nearestClickable()
@@ -471,7 +582,13 @@ private fun View.collectClickableCandidates(
         val location = IntArray(2)
         getLocationOnScreen(location)
         target += this to EcommerceTabCandidate(
-            label = "tab-$next",
+            label = contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+                ?: findAllTextViews()
+                    .asSequence()
+                    .filter { it.visibility == View.VISIBLE }
+                    .mapNotNull { it.text?.toString()?.trim()?.takeIf(String::isNotEmpty) }
+                    .firstOrNull()
+                ?: "tab-$next",
             location[0],
             location[1],
             location[0] + width,
@@ -532,7 +649,7 @@ private fun isTabSelected(view: View): Boolean {
     return selectedMethod == true
 }
 
-private fun visibleChildren(group: ViewGroup): List<View> =
+internal fun visibleChildren(group: ViewGroup): List<View> =
     buildList {
         repeat(group.childCount) { index ->
             group.getChildAt(index).takeIf {
@@ -541,7 +658,7 @@ private fun visibleChildren(group: ViewGroup): List<View> =
         }
     }
 
-private fun View.matchingTabViews(labels: List<String>, limit: Int): List<View> {
+internal fun View.matchingTabViews(labels: List<String>, limit: Int): List<View> {
     val matches = ArrayList<Pair<View, EcommerceTabCandidate>>()
     collectLabelCandidates(labels, matches)
     return matches.map { it.first }
@@ -624,7 +741,7 @@ private fun View.genericInteractiveChildren(): List<View>? {
     return clickable.takeIf { it.size in 2..8 }
 }
 
-private fun View.geometricTabViews(limit: Int): List<View> {
+internal fun View.geometricTabViews(limit: Int): List<View> {
     val matches = ArrayList<Pair<View, EcommerceTabCandidate>>()
     collectClickableCandidates(0, matches)
     val rootHeight = height.coerceAtLeast(rootView?.height ?: 0)
@@ -656,7 +773,7 @@ private fun View.hasClickableDescendant(): Boolean {
     return false
 }
 
-private fun View.findAllTextViews(): List<TextView> = buildList {
+internal fun View.findAllTextViews(): List<TextView> = buildList {
     if (this@findAllTextViews is TextView) add(this@findAllTextViews)
     if (this@findAllTextViews is ViewGroup) {
         fun visit(view: View) {
@@ -667,7 +784,7 @@ private fun View.findAllTextViews(): List<TextView> = buildList {
     }
 }
 
-private fun performNativeNavigationClick(tab: View): Boolean {
+internal fun performNativeNavigationClick(tab: View): Boolean {
     val candidates = buildList {
         if (tab.isClickable) add(tab)
         tab.findFirstClickableDescendant()?.let(::add)

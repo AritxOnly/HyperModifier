@@ -19,6 +19,14 @@ class FreshInstallDefaultsTest {
             assertTrue(settings.amapFloatingNavigationEnabled)
             assertTrue(settings.amapHideLongPressVoiceTabEnabled)
             assertTrue(settings.alipayFloatingNavigationEnabled)
+            assertTrue(settings.douyinLiteFloatingNavigationEnabled)
+            assertTrue(settings.kuaishouFloatingNavigationEnabled)
+            assertTrue(settings.kuaishouLiteFloatingNavigationEnabled)
+            assertTrue(settings.wechatFloatingNavigationEnabled)
+            assertTrue(settings.wechatNavigationBadgesEnabled)
+            assertTrue(settings.qqFloatingNavigationEnabled)
+            assertTrue(settings.qqNavigationBadgesEnabled)
+            assertTrue(settings.qqMusicFloatingNavigationEnabled)
             assertTrue(settings.xiaomiCommunityFloatingNavigationEnabled)
             assertTrue(settings.bilibiliFloatingNavigationEnabled)
             assertTrue(settings.spotifyFloatingNavigationEnabled)
@@ -36,5 +44,11 @@ class FreshInstallDefaultsTest {
 
     @Test fun systemPresetRestoresTheNativeAlipayDock() {
         assertFalse(ModifierSettingsPresets.systemDefault().alipayFloatingNavigationEnabled)
+        assertFalse(ModifierSettingsPresets.systemDefault().wechatFloatingNavigationEnabled)
+        assertFalse(ModifierSettingsPresets.systemDefault().qqFloatingNavigationEnabled)
+        assertFalse(ModifierSettingsPresets.systemDefault().douyinLiteFloatingNavigationEnabled)
+        assertFalse(ModifierSettingsPresets.systemDefault().kuaishouFloatingNavigationEnabled)
+        assertFalse(ModifierSettingsPresets.systemDefault().kuaishouLiteFloatingNavigationEnabled)
+        assertFalse(ModifierSettingsPresets.systemDefault().qqMusicFloatingNavigationEnabled)
     }
 }

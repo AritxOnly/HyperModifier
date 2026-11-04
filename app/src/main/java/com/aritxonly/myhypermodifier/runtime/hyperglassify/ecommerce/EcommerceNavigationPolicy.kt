@@ -75,6 +75,7 @@ internal object EcommerceNavigationPolicy {
         screenHeightPx: Int,
         density: Float,
         minimumTabs: Int,
+        requireSelection: Boolean = true,
     ): ResolvedEcommerceBar? {
         if (screenWidthPx <= 0 || screenHeightPx <= 0 || candidates.size < minimumTabs) return null
         val safeDensity = density.takeIf { it.isFinite() && it > 0f } ?: 1f
@@ -110,7 +111,8 @@ internal object EcommerceNavigationPolicy {
             }
             .maxByOrNull { row -> row.map { it.centerY }.average() }
             ?: return null
-        val selected = bestRow.indexOfFirst { it.selected }.takeIf { it >= 0 } ?: 0
+        val selected = bestRow.indexOfFirst { it.selected }
+        if (requireSelection && selected < 0) return null
         return ResolvedEcommerceBar(bestRow, selected)
     }
 
