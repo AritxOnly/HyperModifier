@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /** On-demand, read-only widget inventory through the already scoped SystemUI process. */
 public final class DesktopWidgetInventory {
-    public static final String ACTION = "com.aritxonly.myhypermodifier.DESKTOP_WIDGET_INVENTORY";
+    public static final String ACTION = BuildConfig.APPLICATION_ID + ".DESKTOP_WIDGET_INVENTORY";
     private static final AtomicBoolean ATTACHED = new AtomicBoolean(), BUSY = new AtomicBoolean();
     private static final java.util.concurrent.Executor EXECUTOR = Executors.newSingleThreadExecutor();
     private DesktopWidgetInventory() {}
@@ -27,8 +27,9 @@ public final class DesktopWidgetInventory {
             @Override public void onReceive(Context ignored, Intent intent) {
                 try {
                     // The module publishes sender identity; do not disclose inventory to other apps.
-                    if (!"com.aritxonly.myhypermodifier".equals(getSentFromPackage())
-                            || getSentFromUid() != context.getPackageManager().getPackageUid("com.aritxonly.myhypermodifier", 0)) return;
+                    if (!BuildConfig.APPLICATION_ID.equals(getSentFromPackage())
+                            || getSentFromUid() != context.getPackageManager().getPackageUid(
+                                    BuildConfig.APPLICATION_ID, 0)) return;
                     ResultReceiver reply = intent.getParcelableExtra("reply", ResultReceiver.class);
                     if (reply == null) return;
                     if (!BUSY.compareAndSet(false, true)) { reply.send(1, error("正在读取，请稍后刷新")); return; }

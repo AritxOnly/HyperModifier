@@ -26,14 +26,14 @@
         android:theme="@style/AppTheme">
         <provider
             android:name=".ModifierSettingsProvider"
-            android:authorities="com.aritxonly.myhypermodifier.settings"
+            android:authorities="${applicationId}.settings"
             android:exported="true"
             android:grantUriPermissions="false" />
         <receiver
             android:name=".HookDiagnosticReceiver"
             android:exported="true">
             <intent-filter>
-                <action android:name="com.aritxonly.myhypermodifier.HOOK_DIAGNOSTIC" />
+                <action android:name="${applicationId}.HOOK_DIAGNOSTIC" />
             </intent-filter>
         </receiver>
         <activity

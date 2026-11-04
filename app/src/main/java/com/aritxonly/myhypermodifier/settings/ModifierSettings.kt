@@ -22,6 +22,7 @@ data class ModifierSettings(
     val volumeUpPowerAction: String = KeyShortcutActions.STOCK,
     val doublePowerAction: String = KeyShortcutActions.STOCK,
     val moduleHooksEnabled: Boolean = true,
+    val deviceModeOverride: Int = LargeScreenDevicePolicy.AUTO,
     val systemUiCompatibilityMode: Boolean = false,
     val systemUiRetryGeneration: Int = 0,
     val gestureHandleEnabled: Boolean = false,
@@ -416,6 +417,7 @@ object ModifierSettingsStore {
     const val PREFS = "modifier_settings"
     const val METHOD_GET = "get_settings"
     private const val KEY_MODULE_HOOKS_ENABLED = "module_hooks_enabled"
+    private const val KEY_DEVICE_MODE_OVERRIDE = "device_mode_override"
     private const val KEY_SYSTEM_UI_COMPATIBILITY_MODE = "systemui_compatibility_mode"
     private const val KEY_SYSTEM_UI_RETRY_GENERATION = "systemui_retry_generation"
     private const val KEY_DIAGNOSTIC_TOKEN = "diagnostic_token"
@@ -664,6 +666,9 @@ object ModifierSettingsStore {
             !prefs.contains(KEY_GESTURE_HANDLE_APP_MODES)
         return ModifierSettings(
             moduleHooksEnabled = prefs.getBoolean(KEY_MODULE_HOOKS_ENABLED, true),
+            deviceModeOverride = LargeScreenDevicePolicy.normalizeOverride(
+                prefs.getInt(KEY_DEVICE_MODE_OVERRIDE, LargeScreenDevicePolicy.AUTO),
+            ),
             systemUiCompatibilityMode = prefs.getBoolean(KEY_SYSTEM_UI_COMPATIBILITY_MODE, false),
             systemUiRetryGeneration = prefs.getInt(KEY_SYSTEM_UI_RETRY_GENERATION, 0),
             gestureHandleEnabled = prefs.getBoolean(KEY_GESTURE_HANDLE_ENABLED, false),
@@ -1011,6 +1016,8 @@ object ModifierSettingsStore {
         val editor = preferences.edit()
         editor
             .putBoolean(KEY_MODULE_HOOKS_ENABLED, value.moduleHooksEnabled)
+            .putInt(KEY_DEVICE_MODE_OVERRIDE,
+                LargeScreenDevicePolicy.normalizeOverride(value.deviceModeOverride))
             .putBoolean(KEY_SYSTEM_UI_COMPATIBILITY_MODE, value.systemUiCompatibilityMode)
             .putInt(KEY_SYSTEM_UI_RETRY_GENERATION, value.systemUiRetryGeneration)
             .putBoolean(KEY_GESTURE_HANDLE_ENABLED, value.gestureHandleEnabled)
@@ -1470,7 +1477,7 @@ object ModifierSettingsStore {
         }
     }
 
-    private val SETTINGS_URI = Uri.parse("content://com.aritxonly.myhypermodifier.settings")
+    private val SETTINGS_URI = Uri.parse("content://${BuildConfig.APPLICATION_ID}.settings")
     private val remoteSyncQueue = SettingsSyncQueue()
     @Volatile private var remoteService: XposedService? = null
 
@@ -1481,6 +1488,8 @@ object ModifierSettingsStore {
 
     fun toBundle(value: ModifierSettings) = Bundle().apply {
         putBoolean(KEY_MODULE_HOOKS_ENABLED, value.moduleHooksEnabled)
+        putInt(KEY_DEVICE_MODE_OVERRIDE,
+            LargeScreenDevicePolicy.normalizeOverride(value.deviceModeOverride))
         putBoolean(KEY_SYSTEM_UI_COMPATIBILITY_MODE, value.systemUiCompatibilityMode)
         putInt(KEY_SYSTEM_UI_RETRY_GENERATION, value.systemUiRetryGeneration)
         putBoolean(KEY_GESTURE_HANDLE_ENABLED, value.gestureHandleEnabled)

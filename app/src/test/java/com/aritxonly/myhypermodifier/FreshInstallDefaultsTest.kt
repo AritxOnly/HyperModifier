@@ -7,6 +7,7 @@ class FreshInstallDefaultsTest {
     @Test fun freshInstallUsesTheImportedModulePreset() {
         for (settings in listOf(ModifierSettings(), ModifierSettingsPresets.moduleDefault())) {
             assertTrue(settings.moduleHooksEnabled)
+            assertEquals(LargeScreenDevicePolicy.AUTO, settings.deviceModeOverride)
             assertTrue(settings.notificationsEnabled)
             assertTrue(settings.controlCenterEnabled)
             assertTrue(settings.controlCenterFollowMiLinkBackgroundMaterial)

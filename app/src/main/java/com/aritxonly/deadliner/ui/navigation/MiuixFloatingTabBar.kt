@@ -148,6 +148,9 @@ fun MiuixFloatingTabBar(
     /** Use the full parent width instead of compact panel/item width caps. */
     fillAvailableWidth: Boolean = false,
     shadowVisible: Boolean = true,
+    /** Optional compact cap for hosts that otherwise inherit a wide native pane. */
+    maximumWidth: Dp? = null,
+    height: Dp = MiuixFloatingTabBarDefaults.Height,
 ) {
     if (items.isEmpty()) return
 
@@ -161,6 +164,8 @@ fun MiuixFloatingTabBar(
     var directPanelDragOffset: Float? by remember { mutableStateOf(null) }
     val motionScope = rememberCoroutineScope()
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
+    val resolvedMaximumWidth =
+        maximumWidth ?: MiuixFloatingTabBarDefaults.maximumWidth(items.size, layout)
 
     LaunchedEffect(selectedIndex) {
         motion.syncExternalSelection(selectedIndex)
@@ -178,10 +183,10 @@ fun MiuixFloatingTabBar(
     BoxWithConstraints(
         modifier = modifier
             .then(if (fillAvailableWidth) Modifier else Modifier.wrapContentWidth().widthIn(
-                max = MiuixFloatingTabBarDefaults.maximumWidth(items.size, layout),
+                max = resolvedMaximumWidth,
             ))
             .fillMaxWidth()
-            .height(MiuixFloatingTabBarDefaults.Height),
+            .height(height),
     ) {
         val density = LocalDensity.current
         val panelDragFraction = floatingTabPanelDragFraction(

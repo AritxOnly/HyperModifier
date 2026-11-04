@@ -18,6 +18,7 @@ import java.util.concurrent.ExecutorService;
 final class ModuleSettings {
     private static final String TAG = "MyHyperModifier";
     static volatile boolean moduleHooksEnabled = true;
+    static volatile int deviceModeOverride = LargeScreenDevicePolicy.AUTO;
     static volatile boolean systemUiCompatibilityMode;
     static volatile int systemUiRetryGeneration;
     static volatile String diagnosticToken = "";
@@ -266,6 +267,8 @@ final class ModuleSettings {
         // provider IPC is needed: LSPosed has already supplied the preferences snapshot.
         try {
             moduleHooksEnabled = preferences.getBoolean("module_hooks_enabled", true);
+            deviceModeOverride = LargeScreenDevicePolicy.normalizeOverride(
+                    preferences.getInt("device_mode_override", LargeScreenDevicePolicy.AUTO));
             desktopStatusBarIconMode = DesktopStatusBarPolicy.normalize(preferences.getInt("desktop_status_bar_icon_mode", 0));
             androidWidgetGlassEnabled = preferences.getBoolean("deadliner_widget_glass_enabled", false);
             androidWidgetGlassTargets = preferences.getString(AndroidWidgetGlassPolicy.KEY, AndroidWidgetGlassPolicy.DEFAULT_TARGETS);
@@ -501,6 +504,8 @@ final class ModuleSettings {
             lastLoadStatus = "remote-preferences";
             Bundle values = preferencesToBundle(preferences);
             moduleHooksEnabled = values.getBoolean("module_hooks_enabled", true);
+            deviceModeOverride = LargeScreenDevicePolicy.normalizeOverride(
+                    values.getInt("device_mode_override", LargeScreenDevicePolicy.AUTO));
             systemUiCompatibilityMode = values.getBoolean("systemui_compatibility_mode", false);
             systemUiRetryGeneration = values.getInt("systemui_retry_generation", 0);
             gestureHandleEnabled = values.getBoolean("gesture_handle_enabled", false);

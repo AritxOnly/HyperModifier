@@ -25,6 +25,8 @@ internal data class EcommerceNavigationSpec(
     val allowSecondaryActivities: Boolean = false,
 )
 
+private val largeScreenDevice = LargeScreenDevicePolicy.isLargeScreenDevice()
+
 internal object EcommerceNavigationTargets {
     private val specs = listOf(
         EcommerceNavigationSpec(
@@ -132,7 +134,6 @@ internal object EcommerceNavigationTargets {
                     "全部快递", "积分", "消息", "我的",
                 )
         }
-
         return NativeViewBottomBarTarget(
             logName = spec.logName,
             testedVersion = spec.testedVersion,
@@ -278,7 +279,8 @@ internal object EcommerceNavigationTargets {
                 root.findViewById(id)
             },
             removeContentHostBottomMargin = spec.packageName == "com.taobao.taobao",
-            ignoreBottomNavigationInset = spec.packageName == "com.taobao.taobao",
+            ignoreBottomNavigationInset =
+                spec.packageName == "com.taobao.taobao" && !largeScreenDevice,
             stableNavigationInset = true,
             lateAttachWindowMs = 30_000L,
             manageWindowImmersion = spec.packageName != "com.ss.android.ugc.livelite" &&
@@ -355,22 +357,24 @@ internal fun findTaobaoChromeShells(bar: View): List<View> = buildList {
             }
         }
     }
-    val contentHostId = bar.resources.getIdentifier(
-        "tb_main_fragment",
-        "id",
-        "com.taobao.taobao",
-    )
-    if (contentHostId != View.NO_ID) {
-        root.findViewById<ViewGroup>(contentHostId)?.let { contentHost ->
-            val location = IntArray(2)
-            repeat(contentHost.childCount) { index ->
-                val child = contentHost.getChildAt(index)
-                if (child.id != View.NO_ID || !child.isShown) return@repeat
-                child.getLocationOnScreen(location)
-                if (location[1] + child.height >= root.height - 200 &&
-                    child.width in 1..root.width
-                ) {
-                    add(child)
+    if (!largeScreenDevice) {
+        val contentHostId = bar.resources.getIdentifier(
+            "tb_main_fragment",
+            "id",
+            "com.taobao.taobao",
+        )
+        if (contentHostId != View.NO_ID) {
+            root.findViewById<ViewGroup>(contentHostId)?.let { contentHost ->
+                val location = IntArray(2)
+                repeat(contentHost.childCount) { index ->
+                    val child = contentHost.getChildAt(index)
+                    if (child.id != View.NO_ID || !child.isShown) return@repeat
+                    child.getLocationOnScreen(location)
+                    if (location[1] + child.height >= root.height - 200 &&
+                        child.width in 1..root.width
+                    ) {
+                        add(child)
+                    }
                 }
             }
         }

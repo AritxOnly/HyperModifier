@@ -139,6 +139,9 @@ internal data class NativeViewBottomBarTarget(
     val pixelCopyRetryDelayMs: Long = 1_000L,
     val requestImmersiveInsets: Boolean = false,
     val stableNavigationInset: Boolean = false,
+    val fillNativeBarWidth: Boolean = true,
+    val navigationMaximumWidth: Dp? = null,
+    val navigationHeight: Dp = MiuixFloatingTabBarDefaults.Height,
     /** Lets the dock extend into the gesture area instead of reserving the system inset. */
     val ignoreBottomNavigationInset: Boolean = false,
     val resolveNavigationInset: (Activity) -> Int = { 0 },
@@ -1191,7 +1194,7 @@ private fun NativeViewBottomBarContent(
                             top = INJECTED_NAVIGATION_SHADOW_TOP_PADDING,
                             bottom = 4.dp + hiddenNavigationLift,
                         )
-                        .height(MiuixFloatingTabBarDefaults.Height),
+                        .height(target.navigationHeight),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (gpuBackdrop != null) NativeGpuBackdropLayer(gpuBackdrop, backdrop, nativeBackdropBounds)
@@ -1218,7 +1221,10 @@ private fun NativeViewBottomBarContent(
                             layout = MiuixFloatingTabLayout.Stacked,
                             selectionVisible = items.any { it.key == state.selectedIndex.toString() },
                             backdrop = opticalBackdrop,
-                            fillAvailableWidth = target.matchNativeBarHorizontalBounds,
+                            fillAvailableWidth = target.matchNativeBarHorizontalBounds &&
+                                target.fillNativeBarWidth,
+                            maximumWidth = target.navigationMaximumWidth,
+                            height = target.navigationHeight,
                             shadowVisible = target.navigationShadowVisible &&
                                 (dark || target.showNavigationShadowInLight),
                         )

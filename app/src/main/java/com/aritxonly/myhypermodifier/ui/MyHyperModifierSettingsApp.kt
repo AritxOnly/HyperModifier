@@ -6,6 +6,7 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Handler
+import android.os.Build
 import android.os.Looper
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -106,6 +107,7 @@ import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.Contacts
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Settings
+import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.core.graphics.ColorUtils
 import androidx.lifecycle.Lifecycle
@@ -328,6 +330,7 @@ fun MyHyperModifierSettingsApp() {
             MaterialTheme(colorScheme = materialColors) {
             DeadlinerMiuixScaffold(
                 scrollProgress = activeScrollProgress,
+                deviceModeOverride = settings.deviceModeOverride,
                 topBar = when (destination) {
                     SettingsDestination.Home -> homeTopBarScrollBehavior?.let { scrollBehavior ->
                         {
@@ -571,6 +574,7 @@ internal fun MyHyperModifierDetailSettingsApp(
             MaterialTheme(colorScheme = materialColors) {
             DeadlinerMiuixScaffold(
                 scrollProgress = activeScrollProgress,
+                deviceModeOverride = settings.deviceModeOverride,
                 topBar = {
                     Column(Modifier.fillMaxWidth()) {
                         SmallTopAppBar(
@@ -1178,6 +1182,7 @@ private fun HomeDashboardPage(
     }
 
     ModuleStatusHero(health) { onNavigate(SettingsDestination.Compatibility) }
+    DeviceModeStatusCard(settings, update)
     SettingsSection {
         NavigationSettingItem(
             "作用域状态",
@@ -1244,6 +1249,77 @@ private fun HomeDashboardPage(
             NavigationSettingItem("音量面板", "", onClick = { onNavigate(SettingsDestination.Volume) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_volume_up, Color(0xFFC52C79)) })
         }
     }
+}
+
+@Composable
+private fun DeviceModeStatusCard(
+    settings: ModifierSettings,
+    update: (ModifierSettings) -> Unit,
+) {
+    val override = LargeScreenDevicePolicy.normalizeOverride(settings.deviceModeOverride)
+    val detected = LargeScreenDevicePolicy.detectedMode()
+    val effective = LargeScreenDevicePolicy.effectiveMode(override)
+    val automatic = override == LargeScreenDevicePolicy.AUTO
+    val largeScreen = LargeScreenDevicePolicy.usesLargeScreenLayout(override)
+    val badgeContainer = if (largeScreen) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+    val badgeContent = if (largeScreen) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val deviceIdentity = listOf(Build.DEVICE, Build.MODEL)
+        .filter { it.isNotBlank() }
+        .distinct()
+        .joinToString(" / ")
+    val source = if (automatic) {
+        "自动识别"
+    } else {
+        "手动覆盖 · 自动识别为${workModeLabel(detected)}模式"
+    }
+
+    SettingsSection(topLabel = "设备工作模式") {
+        SettingItem(
+            headlineText = "当前：${workModeLabel(effective)}模式",
+            supportingText = listOf(source, deviceIdentity)
+                .filter { it.isNotBlank() }
+                .joinToString(" · "),
+            trailingContent = {
+                Box(
+                    modifier = Modifier
+                        .clip(Capsule())
+                        .background(badgeContainer)
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                ) {
+                    Text(
+                        text = if (automatic) "自动" else "手动",
+                        color = badgeContent,
+                        style = MiuixTheme.textStyles.footnote1,
+                    )
+                }
+            },
+        )
+        WindowDropdownPreference(
+            title = "模式切换",
+            summary = "识别不准时可手动覆盖；重启系统界面和相关应用，系统框架适配需重启手机",
+            items = listOf("自动识别", "手机模式", "折叠屏模式", "平板模式"),
+            selectedIndex = override,
+            onSelectedIndexChange = {
+                update(settings.copy(
+                    deviceModeOverride = LargeScreenDevicePolicy.normalizeOverride(it),
+                ))
+            },
+        )
+    }
+}
+
+private fun workModeLabel(mode: Int): String = when (mode) {
+    LargeScreenDevicePolicy.FOLDABLE -> "折叠屏"
+    LargeScreenDevicePolicy.TABLET -> "平板"
+    else -> "手机"
 }
 
 @Composable

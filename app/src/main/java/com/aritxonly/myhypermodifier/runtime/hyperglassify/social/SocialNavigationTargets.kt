@@ -1,12 +1,16 @@
 package com.aritxonly.myhypermodifier
 
 import android.app.Activity
+import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.TabHost
 import android.widget.TabWidget
 import android.widget.TextView
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
+import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarDefaults
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ContactsCircle
 import top.yukonga.miuix.kmp.icon.extended.Home
@@ -14,6 +18,8 @@ import top.yukonga.miuix.kmp.icon.extended.Messages
 import top.yukonga.miuix.kmp.icon.extended.SearchDevice
 import java.lang.reflect.Method
 import java.lang.ref.WeakReference
+import java.util.WeakHashMap
+import kotlin.math.roundToInt
 
 internal enum class SocialNavigationKind {
     WeChat,
@@ -82,6 +88,8 @@ internal object SocialNavigationTargets {
                 SocialNavigationKind.QQ -> ModuleSettings.qqNavigationBadgesEnabled
             }
         }
+        val largeScreen = LargeScreenDevicePolicy.isLargeScreenDevice()
+        val compactQqTabletDock = largeScreen && spec.kind == SocialNavigationKind.QQ
         return NativeViewBottomBarTarget(
             logName = spec.logName,
             testedVersion = spec.testedVersion,
@@ -108,6 +116,13 @@ internal object SocialNavigationTargets {
                     qqNavigationChromeShells(bar)
                 } else {
                     emptyList()
+                }
+            },
+            resolveContentHost = { bar ->
+                if (largeScreen && spec.kind == SocialNavigationKind.QQ) {
+                    findQQContentHost(bar)
+                } else {
+                    null
                 }
             },
             fallbackLabels = fallbackLabels,
@@ -148,7 +163,24 @@ internal object SocialNavigationTargets {
             },
             resolveDarkTheme = { activity, _, _, _ -> HostThemeResolver.resolve(activity) },
             nativeBarVisible = { bar ->
-                bar.isShown && bar.height > 0 && qqDrawerState?.isOpen(bar) != true
+                if (largeScreen) {
+                    qqNavigationShouldShow(
+                        barVisible = bar.isShown && bar.height > 0,
+                        drawerOpen = qqDrawerState?.isOpen(bar) == true,
+                        editorVisible = bar.rootView.hasFocusedEditableText(),
+                    )
+                } else {
+                    bar.isShown && bar.height > 0 && qqDrawerState?.isOpen(bar) != true
+                }
+            },
+            matchNativeBarHorizontalBounds =
+                largeScreen && spec.kind == SocialNavigationKind.QQ,
+            fillNativeBarWidth = !compactQqTabletDock,
+            navigationMaximumWidth = if (compactQqTabletDock) 296.dp else null,
+            navigationHeight = if (compactQqTabletDock) {
+                48.dp
+            } else {
+                MiuixFloatingTabBarDefaults.Height
             },
             nativeRefreshIntervalMs =
                 if (spec.kind == SocialNavigationKind.QQ) 240L else 160L,
@@ -185,6 +217,59 @@ internal object SocialNavigationTargets {
             },
         )
     }
+}
+
+internal fun qqNavigationShouldShow(
+    barVisible: Boolean,
+    drawerOpen: Boolean,
+    editorVisible: Boolean,
+): Boolean = barVisible && !drawerOpen && !editorVisible
+
+/**
+ * QQ uses the tab widget's left pane as its navigation domain. Return the nearest ancestor with
+ * the same width so injected scroll padding stays inside that pane instead of the full window.
+ */
+internal fun findQQContentHost(bar: View): View? {
+    val barWidth = bar.width.takeIf { it > 0 } ?: return null
+    val barHeight = bar.height.takeIf { it > 0 } ?: return null
+    val minimumWidth = (barWidth * 0.82f).roundToInt()
+    val maximumWidth = (barWidth * 1.18f).roundToInt()
+    var current = bar.parent as? View
+    repeat(8) {
+        val candidate = current ?: return@repeat
+        if (candidate.width in minimumWidth..maximumWidth &&
+            candidate.height >= barHeight * 2
+        ) {
+            return candidate
+        }
+        current = candidate.parent as? View
+    }
+    return null
+}
+
+private data class EditorVisibilityCache(
+    val checkedAt: Long,
+    val visible: Boolean,
+)
+
+private val editorVisibilityCache = WeakHashMap<View, EditorVisibilityCache>()
+
+private fun View.hasFocusedEditableText(): Boolean {
+    val now = SystemClock.uptimeMillis()
+    editorVisibilityCache[this]?.takeIf { now - it.checkedAt < 250L }?.let {
+        return it.visible
+    }
+    fun visit(view: View): Boolean {
+        if (!view.isShown || view.visibility != View.VISIBLE) return false
+        if (view is EditText && view.width > 0 && view.height > 0) {
+            return view.isFocused || view.hasFocus()
+        }
+        if (view !is ViewGroup) return false
+        return (0 until view.childCount).any { visit(view.getChildAt(it)) }
+    }
+    val visible = visit(this)
+    editorVisibilityCache[this] = EditorVisibilityCache(now, visible)
+    return visible
 }
 
 internal class SocialNavigationDelegate(target: NativeViewBottomBarTarget) {
