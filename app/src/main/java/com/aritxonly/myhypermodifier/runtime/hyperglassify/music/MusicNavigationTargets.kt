@@ -31,9 +31,9 @@ internal object MusicNavigationTargets {
     private fun createTarget() = NativeViewBottomBarTarget(
         logName = "Xiaomi Music",
         testedVersion = "4.48.0.1",
-        bottomBarClassNames = setOf(
-            "com.tencent.qqmusiclite.ui.BottomNavigationView",
-        ),
+        // The shared host falls back to class-name matching when the resolver rejects a bar.
+        // Keep this empty so tablet layouts cannot bypass the five-slot phone check.
+        bottomBarClassNames = emptySet(),
         tabClassNames = emptySet(),
         resolveBottomBar = { root -> root.phoneMusicBottomBar() },
         resolveTabViews = { bar -> bar.phoneMusicTabViews() },
@@ -142,8 +142,9 @@ internal class MusicNavigationDelegate(target: NativeViewBottomBarTarget) {
 
     fun prepare(activity: Activity) = navigation.prepare(activity)
     fun attach(activity: Activity) = navigation.attach(activity)
-    fun attach(activity: Activity, preferredBar: View?) =
-        navigation.attach(activity, preferredBar)
+    fun attach(activity: Activity, @Suppress("UNUSED_PARAMETER") preferredBar: View?) =
+        // Constructor callbacks must go through the same phone-layout resolver.
+        navigation.attach(activity)
     fun dispose(activity: Activity) = navigation.dispose(activity)
     fun setForeground(activity: Activity, foreground: Boolean) =
         navigation.setForeground(activity, foreground)
