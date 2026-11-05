@@ -18,6 +18,7 @@ public final class ModuleDefaultValues {
     public static final float AOD_CLOCK_WEIGHT = 200f;
     public static final float HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT = 2f;
     public static final boolean XIAOMI_HEALTH_FLOATING_NAVIGATION_ENABLED = true;
+    public static final boolean MI_MUSIC_FLOATING_NAVIGATION_ENABLED = true;
     public static final boolean MARKET_FLOATING_NAVIGATION_ENABLED = false;
     public static final boolean MI_HOME_FLOATING_NAVIGATION_ENABLED = true;
     public static final boolean AMAP_FLOATING_NAVIGATION_ENABLED = true;

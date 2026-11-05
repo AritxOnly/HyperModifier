@@ -2,6 +2,7 @@ com.android.systemui
 miui.systemui.plugin
 com.milink.service
 com.mi.health
+com.miui.player
 com.xiaomi.market
 com.xiaomi.smarthome
 com.autonavi.minimap

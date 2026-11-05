@@ -129,6 +129,7 @@ internal enum class SettingsDestination(val key: String, val label: String) {
     NavigationGlass("navigation-glass", "底栏柔光玻璃参数调节"),
     Ecommerce("ecommerce-navigation", "电商应用"),
     XiaomiHealth("xiaomi-health", "小米运动健康"),
+    Music("mi-music", "小米音乐手机版"),
     Market("market", "应用商店"),
     MiHome("mi-home", "米家"),
     Amap("amap", "高德地图"),
@@ -174,6 +175,7 @@ private data class RestartScopeDefaults(
     val plugin: Boolean = false,
     val miLink: Boolean = false,
     val xiaomiHealth: Boolean = false,
+    val music: Boolean = false,
     val market: Boolean = false,
     val miHome: Boolean = false,
     val amap: Boolean = false,
@@ -193,7 +195,7 @@ private data class RestartScopeDefaults(
 private fun SettingsDestination.requiredRestartScopes(): RestartScopeDefaults = when (this) {
     SettingsDestination.Compatibility -> RestartScopeDefaults(
         systemUi = true, launcher = true, plugin = true, miLink = true, xiaomiHealth = true,
-        market = true, miHome = true, amap = true, xiaomiCommunity = true,
+        music = true, market = true, miHome = true, amap = true, xiaomiCommunity = true,
         bilibili = true, piliPlus = true, douyin = true, kuaishou = true,
         alipay = true, socialApps = true, qqMusic = true,
         ecommerceApps = true,
@@ -205,13 +207,14 @@ private fun SettingsDestination.requiredRestartScopes(): RestartScopeDefaults = 
     SettingsDestination.ShadeCardGlass,
     SettingsDestination.ShadeCardGlassAdvanced -> RestartScopeDefaults(systemUi = true, plugin = true)
     SettingsDestination.NavigationGlass -> RestartScopeDefaults(
-        xiaomiHealth = true, market = true, miHome = true, amap = true,
+        xiaomiHealth = true, music = true, market = true, miHome = true, amap = true,
         bilibili = true, piliPlus = true, spotify = true, douyin = true,
         kuaishou = true, alipay = true, socialApps = true, qqMusic = true,
         xiaomiCommunity = true, ecommerceApps = true,
     )
     SettingsDestination.Ecommerce -> RestartScopeDefaults(ecommerceApps = true)
     SettingsDestination.XiaomiHealth -> RestartScopeDefaults(xiaomiHealth = true)
+    SettingsDestination.Music -> RestartScopeDefaults(music = true)
     SettingsDestination.Market -> RestartScopeDefaults(market = true)
     SettingsDestination.MiHome -> RestartScopeDefaults(miHome = true)
     SettingsDestination.Amap -> RestartScopeDefaults(amap = true)
@@ -297,6 +300,7 @@ fun MyHyperModifierSettingsApp() {
     var restartPlugin by remember { mutableStateOf(true) }
     var restartMiLink by remember { mutableStateOf(false) }
     var restartXiaomiHealth by remember { mutableStateOf(false) }
+    var restartMusic by remember { mutableStateOf(false) }
     var restartMarket by remember { mutableStateOf(false) }
     var restartMiHome by remember { mutableStateOf(false) }
     var restartAmap by remember { mutableStateOf(false) }
@@ -397,6 +401,7 @@ fun MyHyperModifierSettingsApp() {
                             restartPlugin = restartPlugin,
                             restartMiLink = restartMiLink,
                             restartXiaomiHealth = restartXiaomiHealth,
+                            restartMusic = restartMusic,
                             restartMarket = restartMarket,
                             restartMiHome = restartMiHome,
                             restartAmap = restartAmap,
@@ -422,6 +427,7 @@ fun MyHyperModifierSettingsApp() {
                             },
                             onMiLinkChange = { restartMiLink = it },
                             onXiaomiHealthChange = { restartXiaomiHealth = it },
+                            onMusicChange = { restartMusic = it },
                             onMarketChange = { restartMarket = it },
                             onMiHomeChange = { restartMiHome = it },
                             onAmapChange = { restartAmap = it },
@@ -444,6 +450,7 @@ fun MyHyperModifierSettingsApp() {
                                     restartPlugin = false
                                     restartMiLink = false
                                     restartXiaomiHealth = false
+                                    restartMusic = false
                                     restartMarket = false
                                     restartMiHome = false
                                     restartAmap = false
@@ -469,7 +476,7 @@ fun MyHyperModifierSettingsApp() {
                                             settings.systemUiRetryGeneration + 1,
                                     ))
                                 }
-                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem, restartSettings, launcher = restartLauncher, douyin = restartDouyin, kuaishou = restartKuaishou, alipay = restartAlipay, socialApps = restartSocialApps, qqMusic = restartQQMusic, ecommerceApps = restartEcommerceApps, piliPlus = restartPiliPlus) {
+                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMusic, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem, restartSettings, launcher = restartLauncher, douyin = restartDouyin, kuaishou = restartKuaishou, alipay = restartAlipay, socialApps = restartSocialApps, qqMusic = restartQQMusic, ecommerceApps = restartEcommerceApps, piliPlus = restartPiliPlus) {
                                     restartState = if (it) ScopeRestartState.Succeeded else ScopeRestartState.Failed
                                 }
                             },
@@ -546,6 +553,7 @@ internal fun MyHyperModifierDetailSettingsApp(
     var restartPlugin by remember { mutableStateOf(defaultScopes.plugin) }
     var restartMiLink by remember { mutableStateOf(defaultScopes.miLink) }
     var restartXiaomiHealth by remember { mutableStateOf(defaultScopes.xiaomiHealth) }
+    var restartMusic by remember { mutableStateOf(defaultScopes.music) }
     var restartMarket by remember { mutableStateOf(defaultScopes.market) }
     var restartMiHome by remember { mutableStateOf(defaultScopes.miHome) }
     var restartAmap by remember { mutableStateOf(defaultScopes.amap) }
@@ -596,6 +604,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                                     restartPlugin = defaultScopes.plugin
                                     restartMiLink = defaultScopes.miLink
                                     restartXiaomiHealth = defaultScopes.xiaomiHealth
+                                    restartMusic = defaultScopes.music
                                     restartMarket = defaultScopes.market
                                     restartMiHome = defaultScopes.miHome
                                     restartAmap = defaultScopes.amap
@@ -637,6 +646,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                             restartPlugin = restartPlugin,
                             restartMiLink = restartMiLink,
                             restartXiaomiHealth = restartXiaomiHealth,
+                            restartMusic = restartMusic,
                             restartMarket = restartMarket,
                             restartMiHome = restartMiHome,
                             restartAmap = restartAmap,
@@ -660,6 +670,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                             },
                             onMiLinkChange = { restartMiLink = it },
                             onXiaomiHealthChange = { restartXiaomiHealth = it },
+                            onMusicChange = { restartMusic = it },
                             onMarketChange = { restartMarket = it },
                             onMiHomeChange = { restartMiHome = it },
                             onAmapChange = { restartAmap = it },
@@ -682,6 +693,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                                     restartPlugin = false
                                     restartMiLink = false
                                     restartXiaomiHealth = false
+                                    restartMusic = false
                                     restartMarket = false
                                     restartMiHome = false
                                     restartAmap = false
@@ -707,7 +719,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                                             settings.systemUiRetryGeneration + 1,
                                     ))
                                 }
-                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem, restartSettings, launcher = restartLauncher, douyin = restartDouyin, kuaishou = restartKuaishou, alipay = restartAlipay, socialApps = restartSocialApps, qqMusic = restartQQMusic, ecommerceApps = restartEcommerceApps, piliPlus = restartPiliPlus) {
+                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMusic, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem, restartSettings, launcher = restartLauncher, douyin = restartDouyin, kuaishou = restartKuaishou, alipay = restartAlipay, socialApps = restartSocialApps, qqMusic = restartQQMusic, ecommerceApps = restartEcommerceApps, piliPlus = restartPiliPlus) {
                                     restartState = if (it) ScopeRestartState.Succeeded else ScopeRestartState.Failed
                                 }
                             },
@@ -783,6 +795,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                         scope = glassScope,
                     )
                     SettingsDestination.XiaomiHealth -> XiaomiHealthSettingsPage(padding, settings, ::update) { scrollProgress = it }
+                    SettingsDestination.Music -> MusicSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Market -> MarketSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.MiHome -> MiHomeSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Amap -> AmapSettingsPage(padding, settings, ::update) { scrollProgress = it }
@@ -1059,6 +1072,12 @@ private fun scopeStatuses(
         isActive = framework.isActive(ModuleScopePackage.XIAOMI_HEALTH),
     ),
     ScopeStatus(
+        appName = "小米音乐手机版",
+        packageName = ModuleScopePackage.MI_MUSIC,
+        hasModification = settings.miMusicFloatingNavigationEnabled,
+        isActive = framework.isActive(ModuleScopePackage.MI_MUSIC),
+    ),
+    ScopeStatus(
         appName = "应用商店",
         packageName = ModuleScopePackage.MARKET,
         hasModification = settings.marketFloatingNavigationEnabled,
@@ -1221,6 +1240,7 @@ private fun HomeDashboardPage(
         }
         SettingsSection {
             NavigationSettingItem("小米运动健康", "", onClick = { onNavigate(SettingsDestination.XiaomiHealth) }, leadingContent = { HomeAppIcon(ModuleScopePackage.XIAOMI_HEALTH) })
+            NavigationSettingItem("小米音乐手机版", "发现、听书、免费听、福利、我的", onClick = { onNavigate(SettingsDestination.Music) }, leadingContent = { HomeAppIcon(ModuleScopePackage.MI_MUSIC) })
             NavigationSettingItem("米家", "", onClick = { onNavigate(SettingsDestination.MiHome) }, leadingContent = { HomeAppIcon(ModuleScopePackage.MI_HOME) })
             NavigationSettingItem("高德地图", "实验功能", onClick = { onNavigate(SettingsDestination.Amap) }, leadingContent = { HomeAppIcon(ModuleScopePackage.AMAP) })
             NavigationSettingItem("Spotify", "媒体卡片按钮", onClick = { onNavigate(SettingsDestination.Spotify) }, leadingContent = { HomeAppIcon(ModuleScopePackage.SPOTIFY) })

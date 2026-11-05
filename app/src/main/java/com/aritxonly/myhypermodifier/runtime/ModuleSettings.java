@@ -165,6 +165,7 @@ final class ModuleSettings {
     static volatile String navigationBarGeometry = "";
     static volatile float hyperGlassifyHiddenNavigationLift = 0f;
     static volatile boolean xiaomiHealthFloatingNavigationEnabled = ModuleDefaultValues.XIAOMI_HEALTH_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean miMusicFloatingNavigationEnabled = ModuleDefaultValues.MI_MUSIC_FLOATING_NAVIGATION_ENABLED;
     static volatile boolean xiaomiHealthMiuixIconsEnabled = false;
     static volatile boolean xiaomiHealthMonochromeIconsEnabled = true;
     static volatile boolean marketFloatingNavigationEnabled = ModuleDefaultValues.MARKET_FLOATING_NAVIGATION_ENABLED;
@@ -272,6 +273,9 @@ final class ModuleSettings {
                     preferences.getInt("device_mode_override", LargeScreenDevicePolicy.AUTO));
             navigationBarGeometry = preferences.getString("navigation_bar_geometry", "");
             NavigationBarGeometryBridge.applyRaw(navigationBarGeometry);
+            miMusicFloatingNavigationEnabled = preferences.getBoolean(
+                    "mi_music_floating_navigation_enabled",
+                    ModuleDefaultValues.MI_MUSIC_FLOATING_NAVIGATION_ENABLED);
             desktopStatusBarIconMode = DesktopStatusBarPolicy.normalize(preferences.getInt("desktop_status_bar_icon_mode", 0));
             androidWidgetGlassEnabled = preferences.getBoolean("deadliner_widget_glass_enabled", false);
             androidWidgetGlassTargets = preferences.getString(AndroidWidgetGlassPolicy.KEY, AndroidWidgetGlassPolicy.DEFAULT_TARGETS);
@@ -697,6 +701,8 @@ final class ModuleSettings {
                     "hyper_glassify_hidden_navigation_lift", ModuleDefaultValues.HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT)));
             xiaomiHealthFloatingNavigationEnabled = values.getBoolean(
                     "xiaomi_health_floating_navigation_enabled", ModuleDefaultValues.XIAOMI_HEALTH_FLOATING_NAVIGATION_ENABLED);
+            miMusicFloatingNavigationEnabled = values.getBoolean(
+                    "mi_music_floating_navigation_enabled", ModuleDefaultValues.MI_MUSIC_FLOATING_NAVIGATION_ENABLED);
             xiaomiHealthMiuixIconsEnabled = values.getBoolean(
                     "xiaomi_health_miuix_icons_enabled", false);
             xiaomiHealthMonochromeIconsEnabled = values.getBoolean(

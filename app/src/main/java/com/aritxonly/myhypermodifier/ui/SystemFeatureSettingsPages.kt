@@ -900,6 +900,7 @@ internal fun RestartScopeDialogContent(
     restartPlugin: Boolean,
     restartMiLink: Boolean,
     restartXiaomiHealth: Boolean,
+    restartMusic: Boolean,
     restartMarket: Boolean,
     restartMiHome: Boolean,
     restartAmap: Boolean,
@@ -920,6 +921,7 @@ internal fun RestartScopeDialogContent(
     onPluginChange: (Boolean) -> Unit,
     onMiLinkChange: (Boolean) -> Unit,
     onXiaomiHealthChange: (Boolean) -> Unit,
+    onMusicChange: (Boolean) -> Unit,
     onMarketChange: (Boolean) -> Unit,
     onMiHomeChange: (Boolean) -> Unit,
     onAmapChange: (Boolean) -> Unit,
@@ -956,6 +958,7 @@ internal fun RestartScopeDialogContent(
                 restartPlugin = restartPlugin,
                 restartMiLink = restartMiLink,
                 restartXiaomiHealth = restartXiaomiHealth,
+                restartMusic = restartMusic,
                 restartMarket = restartMarket,
                 restartMiHome = restartMiHome,
                 restartAmap = restartAmap,
@@ -976,6 +979,7 @@ internal fun RestartScopeDialogContent(
                 onPluginChange = onPluginChange,
                 onMiLinkChange = onMiLinkChange,
                 onXiaomiHealthChange = onXiaomiHealthChange,
+                onMusicChange = onMusicChange,
                 onMarketChange = onMarketChange,
                 onMiHomeChange = onMiHomeChange,
                 onAmapChange = onAmapChange,
@@ -1004,6 +1008,7 @@ internal fun RestartScopeDialogContent(
     restartPlugin: Boolean,
     restartMiLink: Boolean,
     restartXiaomiHealth: Boolean,
+    restartMusic: Boolean,
     restartMarket: Boolean,
     restartMiHome: Boolean,
     restartAmap: Boolean,
@@ -1024,6 +1029,7 @@ internal fun RestartScopeDialogContent(
     onPluginChange: (Boolean) -> Unit,
     onMiLinkChange: (Boolean) -> Unit,
     onXiaomiHealthChange: (Boolean) -> Unit,
+    onMusicChange: (Boolean) -> Unit,
     onMarketChange: (Boolean) -> Unit,
     onMiHomeChange: (Boolean) -> Unit,
     onAmapChange: (Boolean) -> Unit,
@@ -1077,6 +1083,18 @@ internal fun RestartScopeDialogContent(
             DeadlinerCheckbox(
                 restartXiaomiHealth,
                 onXiaomiHealthChange,
+                enabled = editable && !restartSystem,
+            )
+        },
+    )
+    SettingItem(
+        "小米音乐手机版",
+        "",
+        enabled = editable && !restartSystem,
+        trailingContent = {
+            DeadlinerCheckbox(
+                restartMusic,
+                onMusicChange,
                 enabled = editable && !restartSystem,
             )
         },
@@ -1232,6 +1250,7 @@ internal fun restartSelectedScope(
     plugin: Boolean,
     miLink: Boolean,
     xiaomiHealth: Boolean,
+    music: Boolean,
     market: Boolean,
     miHome: Boolean,
     amap: Boolean,
@@ -1256,7 +1275,7 @@ internal fun restartSelectedScope(
         // again and rebuilds both MIUISystemUI and MIUISystemUIPlugin content.
         val command = when {
             system -> "reboot"
-            systemUi || plugin || miLink || xiaomiHealth || market || miHome || amap ||
+            systemUi || plugin || miLink || xiaomiHealth || music || market || miHome || amap ||
                 xiaomiCommunity || bilibili || piliPlus || spotify || douyin || kuaishou ||
                 alipay || socialApps || qqMusic || ecommerceApps ||
                 systemSettings || launcher -> buildList {
@@ -1264,6 +1283,7 @@ internal fun restartSelectedScope(
                 if (launcher) add("killall com.miui.home")
                 if (miLink) add("am force-stop com.milink.service")
                 if (xiaomiHealth) add("am force-stop com.mi.health")
+                if (music) add("am force-stop com.miui.player")
                 if (market) add("am force-stop com.xiaomi.market")
                 if (miHome) add("am force-stop com.xiaomi.smarthome")
                 if (amap) add("am force-stop com.autonavi.minimap")

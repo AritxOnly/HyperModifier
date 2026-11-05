@@ -151,6 +151,7 @@ data class ModifierSettings(
     val navigationBarGeometry: String = "",
     val hyperGlassifyHiddenNavigationLift: Float = ModuleDefaultValues.HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT,
     val xiaomiHealthFloatingNavigationEnabled: Boolean = ModuleDefaultValues.XIAOMI_HEALTH_FLOATING_NAVIGATION_ENABLED,
+    val miMusicFloatingNavigationEnabled: Boolean = ModuleDefaultValues.MI_MUSIC_FLOATING_NAVIGATION_ENABLED,
     val xiaomiHealthMiuixIconsEnabled: Boolean = false,
     val xiaomiHealthMonochromeIconsEnabled: Boolean = true,
     val marketFloatingNavigationEnabled: Boolean = ModuleDefaultValues.MARKET_FLOATING_NAVIGATION_ENABLED,
@@ -354,6 +355,7 @@ object ModifierSettingsPresets {
         statusBarNetworkSpeedMarginLeft = 0f,
         statusBarNetworkTypeEnabled = false,
         xiaomiHealthFloatingNavigationEnabled = false,
+        miMusicFloatingNavigationEnabled = false,
         xiaomiHealthMiuixIconsEnabled = false,
         xiaomiHealthMonochromeIconsEnabled = false,
         marketFloatingNavigationEnabled = false,
@@ -571,6 +573,8 @@ object ModifierSettingsStore {
         "hyper_glassify_hidden_navigation_lift"
     private const val KEY_XIAOMI_HEALTH_FLOATING_NAVIGATION =
         "xiaomi_health_floating_navigation_enabled"
+    private const val KEY_MI_MUSIC_FLOATING_NAVIGATION =
+        "mi_music_floating_navigation_enabled"
     private const val KEY_XIAOMI_HEALTH_MIUIX_ICONS = "xiaomi_health_miuix_icons_enabled"
     private const val KEY_XIAOMI_HEALTH_MONOCHROME_ICONS =
         "xiaomi_health_monochrome_icons_enabled"
@@ -879,6 +883,10 @@ object ModifierSettingsStore {
             xiaomiHealthFloatingNavigationEnabled = prefs.getBoolean(
                 KEY_XIAOMI_HEALTH_FLOATING_NAVIGATION,
                 ModuleDefaultValues.XIAOMI_HEALTH_FLOATING_NAVIGATION_ENABLED,
+            ),
+            miMusicFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_MI_MUSIC_FLOATING_NAVIGATION,
+                ModuleDefaultValues.MI_MUSIC_FLOATING_NAVIGATION_ENABLED,
             ),
             xiaomiHealthMiuixIconsEnabled = prefs.getBoolean(KEY_XIAOMI_HEALTH_MIUIX_ICONS, false),
             xiaomiHealthMonochromeIconsEnabled = prefs.getBoolean(
@@ -1245,6 +1253,10 @@ object ModifierSettingsStore {
             .putBoolean(
                 KEY_XIAOMI_HEALTH_FLOATING_NAVIGATION,
                 value.xiaomiHealthFloatingNavigationEnabled,
+            )
+            .putBoolean(
+                KEY_MI_MUSIC_FLOATING_NAVIGATION,
+                value.miMusicFloatingNavigationEnabled,
             )
             .putBoolean(KEY_XIAOMI_HEALTH_MIUIX_ICONS, value.xiaomiHealthMiuixIconsEnabled)
             .putBoolean(
@@ -1688,6 +1700,10 @@ object ModifierSettingsStore {
         putBoolean(
             KEY_XIAOMI_HEALTH_FLOATING_NAVIGATION,
             value.xiaomiHealthFloatingNavigationEnabled,
+        )
+        putBoolean(
+            KEY_MI_MUSIC_FLOATING_NAVIGATION,
+            value.miMusicFloatingNavigationEnabled,
         )
         putBoolean(KEY_XIAOMI_HEALTH_MIUIX_ICONS, value.xiaomiHealthMiuixIconsEnabled)
         putBoolean(
