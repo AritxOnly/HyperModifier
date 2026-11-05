@@ -15,6 +15,7 @@ class FreshInstallDefaultsTest {
             assertFalse(settings.settingsHomeEntryEnabled)
             assertFalse(settings.gestureHandleEnabled)
             assertTrue(settings.xiaomiHealthFloatingNavigationEnabled)
+            assertTrue(settings.miMusicFloatingNavigationEnabled)
             assertFalse(settings.marketFloatingNavigationEnabled)
             assertTrue(settings.miHomeFloatingNavigationEnabled)
             assertTrue(settings.amapFloatingNavigationEnabled)
@@ -45,6 +46,7 @@ class FreshInstallDefaultsTest {
 
     @Test fun systemPresetRestoresTheNativeAlipayDock() {
         assertFalse(ModifierSettingsPresets.systemDefault().alipayFloatingNavigationEnabled)
+        assertFalse(ModifierSettingsPresets.systemDefault().miMusicFloatingNavigationEnabled)
         assertFalse(ModifierSettingsPresets.systemDefault().wechatFloatingNavigationEnabled)
         assertFalse(ModifierSettingsPresets.systemDefault().qqFloatingNavigationEnabled)
         assertFalse(ModifierSettingsPresets.systemDefault().douyinLiteFloatingNavigationEnabled)

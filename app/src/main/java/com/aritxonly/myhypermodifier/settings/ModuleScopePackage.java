@@ -15,6 +15,7 @@ public final class ModuleScopePackage {
     public static final String INCALL_UI = "com.android.incallui";
     public static final String MILINK = "com.milink.service";
     public static final String XIAOMI_HEALTH = "com.mi.health";
+    public static final String MI_MUSIC = "com.miui.player";
     public static final String MARKET = "com.xiaomi.market";
     public static final String MI_HOME = "com.xiaomi.smarthome";
     public static final String AMAP = "com.autonavi.minimap";
@@ -36,7 +37,7 @@ public final class ModuleScopePackage {
     public static final String CAINIAO = "com.cainiao.wireless";
     public static final String PILIPLUS = "com.example.piliplus";
     public static final String BILIBILI = "tv.danmaku.bili";
-    public static final Set<String> PACKAGES = Set.of(INCALL_UI, VOICE_ASSIST, SETTINGS, SYSTEM_FRAMEWORK, SYSTEM_UI, PLUGIN, XMSF, MILINK, XIAOMI_HEALTH,
+    public static final Set<String> PACKAGES = Set.of(INCALL_UI, VOICE_ASSIST, SETTINGS, SYSTEM_FRAMEWORK, SYSTEM_UI, PLUGIN, XMSF, MILINK, XIAOMI_HEALTH, MI_MUSIC,
             MARKET, MI_HOME, AMAP, XIAOMI_COMMUNITY, BILIBILI, SPOTIFY, DOUYIN, ALIPAY,
             DOUYIN_LITE, KUAISHOU, KUAISHOU_LITE, WECHAT, QQ, QQ_MUSIC,
             PINDUODUO, TAOBAO, JINGDONG, XIANYU, DOUYIN_MALL, CAINIAO, PILIPLUS,

@@ -65,6 +65,7 @@ public final class MyHyperModifier extends XposedModule {
     private static final String MILINK_FUSION_ACTIVITY =
             "com.miui.circulate.world.CirculateWorldActivity";
     private static final String XIAOMI_HEALTH = "com.mi.health";
+    private static final String MI_MUSIC = "com.miui.player";
     private static final String MARKET = "com.xiaomi.market";
     private static final String MI_HOME = "com.xiaomi.smarthome";
     private static final String AMAP = "com.autonavi.minimap";
@@ -147,6 +148,19 @@ public final class MyHyperModifier extends XposedModule {
                 && ModuleScopePackage.INCALL_UI.equals(Application.getProcessName())) return;
         if (ModuleScopePackage.ALIPAY.equals(packageName) || isAlipayProcess()) return;
         if (ModuleScopePackage.PILIPLUS.equals(packageName)) return;
+        if (MI_MUSIC.equals(packageName)) {
+            if (!packageName.equals(Application.getProcessName())) return;
+            try {
+                ModuleSettings.setRemotePreferences(getRemotePreferences("modifier_settings"));
+                if (!ModuleSettings.moduleHooksEnabled) return;
+                installSafely(packageName, "小米音乐手机版悬浮底栏",
+                        () -> MusicHooks.install(this, param.getDefaultClassLoader()));
+                HookDiagnostics.ready(packageName);
+            } catch (Throwable error) {
+                HookDiagnostics.failure(packageName, "小米音乐手机版悬浮底栏", error);
+            }
+            return;
+        }
         if (KuaishouHooks.isTarget(packageName)) {
             if (!packageName.equals(Application.getProcessName())) return;
             installSafely(packageName, "快手悬浮底栏提前注入",
@@ -256,6 +270,20 @@ public final class MyHyperModifier extends XposedModule {
             try {
                 LocalWidgetCatalogHooks.install(this, param.getClassLoader(), getRemotePreferences("modifier_settings"));
             } catch (Throwable error) { HookDiagnostics.failure(packageName, "本地小组件目录", error); }
+            return;
+        }
+        if (MI_MUSIC.equals(packageName)) {
+            if (!packageName.equals(Application.getProcessName())) return;
+            try {
+                ModuleSettings.setRemotePreferences(getRemotePreferences("modifier_settings"));
+                ModuleSettings.ensureLoaded();
+                if (!ModuleSettings.moduleHooksEnabled) return;
+                installSafely(packageName, "小米音乐手机版柔光底栏",
+                        () -> MusicHooks.install(this, param.getClassLoader()));
+                HookDiagnostics.ready(packageName);
+            } catch (Throwable error) {
+                HookDiagnostics.failure(packageName, "小米音乐手机版悬浮底栏注入", error);
+            }
             return;
         }
         if (SocialHooks.isTarget(packageName)) {
