@@ -38,7 +38,7 @@ public final class LargeScreenDevicePolicy {
     private LargeScreenDevicePolicy() {}
 
     public static boolean isLargeScreenDevice() {
-        return usesLargeScreenLayout(ModuleSettings.deviceModeOverride);
+        return currentMode() != PHONE;
     }
 
     public static boolean isLargeScreenDevice(String device, String model) {
@@ -51,6 +51,10 @@ public final class LargeScreenDevicePolicy {
 
     public static int effectiveMode(int override) {
         return resolveMode(override, DETECTED_MODE);
+    }
+
+    public static int currentMode() {
+        return effectiveMode(ModuleSettings.deviceModeOverride);
     }
 
     public static int resolveMode(int override, int detectedMode) {

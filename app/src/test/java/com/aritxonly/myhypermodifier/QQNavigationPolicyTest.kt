@@ -36,4 +36,20 @@ class QQNavigationPolicyTest {
             editorVisible = false,
         ))
     }
+
+    @Test
+    fun compactsOnlyTheQqDockOnTablets() {
+        assertTrue(qqUsesCompactTabletDock(
+            LargeScreenDevicePolicy.TABLET,
+            SocialNavigationKind.QQ,
+        ))
+        assertFalse(qqUsesCompactTabletDock(
+            LargeScreenDevicePolicy.FOLDABLE,
+            SocialNavigationKind.QQ,
+        ))
+        assertFalse(qqUsesCompactTabletDock(
+            LargeScreenDevicePolicy.TABLET,
+            SocialNavigationKind.WeChat,
+        ))
+    }
 }

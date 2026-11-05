@@ -88,8 +88,9 @@ internal object SocialNavigationTargets {
                 SocialNavigationKind.QQ -> ModuleSettings.qqNavigationBadgesEnabled
             }
         }
-        val largeScreen = LargeScreenDevicePolicy.isLargeScreenDevice()
-        val compactQqTabletDock = largeScreen && spec.kind == SocialNavigationKind.QQ
+        val workMode = LargeScreenDevicePolicy.currentMode()
+        val largeScreen = workMode != LargeScreenDevicePolicy.PHONE
+        val compactQqTabletDock = qqUsesCompactTabletDock(workMode, spec.kind)
         return NativeViewBottomBarTarget(
             logName = spec.logName,
             testedVersion = spec.testedVersion,
@@ -218,6 +219,12 @@ internal object SocialNavigationTargets {
         )
     }
 }
+
+internal fun qqUsesCompactTabletDock(
+    workMode: Int,
+    kind: SocialNavigationKind,
+): Boolean = workMode == LargeScreenDevicePolicy.TABLET &&
+    kind == SocialNavigationKind.QQ
 
 internal fun qqNavigationShouldShow(
     barVisible: Boolean,
