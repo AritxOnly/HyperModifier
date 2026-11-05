@@ -151,6 +151,8 @@ fun MiuixFloatingTabBar(
     /** Optional compact cap for hosts that otherwise inherit a wide native pane. */
     maximumWidth: Dp? = null,
     height: Dp = MiuixFloatingTabBarDefaults.Height,
+    /** Stable target key used by per-bottom-bar geometry overrides. */
+    geometryKey: String? = null,
 ) {
     if (items.isEmpty()) return
 
@@ -164,8 +166,15 @@ fun MiuixFloatingTabBar(
     var directPanelDragOffset: Float? by remember { mutableStateOf(null) }
     val motionScope = rememberCoroutineScope()
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
+    val geometry = MiuixFloatingTabBarGeometry.resolve(geometryKey)
+    val geometryLeftMargin = geometry.leftMarginDp.dp
+    val resolvedHeight = geometry.heightDp?.dp ?: height
     val resolvedMaximumWidth =
-        maximumWidth ?: MiuixFloatingTabBarDefaults.maximumWidth(items.size, layout)
+        geometry.maximumWidthDp?.dp
+            ?: maximumWidth
+            ?: MiuixFloatingTabBarDefaults.maximumWidth(items.size, layout)
+    val effectiveFillAvailableWidth =
+        fillAvailableWidth && geometry.maximumWidthDp == null
 
     LaunchedEffect(selectedIndex) {
         motion.syncExternalSelection(selectedIndex)
@@ -182,11 +191,13 @@ fun MiuixFloatingTabBar(
 
     BoxWithConstraints(
         modifier = modifier
-            .then(if (fillAvailableWidth) Modifier else Modifier.wrapContentWidth().widthIn(
+            .padding(start = geometryLeftMargin)
+            .then(if (effectiveFillAvailableWidth) Modifier
+                else Modifier.wrapContentWidth().widthIn(
                 max = resolvedMaximumWidth,
             ))
             .fillMaxWidth()
-            .height(height),
+            .height(resolvedHeight),
     ) {
         val density = LocalDensity.current
         val panelDragFraction = floatingTabPanelDragFraction(

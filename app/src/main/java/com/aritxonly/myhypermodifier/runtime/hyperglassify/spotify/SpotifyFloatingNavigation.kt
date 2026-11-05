@@ -42,6 +42,7 @@ import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBar
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarDefaults
+import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarGeometry
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabItem
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabLayout
 import com.aritxonly.deadliner.ui.theme.AdvancedMaterialSpec
@@ -591,7 +592,10 @@ private fun SpotifyNavigationContent(
                             end = 20.dp,
                             bottom = 4.dp + hiddenNavigationLift,
                         )
-                        .height(MiuixFloatingTabBarDefaults.Height),
+                        .height(
+                            MiuixFloatingTabBarGeometry.resolve("Spotify").heightDp?.dp
+                                ?: MiuixFloatingTabBarDefaults.Height,
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (gpuBackdrop != null) NativeGpuBackdropLayer(gpuBackdrop, backdrop, nativeBackdropBounds)
@@ -621,6 +625,7 @@ private fun SpotifyNavigationContent(
                         layout = MiuixFloatingTabLayout.Stacked,
                         fillAvailableWidth = true,
                         backdrop = opticalBackdrop,
+                        geometryKey = "Spotify",
                     )
                 }
             }

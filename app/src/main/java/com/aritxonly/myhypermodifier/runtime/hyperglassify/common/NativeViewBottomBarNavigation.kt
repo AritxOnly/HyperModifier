@@ -57,6 +57,7 @@ import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBar
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarDefaults
+import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarGeometry
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabItem
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabLayout
 import com.aritxonly.deadliner.ui.material.glass.SoftGlassFloatingActionButton
@@ -74,6 +75,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /** Configuration for classic View bottom bars whose native routing must remain authoritative. */
 internal data class NativeViewBottomBarTarget(
     val logName: String,
+    val geometryKey: String = logName,
     val bottomEdgeMask: Boolean = true,
     val showNavigationShadowInLight: Boolean = true,
     val navigationShadowVisible: Boolean = true,
@@ -1117,6 +1119,8 @@ private fun NativeViewBottomBarContent(
     var nativeBackdropBounds by remember { mutableStateOf<ViewBackdropBounds?>(null) }
     val opticalBackdrop = if (gpuBackdrop?.geometry != null || backdropSnapshot != null) backdrop else null
     val hiddenNavigationLift = hyperGlassifyHiddenNavigationLift()
+    val navigationGeometry = MiuixFloatingTabBarGeometry.resolve(target.geometryKey)
+    val resolvedNavigationHeight = navigationGeometry.heightDp?.dp ?: target.navigationHeight
     val localConfiguration = androidx.compose.ui.platform.LocalConfiguration.current
     val hostView = androidx.compose.ui.platform.LocalView.current
     val navigationPadding = if (target.ignoreBottomNavigationInset) {
@@ -1194,7 +1198,7 @@ private fun NativeViewBottomBarContent(
                             top = INJECTED_NAVIGATION_SHADOW_TOP_PADDING,
                             bottom = 4.dp + hiddenNavigationLift,
                         )
-                        .height(target.navigationHeight),
+                        .height(resolvedNavigationHeight),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (gpuBackdrop != null) NativeGpuBackdropLayer(gpuBackdrop, backdrop, nativeBackdropBounds)
@@ -1224,7 +1228,8 @@ private fun NativeViewBottomBarContent(
                             fillAvailableWidth = target.matchNativeBarHorizontalBounds &&
                                 target.fillNativeBarWidth,
                             maximumWidth = target.navigationMaximumWidth,
-                            height = target.navigationHeight,
+                            height = resolvedNavigationHeight,
+                            geometryKey = target.geometryKey,
                             shadowVisible = target.navigationShadowVisible &&
                                 (dark || target.showNavigationShadowInLight),
                         )
@@ -1233,7 +1238,7 @@ private fun NativeViewBottomBarContent(
                         val maxDockWidth = detachedDockMaxWidth(items.size)
                         Row(
                             modifier = positionedBoundsModifier.widthIn(max = maxDockWidth).fillMaxWidth()
-                                .height(MiuixFloatingTabBarDefaults.Height).padding(horizontal = 8.dp),
+                                .height(resolvedNavigationHeight).padding(horizontal = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -1245,6 +1250,7 @@ private fun NativeViewBottomBarContent(
                                 layout = MiuixFloatingTabLayout.Stacked,
                                 selectionVisible = items.any { it.key == state.selectedIndex.toString() },
                                 backdrop = opticalBackdrop,
+                                geometryKey = target.geometryKey,
                                 shadowVisible = target.navigationShadowVisible &&
                                     (dark || target.showNavigationShadowInLight),
                             )
@@ -1253,7 +1259,7 @@ private fun NativeViewBottomBarContent(
                                 containerColor = target.detachedActionContainerColor
                                     ?: MiuixTheme.colorScheme.primary,
                                 contentColor = MiuixTheme.colorScheme.onPrimary,
-                                size = MiuixFloatingTabBarDefaults.Height,
+                                size = resolvedNavigationHeight,
                                 backdrop = opticalBackdrop,
                             ) {
                                 Icon(

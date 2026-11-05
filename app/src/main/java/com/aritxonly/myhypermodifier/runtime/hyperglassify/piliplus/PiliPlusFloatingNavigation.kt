@@ -43,6 +43,7 @@ import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBar
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarDefaults
+import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarGeometry
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabItem
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabLayout
 import com.aritxonly.deadliner.ui.theme.AdvancedMaterialSpec
@@ -490,7 +491,10 @@ private fun PiliPlusNavigationContent(
                             end = 16.dp,
                             bottom = 4.dp + state.navigationLiftDp.dp,
                         )
-                        .height(MiuixFloatingTabBarDefaults.Height),
+                        .height(
+                            MiuixFloatingTabBarGeometry.resolve("PiliPlus").heightDp?.dp
+                                ?: MiuixFloatingTabBarDefaults.Height,
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     Box(
@@ -518,6 +522,7 @@ private fun PiliPlusNavigationContent(
                         layout = MiuixFloatingTabLayout.Stacked,
                         backdrop = backdropSnapshot?.let { backdrop },
                         fillAvailableWidth = true,
+                        geometryKey = "PiliPlus",
                     )
                 }
             }

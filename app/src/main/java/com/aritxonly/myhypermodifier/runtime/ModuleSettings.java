@@ -162,6 +162,7 @@ final class ModuleSettings {
     // A target process can begin drawing before the companion Provider becomes reachable. Keep
     // that bootstrap state visually neutral; the saved default is published once loading succeeds.
     static volatile String navigationGlassParameters = "";
+    static volatile String navigationBarGeometry = "";
     static volatile float hyperGlassifyHiddenNavigationLift = 0f;
     static volatile boolean xiaomiHealthFloatingNavigationEnabled = ModuleDefaultValues.XIAOMI_HEALTH_FLOATING_NAVIGATION_ENABLED;
     static volatile boolean xiaomiHealthMiuixIconsEnabled = false;
@@ -269,6 +270,8 @@ final class ModuleSettings {
             moduleHooksEnabled = preferences.getBoolean("module_hooks_enabled", true);
             deviceModeOverride = LargeScreenDevicePolicy.normalizeOverride(
                     preferences.getInt("device_mode_override", LargeScreenDevicePolicy.AUTO));
+            navigationBarGeometry = preferences.getString("navigation_bar_geometry", "");
+            NavigationBarGeometryBridge.applyRaw(navigationBarGeometry);
             desktopStatusBarIconMode = DesktopStatusBarPolicy.normalize(preferences.getInt("desktop_status_bar_icon_mode", 0));
             androidWidgetGlassEnabled = preferences.getBoolean("deadliner_widget_glass_enabled", false);
             androidWidgetGlassTargets = preferences.getString(AndroidWidgetGlassPolicy.KEY, AndroidWidgetGlassPolicy.DEFAULT_TARGETS);
@@ -688,6 +691,8 @@ final class ModuleSettings {
             statusBarNetworkTypeBold = values.getBoolean("status_bar_network_type_bold", true);
             statusBarNetworkTypeOffset = values.getFloat("status_bar_network_type_offset", 0f);
             navigationGlassParameters = values.getString("navigation_glass_parameters", "");
+            navigationBarGeometry = values.getString("navigation_bar_geometry", "");
+            NavigationBarGeometryBridge.applyRaw(navigationBarGeometry);
             hyperGlassifyHiddenNavigationLift = Math.max(0f, Math.min(48f, values.getFloat(
                     "hyper_glassify_hidden_navigation_lift", ModuleDefaultValues.HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT)));
             xiaomiHealthFloatingNavigationEnabled = values.getBoolean(

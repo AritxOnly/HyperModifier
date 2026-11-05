@@ -66,6 +66,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import androidx.core.view.WindowCompat
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBar
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarDefaults
+import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarGeometry
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabItem
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabLayout
 import com.aritxonly.deadliner.ui.theme.AdvancedMaterialSpec
@@ -545,7 +546,10 @@ private fun XiaomiHealthNavigationContent(
                             end = 16.dp,
                             bottom = 4.dp + hiddenNavigationLift,
                         )
-                        .height(MiuixFloatingTabBarDefaults.Height),
+                        .height(
+                            MiuixFloatingTabBarGeometry.resolve("Xiaomi Health").heightDp?.dp
+                                ?: MiuixFloatingTabBarDefaults.Height,
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     ViewBackdropLayer(backdropSnapshot, backdrop)
@@ -566,6 +570,7 @@ private fun XiaomiHealthNavigationContent(
                         },
                         layout = MiuixFloatingTabLayout.Stacked,
                         backdrop = backdropSnapshot?.let { backdrop },
+                        geometryKey = "Xiaomi Health",
                     )
                 }
             }

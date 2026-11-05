@@ -148,6 +148,7 @@ data class ModifierSettings(
     val statusBarNetworkTypeBold: Boolean = true,
     val statusBarNetworkTypeOffset: Float = 0f,
     val navigationGlassParameters: String = "",
+    val navigationBarGeometry: String = "",
     val hyperGlassifyHiddenNavigationLift: Float = ModuleDefaultValues.HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT,
     val xiaomiHealthFloatingNavigationEnabled: Boolean = ModuleDefaultValues.XIAOMI_HEALTH_FLOATING_NAVIGATION_ENABLED,
     val xiaomiHealthMiuixIconsEnabled: Boolean = false,
@@ -565,6 +566,7 @@ object ModifierSettingsStore {
     private const val KEY_STATUS_BAR_NETWORK_TYPE_BOLD = "status_bar_network_type_bold"
     private const val KEY_STATUS_BAR_NETWORK_TYPE_OFFSET = "status_bar_network_type_offset"
     private const val KEY_NAVIGATION_GLASS_PARAMETERS = "navigation_glass_parameters"
+    private const val KEY_NAVIGATION_BAR_GEOMETRY = "navigation_bar_geometry"
     private const val KEY_HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT =
         "hyper_glassify_hidden_navigation_lift"
     private const val KEY_XIAOMI_HEALTH_FLOATING_NAVIGATION =
@@ -869,6 +871,7 @@ object ModifierSettingsStore {
             statusBarNetworkTypeBold = prefs.getBoolean(KEY_STATUS_BAR_NETWORK_TYPE_BOLD, true),
             statusBarNetworkTypeOffset = prefs.getFloat(KEY_STATUS_BAR_NETWORK_TYPE_OFFSET, 0f),
             navigationGlassParameters = prefs.getString(KEY_NAVIGATION_GLASS_PARAMETERS, "") ?: "",
+            navigationBarGeometry = prefs.getString(KEY_NAVIGATION_BAR_GEOMETRY, "") ?: "",
             hyperGlassifyHiddenNavigationLift = prefs.getFloat(
                 KEY_HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT,
                 ModuleDefaultValues.HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT,
@@ -1233,6 +1236,8 @@ object ModifierSettingsStore {
             .putBoolean(KEY_STATUS_BAR_NETWORK_TYPE_BOLD, value.statusBarNetworkTypeBold)
             .putFloat(KEY_STATUS_BAR_NETWORK_TYPE_OFFSET, value.statusBarNetworkTypeOffset)
             .putString(KEY_NAVIGATION_GLASS_PARAMETERS, value.navigationGlassParameters)
+            .putString(KEY_NAVIGATION_BAR_GEOMETRY,
+                NavigationBarGeometryParameters.decode(value.navigationBarGeometry).encode())
             .putFloat(
                 KEY_HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT,
                 value.hyperGlassifyHiddenNavigationLift.coerceIn(0f, 48f),
@@ -1675,6 +1680,7 @@ object ModifierSettingsStore {
         putBoolean(KEY_STATUS_BAR_NETWORK_TYPE_BOLD, value.statusBarNetworkTypeBold)
         putFloat(KEY_STATUS_BAR_NETWORK_TYPE_OFFSET, value.statusBarNetworkTypeOffset)
         putString(KEY_NAVIGATION_GLASS_PARAMETERS, value.navigationGlassParameters)
+        putString(KEY_NAVIGATION_BAR_GEOMETRY, value.navigationBarGeometry)
         putFloat(
             KEY_HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT,
             value.hyperGlassifyHiddenNavigationLift.coerceIn(0f, 48f),
