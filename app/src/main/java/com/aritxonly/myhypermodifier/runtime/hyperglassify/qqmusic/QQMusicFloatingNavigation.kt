@@ -190,7 +190,7 @@ internal fun qqMusicTabViews(root: View): List<View> {
         visit(root)
     }.distinct().sortedBy { it.getLocationOnScreenX() }
     return semantic.takeIf { it.size >= 3 }
-        ?: root.geometricTabViews(QQMusicLabels.size)
+        ?: root.geometricTabViews(QQMusicLabels.size, requireSelection = false)
             .filter { it.getLocationOnScreenY() >= minimumY }
         .distinct()
 }
