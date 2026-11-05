@@ -26,6 +26,8 @@ internal object PiliPlusSemanticsBridge {
         val labeledNodeCount: Int,
     )
 
+    internal fun hasTapAction(actions: Int): Boolean = actions and 1 != 0
+
     fun findFlutterView(root: View): View? {
         if (isFlutterView(root)) return root
         val group = root as? ViewGroup ?: return null
@@ -98,7 +100,7 @@ internal object PiliPlusSemanticsBridge {
             var depth = 0
             while (clickTarget != null && depth < MAX_PARENT_DEPTH) {
                 selected = selected || nodes.readFlags(clickTarget) and FLAG_SELECTED != 0
-                if (nodes.readActions(clickTarget) and AccessibilityNodeInfo.ACTION_CLICK != 0) {
+                if (hasTapAction(nodes.readActions(clickTarget))) {
                     val bounds = (nodes.globalRect.get(clickTarget) as? Rect)
                         ?: (nodes.globalRect.get(value) as? Rect)
                     if (bounds != null && !bounds.isEmpty && bounds.centerY() <= screenHeightPx + 1) {

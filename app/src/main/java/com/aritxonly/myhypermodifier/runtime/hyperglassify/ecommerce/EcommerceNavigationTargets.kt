@@ -745,7 +745,7 @@ private fun View.genericInteractiveChildren(): List<View>? {
     return clickable.takeIf { it.size in 2..8 }
 }
 
-internal fun View.geometricTabViews(limit: Int): List<View> {
+internal fun View.geometricTabViews(limit: Int, requireSelection: Boolean = true): List<View> {
     val matches = ArrayList<Pair<View, EcommerceTabCandidate>>()
     collectClickableCandidates(0, matches)
     val rootHeight = height.coerceAtLeast(rootView?.height ?: 0)
@@ -756,6 +756,7 @@ internal fun View.geometricTabViews(limit: Int): List<View> {
         rootHeight,
         resources.displayMetrics.density,
         2,
+        requireSelection = requireSelection,
     ) ?: return emptyList()
     return row.tabs.mapNotNull { selected ->
         matches.firstOrNull { it.second === selected }?.first

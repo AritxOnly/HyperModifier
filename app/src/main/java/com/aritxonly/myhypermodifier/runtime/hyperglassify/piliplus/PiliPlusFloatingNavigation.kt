@@ -53,6 +53,9 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
 import java.util.WeakHashMap
+import java.util.concurrent.ScheduledThreadPoolExecutor
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -159,8 +162,9 @@ internal object PiliPlusThemeSetting {
         else -> HostThemeResolver.resolve(activity)
     }
 
-    fun read(activity: Activity): Int? = runCatching {
-        val source = file(activity)
+    fun read(activity: Activity): Int? = read(file(activity))
+
+    fun read(source: File): Int? = runCatching {
         if (!source.isFile) return null
         themeModeFromHive(source.readBytes())
     }.getOrNull()
@@ -213,7 +217,35 @@ private class PiliPlusNavigationHost(
     private val stableNavigationInset = StableNavigationBarInset()
     private val density = activity.resources.displayMetrics.density
     private var themeMode: Int? = null
-    @Volatile private var themeSettingDirty = true
+    private val themeExecutor = ScheduledThreadPoolExecutor(1).apply {
+        removeOnCancelPolicy = true
+        setKeepAliveTime(1, TimeUnit.SECONDS)
+        allowCoreThreadTimeOut(true)
+    }
+    private var themeRead: ScheduledFuture<*>? = null
+    private val themeReadLock = Any()
+    private var themeReaderClosed = false
+    private var themeGeneration = 0L
+
+    private fun scheduleThemeRead() {
+        synchronized(themeReadLock) {
+            if (themeReaderClosed) return
+            val generation = ++themeGeneration
+            themeRead?.cancel(false)
+            themeRead = themeExecutor.schedule({
+                val mode = PiliPlusThemeSetting.read(themeFile)
+                composeView.post {
+                    val current = synchronized(themeReadLock) {
+                        !themeReaderClosed && generation == themeGeneration
+                    }
+                    if (current && !disposing) {
+                        themeMode = mode
+                        syncNavigation(force = true)
+                    }
+                }
+            }, 75, TimeUnit.MILLISECONDS)
+        }
+    }
     private val themeFile = PiliPlusThemeSetting.file(activity)
     private val themeObserver = runCatching {
         object : FileObserver(
@@ -222,7 +254,7 @@ private class PiliPlusNavigationHost(
         ) {
             override fun onEvent(event: Int, path: String?) {
                 if (path == null || path == themeFile.name) {
-                    themeSettingDirty = true
+                    scheduleThemeRead()
                 }
             }
         }
@@ -282,6 +314,7 @@ private class PiliPlusNavigationHost(
         }
         windowManager.addView(composeView, params)
         themeObserver?.startWatching()
+        scheduleThemeRead()
         composeWindowAttached = true
         visibility.onAttached()
         visibility.setVisible(false)
@@ -308,6 +341,12 @@ private class PiliPlusNavigationHost(
         if (disposing) return
         disposing = true
         themeObserver?.stopWatching()
+        synchronized(themeReadLock) {
+            themeReaderClosed = true
+            themeRead?.cancel(false)
+            themeRead = null
+            themeExecutor.shutdownNow()
+        }
         visibility.dispose()
         sampler.dispose()
         if (overlayParent.viewTreeObserver.isAlive) {
@@ -336,10 +375,6 @@ private class PiliPlusNavigationHost(
         if (!PiliPlusFloatingNavigation.enabled()) {
             applyHiddenState()
             return
-        }
-        if (themeSettingDirty) {
-            themeSettingDirty = false
-            themeMode = PiliPlusThemeSetting.read(activity)
         }
         if (!semanticsRequested) {
             semanticsRequested = PiliPlusSemanticsBridge.requestSemantics(

@@ -122,7 +122,7 @@ class EcommerceNavigationPolicyTest {
 
     @Test
     fun geometryCollapsesNestedClickTargetsInTheSameTab() {
-        val parent = geometryTab(left = 20, top = 2180, bottom = 2300)
+        val parent = geometryTab(left = 20, top = 2180, bottom = 2300, selected = true)
         val child = geometryTab(left = 70, top = 2200, bottom = 2280)
         val bar = EcommerceNavigationPolicy.resolveGeometry(
             candidates = listOf(
