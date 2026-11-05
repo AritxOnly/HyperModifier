@@ -209,6 +209,26 @@ public class GestureHandlePolicyTest {
         assertFalse(policy.hidden(8_000, true));
     }
 
+    @Test public void explicitGlobalPresetAppliesBeforeForegroundIsKnown() {
+        GestureHandlePolicy policy = new GestureHandlePolicy();
+        policy.configure(Map.of(), GestureHandlePresets.SHOW, Set.of(), 0);
+        assertFalse(policy.hidden(0, true));
+        policy.configure(Map.of(), GestureHandlePresets.HIDE, Set.of(), 1);
+        assertTrue(policy.hidden(1, false));
+        policy.configure(Map.of(), GestureHandlePresets.IMMERSIVE, Set.of(), 2);
+        assertFalse(policy.hidden(2, true));
+        assertTrue(policy.hidden(3_002, false));
+    }
+
+    @Test public void missingTaskCallbackRetainsLastValidAppRule() {
+        GestureHandlePolicy policy = new GestureHandlePolicy();
+        policy.setRules(Map.of("foreground", "hide"), 0);
+        policy.foreground("foreground", "foreground/Main", 7, 0);
+        policy.foreground(null, null, -1, 1_000);
+        assertTrue(policy.hidden(1_000, false));
+        assertEquals("hide", policy.mode());
+    }
+
     private static GestureHandlePolicy immersive() {
         GestureHandlePolicy policy = new GestureHandlePolicy();
         policy.setRules(Map.of("app", "immersive"), 0);

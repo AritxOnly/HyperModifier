@@ -175,6 +175,7 @@ internal object XiaomiHealthFloatingNavigation {
 private data class XiaomiHealthNavigationState(
     val visible: Boolean = false,
     val selectedIndex: Int = 0,
+    val navigationInsetPx: Int = 0,
     val badges: List<Boolean> = List(TAB_COUNT) { false },
     val icons: List<NativeTabIconPair?> = List(TAB_COUNT) { null },
 )
@@ -189,6 +190,7 @@ private class XiaomiHealthNavigationHost private constructor(
     samplingView: View,
 ) {
     private var foreground = true
+    private var disposed = false
     private var state by mutableStateOf(XiaomiHealthNavigationState())
     private var backdropSnapshot by mutableStateOf<ViewBackdropSnapshot?>(null)
     private val composeView = ComposeView(activity)
@@ -201,6 +203,20 @@ private class XiaomiHealthNavigationHost private constructor(
     ) { backdropSnapshot = it }
     private val contentBottomPadding = InjectedScrollableContentBottomPadding(contentView)
     private val iconSnapshotter = NativeTabIconSnapshotter(activity.resources, activity.theme)
+    private val refreshPolicy = NavigationRefreshPolicy(100L)
+    private val stableNavigationInset = StableNavigationBarInset()
+    private val inputGate = NavigationInputGate()
+    private val redPointId by lazy {
+        activity.resources.getIdentifier("red_point", "id", activity.packageName)
+    }
+    private val iconId by lazy {
+        activity.resources.getIdentifier("icon", "id", activity.packageName)
+    }
+    private val getTabAtMethod by lazy {
+        runCatching {
+            nativeTabLayout.javaClass.getMethod("getTabAt", Int::class.javaPrimitiveType)
+        }.getOrNull()
+    }
     private val originalBottomVisibility = originalBottomContainer.visibility
     private val originalDividerVisibility = originalDivider?.visibility
     private val windowManager = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -211,7 +227,17 @@ private class XiaomiHealthNavigationHost private constructor(
             sampler.requestCaptureBurst()
         }
     }
+    private val settleRunnable = Runnable {
+        if (!disposed) syncNativeState(force = true)
+    }
+    private val finishRouteRunnable = Runnable {
+        if (!disposed) {
+            inputGate.finish()
+            syncNativeState(force = true)
+        }
+    }
     private val preDrawListener = ViewTreeObserver.OnPreDrawListener {
+        if (disposed) return@OnPreDrawListener true
         syncNativeState()
         if (state.visible) {
             windowImmersion.ensureApplied()
@@ -222,7 +248,7 @@ private class XiaomiHealthNavigationHost private constructor(
     }
 
     init {
-        syncNativeState()
+        syncNativeState(force = true)
         composeView.apply {
             setViewTreeLifecycleOwner(owner)
             setViewTreeViewModelStoreOwner(owner)
@@ -258,19 +284,27 @@ private class XiaomiHealthNavigationHost private constructor(
         visibility.onAttached()
         composeView.addOnLayoutChangeListener(composeLayoutListener)
         overlayParent.viewTreeObserver.addOnPreDrawListener(preDrawListener)
+        syncNativeState(force = true)
     }
 
-    fun onTouchEvent(event: MotionEvent) = sampler.onTouchEvent(event)
+    fun onTouchEvent(event: MotionEvent) {
+        if (!disposed && state.visible) sampler.onTouchEvent(event)
+    }
 
     fun setForeground(value: Boolean) {
+        if (disposed) return
         foreground = value
         if (value) sampler.invalidateSamplingContext()
-        syncNativeState()
+        syncNativeState(force = true)
     }
 
     fun dispose() {
+        if (disposed) return
+        disposed = true
         visibility.dispose()
         sampler.dispose()
+        composeView.removeCallbacks(settleRunnable)
+        composeView.removeCallbacks(finishRouteRunnable)
         composeView.removeOnLayoutChangeListener(composeLayoutListener)
         contentBottomPadding.dispose()
         if (overlayParent.viewTreeObserver.isAlive) {
@@ -294,31 +328,57 @@ private class XiaomiHealthNavigationHost private constructor(
         )
     }
 
-    private fun syncNativeState() {
-        val visible = foreground && activity.hasWindowFocus() && ModuleSettings.moduleHooksEnabled &&
-            ModuleSettings.xiaomiHealthFloatingNavigationEnabled && nativeTabLayout.isAttachedToWindow
-        val next = if (visible) readNativeState().copy(visible = true) else state.copy(visible = false)
-        val changed = next.visible != state.visible
-        val selectionChanged = next.selectedIndex != state.selectedIndex
-        if (next != state) state = next
-        sampler.setActive(visible)
-        visibility.setVisible(visible)
-        if (changed) {
-            if (visible) {
-                originalBottomContainer.visibility = View.GONE
-                originalDivider?.visibility = View.GONE
-                windowImmersion.apply()
-                val inset = composeView.injectedNavigationContentInsetPx()
-                if (inset > 0) contentBottomPadding.apply(inset)
-            } else {
-                contentBottomPadding.dispose()
-                windowImmersion.dispose()
+    private fun syncNativeState(force: Boolean = false) {
+        if (disposed) return
+        val shouldShow = foreground && activity.hasWindowFocus() &&
+            ModuleSettings.moduleHooksEnabled &&
+            ModuleSettings.xiaomiHealthFloatingNavigationEnabled &&
+            nativeTabLayout.isAttachedToWindow
+        if (!shouldShow) {
+            if (state.visible) state = state.copy(visible = false)
+            sampler.setActive(false)
+            visibility.setVisible(false)
+            contentBottomPadding.dispose()
+            windowImmersion.dispose()
+            if (originalBottomContainer.visibility != originalBottomVisibility) {
                 originalBottomContainer.visibility = originalBottomVisibility
-                originalDividerVisibility?.let { originalDivider?.visibility = it }
             }
+            originalDividerVisibility?.let { value ->
+                if (originalDivider?.visibility != value) originalDivider?.visibility = value
+            }
+            return
         }
+        if (!refreshPolicy.shouldRefresh(SystemClock.uptimeMillis(), force || !state.visible)) {
+            return
+        }
+        val now = SystemClock.uptimeMillis()
+        val next = readNativeState().copy(
+            visible = true,
+            navigationInsetPx = stableNavigationInset.bottomPx(
+                composeView,
+                activity.window.decorView,
+            ),
+        )
+        val selectionChanged = next.selectedIndex != state.selectedIndex
+        val visibilityChanged = next.visible != state.visible
+        if (next != state) state = next
+        visibility.setVisible(true)
+        if (visibilityChanged) {
+            inputGate.markVisible(now)
+            originalBottomContainer.visibility = View.GONE
+            originalDivider?.visibility = View.GONE
+            windowImmersion.apply(composeView)
+            val inset = composeView.injectedNavigationContentInsetPx()
+            if (inset > 0) contentBottomPadding.apply(inset)
+            composeView.removeCallbacks(settleRunnable)
+            composeView.postDelayed(settleRunnable, NavigationInputGate.SETTLE_TIME_MS + 16L)
+        }
+        val samplingReady = inputGate.samplingReady(now) && !inputGate.isRouting
+        sampler.setActive(samplingReady)
         if (selectionChanged) sampler.invalidateSamplingContext()
-        if (selectionChanged || changed) sampler.requestCaptureBurst()
+        if (samplingReady && (selectionChanged || visibilityChanged)) {
+            sampler.requestCaptureBurst()
+        }
     }
 
     private fun readNativeState(): XiaomiHealthNavigationState {
@@ -326,21 +386,23 @@ private class XiaomiHealthNavigationHost private constructor(
         val selected = tabs.indexOfFirst(View::isSelected).takeIf { it >= 0 }
             ?: stateOrDefaultSelectedIndex()
         val selectedIndex = selected.coerceIn(0, TAB_COUNT - 1)
-        val redPointId = activity.resources.getIdentifier("red_point", "id", activity.packageName)
-        val iconId = activity.resources.getIdentifier("icon", "id", activity.packageName)
         val badges = List(TAB_COUNT) { index ->
             if (redPointId == 0) false
             else tabs.getOrNull(index)?.findViewById<View>(redPointId)?.visibility == View.VISIBLE
         }
-        val icons = List(TAB_COUNT) { index ->
-            val tab = tabs.getOrNull(index) ?: return@List null
-            val iconRoot = nativeCustomTabView(index) ?: tab
-            val iconView = findNativeTabIconView(
-                root = iconRoot,
-                preferredId = iconId,
-                excludedIds = setOf(redPointId).filterTo(mutableSetOf()) { it != 0 },
-            )
-            iconSnapshotter.snapshot(tab, iconView, index == selectedIndex)
+        val icons = if (ModuleSettings.xiaomiHealthMiuixIconsEnabled) {
+            List<NativeTabIconPair?>(TAB_COUNT) { null }
+        } else {
+            List(TAB_COUNT) { index ->
+                val tab = tabs.getOrNull(index) ?: return@List null
+                val iconRoot = nativeCustomTabView(index) ?: tab
+                val iconView = findNativeTabIconView(
+                    root = iconRoot,
+                    preferredId = iconId,
+                    excludedIds = setOf(redPointId).filterTo(mutableSetOf()) { it != 0 },
+                )
+                iconSnapshotter.snapshot(tab, iconView, index == selectedIndex)
+            }
         }
         return XiaomiHealthNavigationState(selectedIndex = selectedIndex, badges = badges, icons = icons)
     }
@@ -349,11 +411,32 @@ private class XiaomiHealthNavigationHost private constructor(
         runCatching { state.selectedIndex }.getOrDefault(0)
 
     private fun selectDestination(index: Int) {
-        val tab = nativeTabViews().getOrNull(index) ?: return
-        state = state.copy(selectedIndex = index)
-        tab.performClick()
-        tab.post(::syncNativeState)
-        sampler.requestCaptureBurst()
+        if (disposed) return
+        val now = SystemClock.uptimeMillis()
+        val tab = nativeTabViews().getOrNull(index)
+        if (!inputGate.begin(now, state.visible, nativeNavigationReady(tab))) return
+        if (tab == null) {
+            inputGate.finish()
+            return
+        }
+        // Do not read the first destination frame while Xiaomi Health is inflating it.
+        sampler.setActive(false)
+        try {
+            state = state.copy(selectedIndex = index)
+            tab.performClick()
+        } catch (error: Throwable) {
+            inputGate.finish()
+            sampler.setActive(inputGate.samplingReady(SystemClock.uptimeMillis()))
+            Log.e("MyHyperModifier", "Xiaomi Health native tab click failed", error)
+            return
+        }
+        composeView.removeCallbacks(finishRouteRunnable)
+        composeView.postDelayed(finishRouteRunnable, NAVIGATION_SETTLE_MS)
+    }
+
+    private fun nativeNavigationReady(tab: View?): Boolean {
+        return foreground && activity.hasWindowFocus() && tab != null &&
+            tab.isAttachedToWindow && tab.isEnabled && nativeTabLayout.isAttachedToWindow
     }
 
     private fun nativeTabViews(): List<View> {
@@ -363,11 +446,7 @@ private class XiaomiHealthNavigationHost private constructor(
 
     /** Material TabLayout keeps Xiaomi's main_view_tab hierarchy on Tab.customView. */
     private fun nativeCustomTabView(index: Int): View? = runCatching {
-        val getTabAt = nativeTabLayout.javaClass.getMethod(
-            "getTabAt",
-            Int::class.javaPrimitiveType,
-        )
-        val tab = getTabAt.invoke(nativeTabLayout, index) ?: return@runCatching null
+        val tab = getTabAtMethod?.invoke(nativeTabLayout, index) ?: return@runCatching null
         tab.javaClass.getMethod("getCustomView").invoke(tab) as? View
     }.getOrNull()
 
@@ -412,6 +491,13 @@ private fun XiaomiHealthNavigationContent(
     val miuixColors = remember(dark, materialColors) { MhmPresetColors.miuix(materialColors, dark) }
     val backdrop = rememberLayerBackdrop()
     val hiddenNavigationLift = hyperGlassifyHiddenNavigationLift()
+    val navigationPadding = if (state.navigationInsetPx > 0) {
+        Modifier.padding(bottom = with(LocalDensity.current) {
+            state.navigationInsetPx.toDp()
+        })
+    } else {
+        Modifier.navigationBarsPadding()
+    }
     val icons = listOf(
         MiuixIcons.Home,
         MiuixIcons.Stopwatch,
@@ -452,7 +538,7 @@ private fun XiaomiHealthNavigationContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationEdgeMask()
-                        .navigationBarsPadding()
+                        .then(navigationPadding)
                         .padding(
                             start = 16.dp,
                             top = INJECTED_NAVIGATION_SHADOW_TOP_PADDING,
@@ -489,3 +575,4 @@ private fun XiaomiHealthNavigationContent(
 
 private const val TAB_COUNT = 4
 private const val XIAOMI_HEALTH_NATIVE_ICON_SCALE = 0.90f
+private const val NAVIGATION_SETTLE_MS = 180L

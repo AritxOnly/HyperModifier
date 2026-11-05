@@ -75,7 +75,7 @@ internal object DouyinFloatingNavigation {
                     }
                 }.orEmpty()
             },
-            resolveDarkTheme = { activity, tabs, index ->
+            resolveDarkTheme = { activity, _, tabs, index ->
                 val tab = tabs.getOrNull(index)
                 val title = tab?.let { access(it).read(access(it).title, it) as? TextView }
                 val id = tab?.let { access(it).id(it) }

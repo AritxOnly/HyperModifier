@@ -71,6 +71,7 @@ import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabItem
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabLayout
 import com.aritxonly.deadliner.ui.theme.AdvancedMaterialSpec
 import com.aritxonly.deadliner.ui.theme.LocalAdvancedMaterialSpec
+import java.lang.ref.WeakReference
 import java.util.WeakHashMap
 import kotlin.math.ceil
 import kotlin.math.max
@@ -104,12 +105,16 @@ internal class InjectedBottomNavigationImmersion(
     private val originalLightNavigationBars = insetsController.isAppearanceLightNavigationBars
     private val originalManagedLayoutFlags = decorView.systemUiVisibility and MANAGED_LAYOUT_FLAGS
     private var applied = false
+    private var attachedPanel: WeakReference<View>? = null
 
-    fun apply() {
+    fun apply(panel: View? = null) {
+        if (panel != null) attachedPanel = WeakReference(panel)
         if (applied) return
         applied = true
         ensureApplied()
-        if (requestImmersiveInsets) decorView.requestApplyInsets()
+        // Returning from Home briefly disposes immersion. WindowInsets can otherwise retain the
+        // paused value (commonly bottom=0), leaving injected navigation collapsed until restart.
+        requestInsetDispatch()
     }
 
     fun ensureApplied() {
@@ -117,6 +122,7 @@ internal class InjectedBottomNavigationImmersion(
         val layoutFlags = decorView.systemUiVisibility
         if (layoutFlags and MANAGED_LAYOUT_FLAGS != MANAGED_LAYOUT_FLAGS) {
             decorView.systemUiVisibility = layoutFlags or MANAGED_LAYOUT_FLAGS
+            requestInsetDispatch()
         }
         if (window.navigationBarColor != AndroidColor.TRANSPARENT) {
             window.navigationBarColor = AndroidColor.TRANSPARENT
@@ -143,7 +149,13 @@ internal class InjectedBottomNavigationImmersion(
         window.navigationBarDividerColor = originalNavigationBarDividerColor
         window.isNavigationBarContrastEnforced = originalNavigationBarContrastEnforced
         insetsController.isAppearanceLightNavigationBars = originalLightNavigationBars
-        if (requestImmersiveInsets) decorView.requestApplyInsets()
+        requestInsetDispatch()
+        attachedPanel = null
+    }
+
+    private fun requestInsetDispatch() {
+        decorView.requestApplyInsets()
+        attachedPanel?.get()?.takeIf(View::isAttachedToWindow)?.requestApplyInsets()
     }
 
     private companion object {

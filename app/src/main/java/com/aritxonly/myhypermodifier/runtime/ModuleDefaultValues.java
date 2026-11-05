@@ -26,6 +26,13 @@ public final class ModuleDefaultValues {
     public static final boolean ALIPAY_FLOATING_NAVIGATION_ENABLED = true;
     public static final boolean DOUYIN_FLOATING_NAVIGATION_ENABLED = true;
     public static final boolean BILIBILI_FLOATING_NAVIGATION_ENABLED = true;
+    public static final boolean PILIPLUS_FLOATING_NAVIGATION_ENABLED = true;
+    public static final boolean PINDUODUO_FLOATING_NAVIGATION_ENABLED = true;
+    public static final boolean TAOBAO_FLOATING_NAVIGATION_ENABLED = true;
+    public static final boolean JINGDONG_FLOATING_NAVIGATION_ENABLED = true;
+    public static final boolean XIANYU_FLOATING_NAVIGATION_ENABLED = true;
+    public static final boolean DOUYIN_MALL_FLOATING_NAVIGATION_ENABLED = true;
+    public static final boolean CAINIAO_FLOATING_NAVIGATION_ENABLED = true;
     public static final boolean SPOTIFY_FLOATING_NAVIGATION_ENABLED = true;
     public static final boolean SPOTIFY_FAVORITE_BUTTON_ENABLED = true;
     public static final boolean SPOTIFY_SHUFFLE_BUTTON_ENABLED = true;

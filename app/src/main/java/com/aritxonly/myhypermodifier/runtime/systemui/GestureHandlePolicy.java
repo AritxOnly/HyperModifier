@@ -41,11 +41,16 @@ final class GestureHandlePolicy {
 
     void foreground(String nextPackage, String nextActivity, int nextTaskId, boolean isSystemApp, long now) {
         String previousMode = mode();
-        boolean changed = !Objects.equals(activity, nextActivity) || taskId != nextTaskId;
-        packageName = nextPackage;
-        activity = nextActivity;
-        taskId = nextTaskId;
-        systemApp = isSystemApp;
+        boolean hasTask = nextPackage != null && !nextPackage.isEmpty();
+        boolean changed = hasTask && (!Objects.equals(activity, nextActivity) || taskId != nextTaskId);
+        // Task callbacks can omit their top activity during boot or a transition. Retain the last
+        // valid identity instead of unexpectedly falling back to the stock hidden flag.
+        if (hasTask) {
+            packageName = nextPackage;
+            activity = nextActivity;
+            taskId = nextTaskId;
+            systemApp = isSystemApp;
+        }
         if (changed || !Objects.equals(previousMode, mode())) {
             shownAt = now;
         }
@@ -102,8 +107,9 @@ final class GestureHandlePolicy {
     }
 
     String mode() {
-        if (packageName == null) return null;
-        String explicit = rules.get(packageName);
+        // Map.of() rejects a null lookup. Explicit global presets still apply before SystemUI has
+        // received its first foreground task.
+        String explicit = packageName == null ? null : rules.get(packageName);
         if ("system".equals(explicit)) return null;
         return explicit != null ? explicit : GestureHandleDefaults.mode(preset, packageName, systemApp, scope);
     }

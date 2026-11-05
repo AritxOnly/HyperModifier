@@ -180,6 +180,20 @@ data class ModifierSettings(
     val bilibiliMallTabVisible: Boolean = true,
     val bilibiliMineTabVisible: Boolean = true,
     val bilibiliPublishButtonVisible: Boolean = true,
+    val piliPlusFloatingNavigationEnabled: Boolean =
+        ModuleDefaultValues.PILIPLUS_FLOATING_NAVIGATION_ENABLED,
+    val pinduoduoFloatingNavigationEnabled: Boolean =
+        ModuleDefaultValues.PINDUODUO_FLOATING_NAVIGATION_ENABLED,
+    val taobaoFloatingNavigationEnabled: Boolean =
+        ModuleDefaultValues.TAOBAO_FLOATING_NAVIGATION_ENABLED,
+    val jingdongFloatingNavigationEnabled: Boolean =
+        ModuleDefaultValues.JINGDONG_FLOATING_NAVIGATION_ENABLED,
+    val xianyuFloatingNavigationEnabled: Boolean =
+        ModuleDefaultValues.XIANYU_FLOATING_NAVIGATION_ENABLED,
+    val douyinMallFloatingNavigationEnabled: Boolean =
+        ModuleDefaultValues.DOUYIN_MALL_FLOATING_NAVIGATION_ENABLED,
+    val cainiaoFloatingNavigationEnabled: Boolean =
+        ModuleDefaultValues.CAINIAO_FLOATING_NAVIGATION_ENABLED,
     val spotifyFloatingNavigationEnabled: Boolean = ModuleDefaultValues.SPOTIFY_FLOATING_NAVIGATION_ENABLED,
     val spotifyFavoriteButtonEnabled: Boolean = ModuleDefaultValues.SPOTIFY_FAVORITE_BUTTON_ENABLED,
     val spotifyShuffleButtonEnabled: Boolean = ModuleDefaultValues.SPOTIFY_SHUFFLE_BUTTON_ENABLED,
@@ -348,6 +362,13 @@ object ModifierSettingsPresets {
         xiaomiCommunityMonochromeIconsEnabled = false,
         xiaomiCommunityNavigationBadgesEnabled = false,
         bilibiliFloatingNavigationEnabled = false,
+        piliPlusFloatingNavigationEnabled = false,
+        pinduoduoFloatingNavigationEnabled = false,
+        taobaoFloatingNavigationEnabled = false,
+        jingdongFloatingNavigationEnabled = false,
+        xianyuFloatingNavigationEnabled = false,
+        douyinMallFloatingNavigationEnabled = false,
+        cainiaoFloatingNavigationEnabled = false,
         spotifyFloatingNavigationEnabled = false,
         spotifyFavoriteButtonEnabled = false,
         spotifyShuffleButtonEnabled = false,
@@ -562,6 +583,16 @@ object ModifierSettingsStore {
     private const val KEY_BILIBILI_MALL_TAB_VISIBLE = "bilibili_mall_tab_visible"
     private const val KEY_BILIBILI_MINE_TAB_VISIBLE = "bilibili_mine_tab_visible"
     private const val KEY_BILIBILI_PUBLISH_BUTTON_VISIBLE = "bilibili_publish_button_visible"
+    private const val KEY_PILIPLUS_FLOATING_NAVIGATION =
+        "piliplus_floating_navigation_enabled"
+    private const val KEY_PINDUODUO_FLOATING_NAVIGATION =
+        "pinduoduo_floating_navigation_enabled"
+    private const val KEY_TAOBAO_FLOATING_NAVIGATION = "taobao_floating_navigation_enabled"
+    private const val KEY_JINGDONG_FLOATING_NAVIGATION = "jingdong_floating_navigation_enabled"
+    private const val KEY_XIANYU_FLOATING_NAVIGATION = "xianyu_floating_navigation_enabled"
+    private const val KEY_DOUYIN_MALL_FLOATING_NAVIGATION =
+        "douyin_mall_floating_navigation_enabled"
+    private const val KEY_CAINIAO_FLOATING_NAVIGATION = "cainiao_floating_navigation_enabled"
     private const val KEY_SPOTIFY_FLOATING_NAVIGATION = "spotify_floating_navigation_enabled"
     private const val KEY_SPOTIFY_FAVORITE_BUTTON = "spotify_favorite_button_enabled"
     private const val KEY_SPOTIFY_SHUFFLE_BUTTON = "spotify_shuffle_button_enabled"
@@ -858,6 +889,34 @@ object ModifierSettingsStore {
             bilibiliMallTabVisible = prefs.getBoolean(KEY_BILIBILI_MALL_TAB_VISIBLE, true),
             bilibiliMineTabVisible = prefs.getBoolean(KEY_BILIBILI_MINE_TAB_VISIBLE, true),
             bilibiliPublishButtonVisible = prefs.getBoolean(KEY_BILIBILI_PUBLISH_BUTTON_VISIBLE, true),
+            piliPlusFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_PILIPLUS_FLOATING_NAVIGATION,
+                ModuleDefaultValues.PILIPLUS_FLOATING_NAVIGATION_ENABLED,
+            ),
+            pinduoduoFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_PINDUODUO_FLOATING_NAVIGATION,
+                ModuleDefaultValues.PINDUODUO_FLOATING_NAVIGATION_ENABLED,
+            ),
+            taobaoFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_TAOBAO_FLOATING_NAVIGATION,
+                ModuleDefaultValues.TAOBAO_FLOATING_NAVIGATION_ENABLED,
+            ),
+            jingdongFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_JINGDONG_FLOATING_NAVIGATION,
+                ModuleDefaultValues.JINGDONG_FLOATING_NAVIGATION_ENABLED,
+            ),
+            xianyuFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_XIANYU_FLOATING_NAVIGATION,
+                ModuleDefaultValues.XIANYU_FLOATING_NAVIGATION_ENABLED,
+            ),
+            douyinMallFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_DOUYIN_MALL_FLOATING_NAVIGATION,
+                ModuleDefaultValues.DOUYIN_MALL_FLOATING_NAVIGATION_ENABLED,
+            ),
+            cainiaoFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_CAINIAO_FLOATING_NAVIGATION,
+                ModuleDefaultValues.CAINIAO_FLOATING_NAVIGATION_ENABLED,
+            ),
             spotifyFloatingNavigationEnabled = prefs.getBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, ModuleDefaultValues.SPOTIFY_FLOATING_NAVIGATION_ENABLED),
             spotifyFavoriteButtonEnabled = prefs.getBoolean(KEY_SPOTIFY_FAVORITE_BUTTON, ModuleDefaultValues.SPOTIFY_FAVORITE_BUTTON_ENABLED),
             spotifyShuffleButtonEnabled = prefs.getBoolean(KEY_SPOTIFY_SHUFFLE_BUTTON, ModuleDefaultValues.SPOTIFY_SHUFFLE_BUTTON_ENABLED),
@@ -1162,6 +1221,28 @@ object ModifierSettingsStore {
             .putBoolean(KEY_BILIBILI_MALL_TAB_VISIBLE, value.bilibiliMallTabVisible)
             .putBoolean(KEY_BILIBILI_MINE_TAB_VISIBLE, value.bilibiliMineTabVisible)
             .putBoolean(KEY_BILIBILI_PUBLISH_BUTTON_VISIBLE, value.bilibiliPublishButtonVisible)
+            .putBoolean(
+                KEY_PILIPLUS_FLOATING_NAVIGATION,
+                value.piliPlusFloatingNavigationEnabled,
+            )
+            .putBoolean(
+                KEY_PINDUODUO_FLOATING_NAVIGATION,
+                value.pinduoduoFloatingNavigationEnabled,
+            )
+            .putBoolean(KEY_TAOBAO_FLOATING_NAVIGATION, value.taobaoFloatingNavigationEnabled)
+            .putBoolean(
+                KEY_JINGDONG_FLOATING_NAVIGATION,
+                value.jingdongFloatingNavigationEnabled,
+            )
+            .putBoolean(KEY_XIANYU_FLOATING_NAVIGATION, value.xianyuFloatingNavigationEnabled)
+            .putBoolean(
+                KEY_DOUYIN_MALL_FLOATING_NAVIGATION,
+                value.douyinMallFloatingNavigationEnabled,
+            )
+            .putBoolean(
+                KEY_CAINIAO_FLOATING_NAVIGATION,
+                value.cainiaoFloatingNavigationEnabled,
+            )
             .putBoolean(KEY_ALIPAY_FLOATING_NAVIGATION, value.alipayFloatingNavigationEnabled)
             .putBoolean(KEY_DOUYIN_FLOATING_NAVIGATION, value.douyinFloatingNavigationEnabled)
             .putBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, value.spotifyFloatingNavigationEnabled)
@@ -1565,6 +1646,28 @@ object ModifierSettingsStore {
         putBoolean(KEY_BILIBILI_MALL_TAB_VISIBLE, value.bilibiliMallTabVisible)
         putBoolean(KEY_BILIBILI_MINE_TAB_VISIBLE, value.bilibiliMineTabVisible)
         putBoolean(KEY_BILIBILI_PUBLISH_BUTTON_VISIBLE, value.bilibiliPublishButtonVisible)
+        putBoolean(
+            KEY_PILIPLUS_FLOATING_NAVIGATION,
+            value.piliPlusFloatingNavigationEnabled,
+        )
+        putBoolean(
+            KEY_PINDUODUO_FLOATING_NAVIGATION,
+            value.pinduoduoFloatingNavigationEnabled,
+        )
+        putBoolean(KEY_TAOBAO_FLOATING_NAVIGATION, value.taobaoFloatingNavigationEnabled)
+        putBoolean(
+            KEY_JINGDONG_FLOATING_NAVIGATION,
+            value.jingdongFloatingNavigationEnabled,
+        )
+        putBoolean(KEY_XIANYU_FLOATING_NAVIGATION, value.xianyuFloatingNavigationEnabled)
+        putBoolean(
+            KEY_DOUYIN_MALL_FLOATING_NAVIGATION,
+            value.douyinMallFloatingNavigationEnabled,
+        )
+        putBoolean(
+            KEY_CAINIAO_FLOATING_NAVIGATION,
+            value.cainiaoFloatingNavigationEnabled,
+        )
         putBoolean(KEY_ALIPAY_FLOATING_NAVIGATION, value.alipayFloatingNavigationEnabled)
         putBoolean(KEY_DOUYIN_FLOATING_NAVIGATION, value.douyinFloatingNavigationEnabled)
         putBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, value.spotifyFloatingNavigationEnabled)

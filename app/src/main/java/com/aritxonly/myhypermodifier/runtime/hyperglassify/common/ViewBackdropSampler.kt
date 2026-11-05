@@ -272,10 +272,13 @@ internal class ViewBackdropSampler(
         if (captureScheduled) return
         val elapsed = if (lastCaptureStartedAt == Long.MIN_VALUE) Long.MAX_VALUE
         else SystemClock.uptimeMillis() - lastCaptureStartedAt
-        val captureInterval = maxOf(minimumCaptureIntervalMs, if (matchDisplayRefreshRate) {
+        val captureInterval = maxOf(minimumCaptureIntervalMs, if (usePixelCopySampling()) {
+            BackdropCaptureCadence.pixelCopyIntervalMs(
+                source.display?.refreshRate ?: Float.NaN,
+                minimumCaptureIntervalMs,
+            )
+        } else if (matchDisplayRefreshRate) {
             BackdropCaptureCadence.intervalMs(source.display?.refreshRate ?: Float.NaN)
-        } else if (usePixelCopySampling()) {
-            PIXEL_COPY_CAPTURE_INTERVAL_MS
         } else {
             CAPTURE_INTERVAL_MS
         })
@@ -402,6 +405,21 @@ internal class ViewBackdropSampler(
                 alignmentOffsetYPx = alignmentOffsetY,
             )
         ) return
+
+        if (pixelCopyWindow != null && usePixelCopySampling() &&
+            now < pixelCopyFallbackUntil && !allowSoftwareFallback
+        ) {
+            // A failed compositor readback must not become a refresh-rate retry loop. Stay on the
+            // last usable sample and make one bounded retry after the fallback delay.
+            lastCaptureStartedAt = now
+            val retryAt = pixelCopyFallbackUntil.coerceAtLeast(now + pixelCopyRetryDelayMs)
+            captureScheduled = true
+            handler.postDelayed(
+                captureRunnable,
+                (retryAt - now).coerceAtLeast(minimumCaptureIntervalMs),
+            )
+            return
+        }
 
         if (!allowSoftwareFallback) {
             // Keep the last sample (or the glass recipe's tint fallback), rather than synchronously
@@ -701,7 +719,6 @@ internal class ViewBackdropSampler(
         const val SAMPLE_BLEED_DP = 32f
         const val SAMPLE_SCALE = 0.18f
         const val PIXEL_COPY_SAMPLE_SCALE = 0.14f
-        const val PIXEL_COPY_CAPTURE_INTERVAL_MS = 16L
         const val PIXEL_COPY_SCROLL_SETTLE_MS = 240L
         const val PIXEL_COPY_RETRY_DELAY_MS = 1_000L
         const val CAPTURE_INTERVAL_MS = 16L

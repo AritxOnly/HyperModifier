@@ -28,7 +28,7 @@ class NavigationRefreshPolicyTest {
         assertTrue(policy.shouldRefresh(100, false))
     }
 
-    @Test fun otherAdaptersRetainUnthrottledDefaults() {
+    @Test fun explicitlyUnthrottledAdaptersKeepTheirContractedBehavior() {
         val policy = NavigationRefreshPolicy(0)
         assertTrue(policy.shouldRefresh(0, false))
         assertTrue(policy.shouldRefresh(0, false))

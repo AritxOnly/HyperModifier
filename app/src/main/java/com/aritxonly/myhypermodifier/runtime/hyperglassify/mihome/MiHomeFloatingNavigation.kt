@@ -267,6 +267,7 @@ private class MiHomeNavigationHost private constructor(
     ) { backdropSnapshot = it }
     private val contentBottomPadding = InjectedScrollableContentBottomPadding(contentView)
     private val iconSnapshotter = MiHomeTabIconSnapshotter(activity)
+    private val refreshPolicy = NavigationRefreshPolicy(100L)
     private val startupCaptureRunnables = STARTUP_CAPTURE_DELAYS_MS.map {
         Runnable {
             if (composeWindowAttached && state.visible) sampler.requestCapture()
@@ -298,7 +299,7 @@ private class MiHomeNavigationHost private constructor(
         val visible = overlayParent.hasVisibleContextualActionBar(contextualViewIds)
         if (contextualActionBarVisible != visible) {
             contextualActionBarVisible = visible
-            syncNativeState()
+            syncNativeState(force = true)
         }
     }
 
@@ -340,7 +341,7 @@ private class MiHomeNavigationHost private constructor(
         visibility.onAttached()
         ModuleSettings.onLoaded {
             composeView.post {
-                if (composeWindowAttached) syncNativeState()
+                if (composeWindowAttached) syncNativeState(force = true)
             }
         }
         composeView.post(settingsRefreshRunnable)
@@ -358,12 +359,12 @@ private class MiHomeNavigationHost private constructor(
 
     fun onActionModeStarted(mode: Any) {
         activeActionModes[mode] = true
-        syncNativeState()
+        syncNativeState(force = true)
     }
 
     fun onActionModeFinished(mode: Any) {
         activeActionModes.remove(mode)
-        syncNativeState()
+        syncNativeState(force = true)
     }
 
     fun setForeground(value: Boolean) {
@@ -399,7 +400,7 @@ private class MiHomeNavigationHost private constructor(
         if (enabled) {
             if (!replacingNativeChrome) {
                 replacingNativeChrome = true
-                windowImmersion.apply()
+                windowImmersion.apply(composeView)
             }
             windowImmersion.ensureApplied()
             removeContentReservation()
@@ -461,7 +462,10 @@ private class MiHomeNavigationHost private constructor(
         }
     }
 
-    private fun syncNativeState() {
+    private fun syncNativeState(force: Boolean = false) {
+        if (!refreshPolicy.shouldRefresh(SystemClock.uptimeMillis(), force || state.tabs.isEmpty())) {
+            return
+        }
         val tabs = nativeTabViews()
         val selected = runCatching {
             nativeTabLayout.javaClass.getMethod("getSelectedTabIndex")
@@ -565,7 +569,7 @@ private class MiHomeNavigationHost private constructor(
         if (index != state.selectedIndex) sampler.invalidateSamplingContext()
         state = state.copy(selectedIndex = index)
         tab.performClick()
-        tab.post(::syncNativeState)
+        tab.post { syncNativeState(force = true) }
         sampler.requestCaptureBurst()
     }
 

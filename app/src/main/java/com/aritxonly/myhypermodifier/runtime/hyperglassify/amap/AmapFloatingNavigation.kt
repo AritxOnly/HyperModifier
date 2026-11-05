@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.setViewTreeLifecycleOwner
@@ -174,6 +175,7 @@ private data class AmapNavigationState(
     val selectedIndex: Int = 0,
     val visible: Boolean = false,
     val navigationLiftDp: Float = 24f,
+    val navigationInsetPx: Int = 0,
 )
 
 private class AmapNavigationHost private constructor(
@@ -207,6 +209,8 @@ private class AmapNavigationHost private constructor(
         window = activity.window,
     ) { backdropSnapshot = it }
     private val iconSnapshotter = NativeTabIconSnapshotter(activity.resources, activity.theme)
+    private val refreshPolicy = NavigationRefreshPolicy(100L)
+    private val stableNavigationInset = StableNavigationBarInset()
     private val officialIconCache = mutableMapOf<String, NativeTabIconPair>()
     private val longPressVoiceLabel = activity.resources.getIdentifier(
         "amaphome_tab_long_press_chat",
@@ -259,7 +263,7 @@ private class AmapNavigationHost private constructor(
         visibility.onAttached()
         ModuleSettings.onLoaded {
             composeView.post {
-                if (composeWindowAttached) syncNativeState()
+                if (composeWindowAttached) syncNativeState(force = true)
             }
         }
         composeView.post(settingsRefreshRunnable)
@@ -296,7 +300,7 @@ private class AmapNavigationHost private constructor(
         if (enabled) {
             if (!replacingNativeChrome) {
                 replacingNativeChrome = true
-                windowImmersion.apply()
+                windowImmersion.apply(composeView)
             }
             windowImmersion.ensureApplied()
             if (nativeTabBar.alpha != 0f) nativeTabBar.alpha = 0f
@@ -310,13 +314,16 @@ private class AmapNavigationHost private constructor(
         }
     }
 
-    private fun syncNativeState() {
+    private fun syncNativeState(force: Boolean = false) {
         if (!foreground || !activity.hasWindowFocus() || !ModuleSettings.moduleHooksEnabled ||
             !ModuleSettings.amapFloatingNavigationEnabled || !nativeTabBar.isAmapVisibleIgnoringAlpha()) {
             if (state.visible) state = state.copy(visible = false)
             sampler.setActive(false)
             visibility.setVisible(false)
             updateNativeChromeReplacement(false)
+            return
+        }
+        if (!refreshPolicy.shouldRefresh(SystemClock.uptimeMillis(), force || state.tabs.isEmpty())) {
             return
         }
         val tabViews = nativeTabViews()
@@ -342,6 +349,10 @@ private class AmapNavigationHost private constructor(
             selectedIndex = selected.coerceIn(0, (tabs.size - 1).coerceAtLeast(0)),
             visible = tabs.size > 1 && nativeTabBar.isAmapVisibleIgnoringAlpha(),
             navigationLiftDp = ModuleSettings.hyperGlassifyHiddenNavigationLift.coerceIn(0f, 48f),
+            navigationInsetPx = stableNavigationInset.bottomPx(
+                composeView,
+                activity.window.decorView,
+            ),
         )
         val selectionChanged = next.selectedIndex != state.selectedIndex
         val becameVisible = next.visible && !state.visible
@@ -404,7 +415,7 @@ private class AmapNavigationHost private constructor(
         if (index != state.selectedIndex) sampler.invalidateSamplingContext()
         state = state.copy(selectedIndex = index)
         tab.performClick()
-        tab.post(::syncNativeState)
+        tab.post { syncNativeState(force = true) }
         sampler.requestCaptureBurst()
     }
 
@@ -465,6 +476,13 @@ private fun AmapNavigationContent(
     val miuixColors = remember(dark, materialColors) { MhmPresetColors.miuix(materialColors, dark) }
     val backdrop = rememberLayerBackdrop()
     val hiddenNavigationLift = hyperGlassifyHiddenNavigationLift()
+    val navigationPadding = if (state.navigationInsetPx > 0) {
+        Modifier.padding(bottom = with(LocalDensity.current) {
+            state.navigationInsetPx.toDp()
+        })
+    } else {
+        Modifier.navigationBarsPadding()
+    }
     val items = state.tabs.mapIndexed { index, tab ->
         val nativeIcons = tab.icons?.takeUnless { ModuleSettings.amapMiuixIconsEnabled }
         val monochrome = nativeIcons != null && ModuleSettings.amapMonochromeIconsEnabled
@@ -494,7 +512,7 @@ private fun AmapNavigationContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationEdgeMask()
-                        .navigationBarsPadding()
+                        .then(navigationPadding)
                         .padding(
                             start = 16.dp,
                             top = INJECTED_NAVIGATION_SHADOW_TOP_PADDING,

@@ -120,6 +120,15 @@ public final class MyHyperModifier extends XposedModule {
         if (!ModuleScopePackage.INCALL_UI.equals(packageName)
                 && ModuleScopePackage.INCALL_UI.equals(Application.getProcessName())) return;
         if (ModuleScopePackage.ALIPAY.equals(packageName) || isAlipayProcess()) return;
+        if (ModuleScopePackage.PILIPLUS.equals(packageName)) return;
+        if (EcommerceHooks.isTarget(packageName)) {
+            // Taobao can create TBMainActivity before PackageReady. Install only the focused
+            // lifecycle adapter here; PackageReady retries if the Activity class is not loaded yet.
+            if (!packageName.equals(Application.getProcessName())) return;
+            installSafely(packageName, "电商应用悬浮底栏提前注入",
+                    () -> EcommerceHooks.install(this, param.getDefaultClassLoader(), packageName));
+            return;
+        }
         if (LocalWidgetCatalogHooks.PACKAGE.equals(packageName)) return;
         if (ModuleScopePackage.INCALL_UI.equals(packageName)) {
             // InCallUI receives only material adapters, never generic resource hooks or bridges.
@@ -204,6 +213,35 @@ public final class MyHyperModifier extends XposedModule {
             try {
                 LocalWidgetCatalogHooks.install(this, param.getClassLoader(), getRemotePreferences("modifier_settings"));
             } catch (Throwable error) { HookDiagnostics.failure(packageName, "本地小组件目录", error); }
+            return;
+        }
+        if (ModuleScopePackage.PILIPLUS.equals(packageName)) {
+            if (!packageName.equals(Application.getProcessName())) return;
+            try {
+                ModuleSettings.setRemotePreferences(getRemotePreferences("modifier_settings"));
+                ModuleSettings.ensureLoaded();
+                if (!ModuleSettings.moduleHooksEnabled) return;
+                installSafely(packageName, "PiliPlus 液态柔光底栏",
+                        () -> PiliPlusHooks.install(this, param.getClassLoader()));
+                HookDiagnostics.ready(packageName);
+            } catch (Throwable error) {
+                HookDiagnostics.failure(packageName, "PiliPlus 液态柔光底栏注入", error);
+            }
+            return;
+        }
+        if (EcommerceHooks.isTarget(packageName)) {
+            // Shopping apps keep their own Activity routing and receive only this focused adapter.
+            if (!packageName.equals(Application.getProcessName())) return;
+            try {
+                ModuleSettings.setRemotePreferences(getRemotePreferences("modifier_settings"));
+                ModuleSettings.ensureLoaded();
+                if (!ModuleSettings.moduleHooksEnabled) return;
+                installSafely(packageName, "电商应用悬浮底栏",
+                        () -> EcommerceHooks.install(this, param.getClassLoader(), packageName));
+                HookDiagnostics.ready(packageName);
+            } catch (Throwable error) {
+                HookDiagnostics.failure(packageName, "电商应用悬浮底栏注入", error);
+            }
             return;
         }
         if (ModuleScopePackage.ALIPAY.equals(packageName) || isAlipayProcess()) {

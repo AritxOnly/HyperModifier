@@ -16,6 +16,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -35,7 +36,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -61,7 +61,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -382,10 +381,11 @@ private fun FloatingTabItemContent(
     val interactionSource = remember { MutableInteractionSource() }
     val itemModifier = modifier
         .clip(MiuixFloatingTabBarDefaults.IndicatorShape)
-        .selectable(
-            selected = selected,
+        // Injected Compose runs against the host app's resource table. `selectable` emits
+        // module-owned resolution strings and can crash third-party apps when accessibility
+        // traverses the bar. Keep selection visual and expose only the host-safe click action.
+        .clickable(
             enabled = item.enabled,
-            role = Role.Tab,
             interactionSource = interactionSource,
             indication = DefaultClickFeedback,
             onClick = onClick,

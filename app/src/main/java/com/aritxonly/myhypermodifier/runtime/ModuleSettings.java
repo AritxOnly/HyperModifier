@@ -193,6 +193,13 @@ final class ModuleSettings {
     static volatile boolean bilibiliMallTabVisible = true;
     static volatile boolean bilibiliMineTabVisible = true;
     static volatile boolean bilibiliPublishButtonVisible = true;
+    static volatile boolean piliPlusFloatingNavigationEnabled = ModuleDefaultValues.PILIPLUS_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean pinduoduoFloatingNavigationEnabled = ModuleDefaultValues.PINDUODUO_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean taobaoFloatingNavigationEnabled = ModuleDefaultValues.TAOBAO_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean jingdongFloatingNavigationEnabled = ModuleDefaultValues.JINGDONG_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean xianyuFloatingNavigationEnabled = ModuleDefaultValues.XIANYU_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean douyinMallFloatingNavigationEnabled = ModuleDefaultValues.DOUYIN_MALL_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean cainiaoFloatingNavigationEnabled = ModuleDefaultValues.CAINIAO_FLOATING_NAVIGATION_ENABLED;
     static volatile boolean spotifyFloatingNavigationEnabled = ModuleDefaultValues.SPOTIFY_FLOATING_NAVIGATION_ENABLED;
     static volatile boolean spotifyFavoriteButtonEnabled = ModuleDefaultValues.SPOTIFY_FAVORITE_BUTTON_ENABLED;
     static volatile boolean spotifyShuffleButtonEnabled = ModuleDefaultValues.SPOTIFY_SHUFFLE_BUTTON_ENABLED;
@@ -712,6 +719,21 @@ final class ModuleSettings {
             bilibiliMallTabVisible = values.getBoolean("bilibili_mall_tab_visible", true);
             bilibiliMineTabVisible = values.getBoolean("bilibili_mine_tab_visible", true);
             bilibiliPublishButtonVisible = values.getBoolean("bilibili_publish_button_visible", true);
+            piliPlusFloatingNavigationEnabled = values.getBoolean(
+                    "piliplus_floating_navigation_enabled",
+                    ModuleDefaultValues.PILIPLUS_FLOATING_NAVIGATION_ENABLED);
+            pinduoduoFloatingNavigationEnabled = values.getBoolean(
+                    "pinduoduo_floating_navigation_enabled", ModuleDefaultValues.PINDUODUO_FLOATING_NAVIGATION_ENABLED);
+            taobaoFloatingNavigationEnabled = values.getBoolean(
+                    "taobao_floating_navigation_enabled", ModuleDefaultValues.TAOBAO_FLOATING_NAVIGATION_ENABLED);
+            jingdongFloatingNavigationEnabled = values.getBoolean(
+                    "jingdong_floating_navigation_enabled", ModuleDefaultValues.JINGDONG_FLOATING_NAVIGATION_ENABLED);
+            xianyuFloatingNavigationEnabled = values.getBoolean(
+                    "xianyu_floating_navigation_enabled", ModuleDefaultValues.XIANYU_FLOATING_NAVIGATION_ENABLED);
+            douyinMallFloatingNavigationEnabled = values.getBoolean(
+                    "douyin_mall_floating_navigation_enabled", ModuleDefaultValues.DOUYIN_MALL_FLOATING_NAVIGATION_ENABLED);
+            cainiaoFloatingNavigationEnabled = values.getBoolean(
+                    "cainiao_floating_navigation_enabled", ModuleDefaultValues.CAINIAO_FLOATING_NAVIGATION_ENABLED);
             spotifyFloatingNavigationEnabled = values.getBoolean(
                     "spotify_floating_navigation_enabled", ModuleDefaultValues.SPOTIFY_FLOATING_NAVIGATION_ENABLED);
             spotifyFavoriteButtonEnabled = values.getBoolean(

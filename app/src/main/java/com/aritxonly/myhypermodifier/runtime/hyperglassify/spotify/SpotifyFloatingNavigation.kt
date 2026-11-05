@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.platform.createLifecycleAwareWindowRecomposer
 import androidx.compose.ui.unit.dp
@@ -145,6 +146,7 @@ private data class SpotifyNavigationState(
     val tabs: List<SpotifyTabState> = emptyList(),
     val selectedIndex: Int = 0,
     val visible: Boolean = false,
+    val navigationInsetPx: Int = 0,
 )
 
 private data class SpotifyAccessibilityTab(
@@ -173,6 +175,8 @@ private class SpotifyNavigationHost private constructor(
     private val visibility = FloatingNavigationVisibility(composeView)
     private val gpuBackdrop = NativeGpuBackdrop.create(samplingView, composeView)
     private val tabIcons = SpotifyIconLoader(activity)
+    private val refreshPolicy = NavigationRefreshPolicy(100L)
+    private val stableNavigationInset = StableNavigationBarInset()
     private val playback = SpotifyPlaybackCapsule(activity)
     private var foreground = true
     private var navigationBounds: ViewBackdropBounds? = null
@@ -188,7 +192,7 @@ private class SpotifyNavigationHost private constructor(
     }
 
     init {
-        windowImmersion.apply()
+        windowImmersion.apply(composeView)
         composeView.apply {
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             setViewTreeLifecycleOwner(owner)
@@ -226,13 +230,13 @@ private class SpotifyNavigationHost private constructor(
     }
 
     fun refresh() {
-        syncNativeState()
+        syncNativeState(force = true)
     }
 
 
     fun setForeground(value: Boolean) {
         foreground = value
-        if (value) syncNativeState() else {
+        if (value) syncNativeState(force = true) else {
             gpuBackdrop?.setActive(false)
         }
     }
@@ -256,8 +260,11 @@ private class SpotifyNavigationHost private constructor(
         owner.dispose()
     }
 
-    private fun syncNativeState() {
+    private fun syncNativeState(force: Boolean = false) {
         if (!foreground) return
+        if (!refreshPolicy.shouldRefresh(SystemClock.uptimeMillis(), force || state.tabs.isEmpty())) {
+            return
+        }
         val navigationAvailable = foreground && ModuleSettings.moduleHooksEnabled &&
             ModuleSettings.spotifyFloatingNavigationEnabled &&
             nativeNavigationBar.visibility == View.VISIBLE &&
@@ -278,7 +285,7 @@ private class SpotifyNavigationHost private constructor(
         playback.sync(navigationVisible, navigationBounds)
         updateSamplingBounds()
         if (navigationVisible) {
-            windowImmersion.apply()
+            windowImmersion.apply(composeView)
             windowImmersion.ensureApplied()
             if (nativeNavigationBar.alpha != 0f) nativeNavigationBar.alpha = 0f
             // Keep Spotify's invisible Compose semantics alive; our visual copy is not exposed to
@@ -303,6 +310,10 @@ private class SpotifyNavigationHost private constructor(
             tabs = tabs,
             selectedIndex = lastKnownIndex,
             visible = navigationVisible,
+            navigationInsetPx = stableNavigationInset.bottomPx(
+                composeView,
+                activity.window.decorView,
+            ),
         )
         state = next
         visibility.setVisible(next.visible)
@@ -557,6 +568,13 @@ private fun SpotifyNavigationContent(
     var nativeBackdropBounds by remember { mutableStateOf<ViewBackdropBounds?>(null) }
     val opticalBackdrop = if (gpuBackdrop?.geometry != null) backdrop else null
     val hiddenNavigationLift = hyperGlassifyHiddenNavigationLift()
+    val navigationPadding = if (state.navigationInsetPx > 0) {
+        Modifier.padding(bottom = with(LocalDensity.current) {
+            state.navigationInsetPx.toDp()
+        })
+    } else {
+        Modifier.navigationBarsPadding()
+    }
 
     MaterialTheme(colorScheme = materialColors) {
         MiuixTheme(colors = miuixColors) {
@@ -565,7 +583,7 @@ private fun SpotifyNavigationContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationEdgeMask()
-                        .navigationBarsPadding()
+                        .then(navigationPadding)
                         .padding(
                             start = 20.dp,
                             top = INJECTED_NAVIGATION_SHADOW_TOP_PADDING,
