@@ -121,6 +121,11 @@ Xiaomi Community 6.6.9, and Bilibili 9.13.0 (`reference/哔哩哔哩.apk`).
   own tab click and analytics path, can use Amap's official selected/unselected icon resources,
   samples the map's hardware-rendered `SurfaceView` with bounded `PixelCopy` bursts, and can hide
   the dynamically configured “长按说话” tab without hiding the ordinary message tab.
+- NIO 6.9.6 (`cn.com.weilaihui3`) has an experimental soft-glass bottom bar using the app's
+  own `lg_widget_core_icon_*_28_normal/focused` resources. Native clickable tab wrappers retain
+  routing; unknown labels or missing icons keep the native bar. The adapter runs only in the main
+  process, uses the existing GPU backdrop path, and restores the native RelativeLayout reservation
+  when disabled. Device validation is pending; see [the investigation](docs/investigations/NIO_FLOATING_NAVIGATION.md).
 - Xiaomi Community 6.6.9 mirrors `BottomNavView`/`NavItemView`, including native icons and unread
   badges, while retaining the original ViewPager routing and reselection chain. The fixed 56dp
   navigation reservation is removed, vertical lists receive end-only safe padding, and transparent

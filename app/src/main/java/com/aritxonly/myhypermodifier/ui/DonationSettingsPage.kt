@@ -7,6 +7,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,6 +46,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 private enum class DonationMethod(val label: String, val asset: String) {
     WeChat("微信支付", "donation/wechat.png"),
     Alipay("支付宝", "donation/alipay.jpg"),
+    TerryMiFan("微信", "donation/terrymifan.jpg"),
 }
 
 @Composable
@@ -72,8 +74,17 @@ internal fun DonationSettingsPage(padding: PaddingValues, onScroll: (Float) -> U
             onTabSelected = { selected = it },
             modifier = Modifier.padding(vertical = 8.dp),
         )
-        androidx.compose.runtime.key(selected) {
-            DonationCodeCard(context, DonationMethod.entries[selected], Modifier.fillMaxWidth())
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text("AritxOnly", style = MiuixTheme.textStyles.title3, modifier = Modifier.padding(vertical = 12.dp))
+                androidx.compose.runtime.key(selected) {
+                    DonationCodeCard(context, DonationMethod.entries[selected], Modifier.fillMaxWidth())
+                }
+            }
+            Column(Modifier.weight(1f)) {
+                Text("TerryMiFan", style = MiuixTheme.textStyles.title3, modifier = Modifier.padding(vertical = 12.dp))
+                DonationCodeCard(context, DonationMethod.TerryMiFan, Modifier.fillMaxWidth())
+            }
         }
     }
 }

@@ -10,11 +10,27 @@
         <package android:name="com.android.shell" />
         <package android:name="com.mi.health" />
         <package android:name="com.xiaomi.market" />
+        <package android:name="cn.com.weilaihui3" />
         <package android:name="com.xiaomi.smarthome" />
         <package android:name="com.autonavi.minimap" />
         <package android:name="com.xiaomi.vipaccount" />
         <package android:name="tv.danmaku.bili" />
         <package android:name="com.spotify.music" />
+        <package android:name="com.eg.android.AlipayGphone" />
+        <package android:name="com.miui.player" />
+        <package android:name="com.tencent.qqmusic" />
+        <package android:name="com.ss.android.ugc.aweme" />
+        <package android:name="com.ss.android.ugc.aweme.lite" />
+        <package android:name="com.smile.gifmaker" />
+        <package android:name="com.kuaishou.nebula" />
+        <package android:name="com.tencent.mm" />
+        <package android:name="com.tencent.mobileqq" />
+        <package android:name="com.xunmeng.pinduoduo" />
+        <package android:name="com.taobao.taobao" />
+        <package android:name="com.jingdong.app.mall" />
+        <package android:name="com.taobao.idlefish" />
+        <package android:name="com.ss.android.ugc.livelite" />
+        <package android:name="com.cainiao.wireless" />
     </queries>
 
     <application
@@ -26,14 +42,14 @@
         android:theme="@style/AppTheme">
         <provider
             android:name=".ModifierSettingsProvider"
-            android:authorities="com.aritxonly.myhypermodifier.settings"
+            android:authorities="${applicationId}.settings"
             android:exported="true"
             android:grantUriPermissions="false" />
         <receiver
             android:name=".HookDiagnosticReceiver"
             android:exported="true">
             <intent-filter>
-                <action android:name="com.aritxonly.myhypermodifier.HOOK_DIAGNOSTIC" />
+                <action android:name="${applicationId}.HOOK_DIAGNOSTIC" />
             </intent-filter>
         </receiver>
         <activity

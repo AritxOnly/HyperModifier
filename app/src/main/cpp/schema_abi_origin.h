@@ -1,6 +1,8 @@
 #pragma once
 #include "schema_abi.h"
 #include "appwidget_abi_profiles.h"
+#include "schema_abi_fold_profiles.h"
+#include "appwidget_abi_fold_profiles.h"
 
 namespace schema_abi {
 // Validate the selected export against reviewed ABI families in its *own* ELF.
@@ -8,7 +10,7 @@ namespace schema_abi {
 inline bool compatibleExport(const Image &image, const char *symbol, std::string &reason,
                              const Contract *&matched, std::vector<uint64_t> &locations) {
     std::string primaryReason;
-    for (const Contract *profile : {&contract, &appwidget::contract}) {
+    for (const Contract *profile : {&contract, &appwidget::contract, &fold::contract, &fold_appwidget::contract}) {
         if (image.compatibleUsing(*profile, symbol, reason, &locations)) { matched = profile; return true; }
         if (primaryReason.empty()) primaryReason = reason;
     }

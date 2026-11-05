@@ -22,7 +22,7 @@ final class DesktopWidgetCompatibility {
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             byte[] buffer = new byte[256]; int count;
             while ((count = socket.getInputStream().read(buffer)) != -1) {
-                if (output.size() + count > 768) throw new IllegalStateException("Status too large");
+                if (output.size() + count > 1024) throw new IllegalStateException("Status too large");
                 output.write(buffer, 0, count);
             }
             String status = output.toString(StandardCharsets.UTF_8.name());

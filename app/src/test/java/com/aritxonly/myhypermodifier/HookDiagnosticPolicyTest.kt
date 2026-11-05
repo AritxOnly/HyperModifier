@@ -25,4 +25,18 @@ class HookDiagnosticPolicyTest {
             otherPackage, event("plugin", "glass", false),
         )))
     }
+    @Test fun errorsDeduplicateByPackageFeatureAndDetailAndTrackLatestRecovery() {
+        val newest = HookDiagnostic(9, "systemui", "glass", "missing field", true)
+        val old = newest.copy(time = 1)
+        val other = newest.copy(packageName = "plugin", time = 2)
+        val distinct = newest.copy(detail = "missing method", time = 3)
+        val recovered = HookDiagnostic(10, "plugin", "glass", "installed", false)
+        val (active, history) = HookDiagnosticPolicy.errorGroups(listOf(old, recovered, distinct, other, newest))
+        assertEquals(listOf(newest, distinct), active)
+        assertEquals(listOf(other), history)
+        val failedAgain = other.copy(time = 11)
+        val regrouped = HookDiagnosticPolicy.errorGroups(listOf(other, recovered, failedAgain))
+        assertEquals(listOf(failedAgain), regrouped.first)
+        assertTrue(regrouped.second.isEmpty())
+    }
 }

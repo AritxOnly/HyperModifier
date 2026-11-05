@@ -1,11 +1,13 @@
 package com.aritxonly.myhypermodifier
 
+import kotlinx.coroutines.launch
 import android.content.Context
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Handler
+import android.os.Build
 import android.os.Looper
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -83,10 +85,11 @@ import com.aritxonly.deadliner.ui.material.glass.SoftGlassIconButton
 import com.aritxonly.deadliner.ui.material.glass.SoftGlassSurface
 import com.aritxonly.deadliner.ui.base.TabRow
 import com.aritxonly.deadliner.ui.base.rememberTopBarMaterialScrollObserver
-import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBar
-import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarDefaults
-import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabItem
-import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabLayout
+import com.aritxonly.myhypermodifier.adaptive.MiuixFloatingTabBar
+import com.aritxonly.myhypermodifier.adaptive.isWideSettingsLayout
+import com.aritxonly.myhypermodifier.adaptive.LocalDockScrollFraction
+import com.aritxonly.myhypermodifier.adaptive.MiuixFloatingTabBarDefaults
+import com.aritxonly.myhypermodifier.adaptive.MiuixFloatingTabItem
 import com.aritxonly.deadliner.ui.navigation.floatingNavigationShadow
 import com.aritxonly.deadliner.ui.theme.LocalAdvancedMaterialBackdrop
 import com.aritxonly.deadliner.ui.theme.LocalAdvancedMaterialSpec
@@ -95,10 +98,10 @@ import java.util.concurrent.TimeUnit
 import java.util.Locale
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import com.aritxonly.myhypermodifier.adaptive.AdaptiveSmallTopAppBar as SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
-import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import com.aritxonly.myhypermodifier.adaptive.AdaptiveMiuixTopAppBar as TopAppBar
+import com.aritxonly.myhypermodifier.adaptive.AdaptiveMiuixScrollBehavior as MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
@@ -106,6 +109,7 @@ import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.Contacts
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Settings
+import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.core.graphics.ColorUtils
 import androidx.lifecycle.Lifecycle
@@ -125,19 +129,36 @@ internal enum class SettingsDestination(val key: String, val label: String) {
     ShadeCardGlass("shade-card-glass", "通知/控制中心卡片柔光玻璃"),
     ShadeCardGlassAdvanced("shade-card-glass-advanced", "高级参数调整"),
     NavigationGlass("navigation-glass", "底栏柔光玻璃参数调节"),
+    Ecommerce("ecommerce-navigation", "电商应用"),
     XiaomiHealth("xiaomi-health", "小米运动健康"),
+    Music("mi-music", "小米音乐手机版"),
     Market("market", "应用商店"),
     MiHome("mi-home", "米家"),
     Amap("amap", "高德地图"),
+    Nio("nio", "蔚来汽车"),
     Alipay("alipay", "支付宝"),
     Douyin("douyin", "抖音"),
+    Kuaishou("kuaishou", "快手"),
+    Social("social", "微信 / QQ"),
+    QQMusic("qq-music", "QQ音乐"),
     XiaomiCommunity("xiaomi-community", "小米社区"),
     Bilibili("bilibili", "哔哩哔哩"),
+    DouyinLite("douyin-lite", "抖音极速版"),
+    KuaishouLite("kuaishou-lite", "快手极速版"),
+    Wechat("app-wechat", "微信"),
+    QQ("app-qq", "QQ"),
+    Pinduoduo("app-pinduoduo", "拼多多"),
+    Taobao("app-taobao", "淘宝"),
+    Jingdong("app-jingdong", "京东"),
+    Xianyu("app-xianyu", "闲鱼"),
+    DouyinMall("app-douyin_mall", "抖音商城"),
+    Cainiao("app-cainiao", "菜鸟"),
     Spotify("spotify", "Spotify"),
     Media("media", "超级岛与媒体组件"),
     MediaConstraintSet("media-constraint-set", "高级布局编辑"),
     Lockscreen("lockscreen", "锁屏"),
     HyperMusicCover("hyper-music-cover", "HyperMusicCover 扩展"),
+    Foldables("foldables", "折叠屏专区"),
     Desktop("desktop", "系统桌面"),
     WidgetGlassApps("widget-glass-apps", "小组件材质"),
     StatusBar("status-bar", "状态栏"),
@@ -167,13 +188,20 @@ private data class RestartScopeDefaults(
     val plugin: Boolean = false,
     val miLink: Boolean = false,
     val xiaomiHealth: Boolean = false,
+    val music: Boolean = false,
     val market: Boolean = false,
     val miHome: Boolean = false,
     val amap: Boolean = false,
     val xiaomiCommunity: Boolean = false,
     val bilibili: Boolean = false,
+    val nio: Boolean = false,
+    val piliPlus: Boolean = false,
     val alipay: Boolean = false,
     val douyin: Boolean = false,
+    val kuaishou: Boolean = false,
+    val socialApps: Boolean = false,
+    val qqMusic: Boolean = false,
+    val ecommerceApps: Boolean = false,
     val spotify: Boolean = false,
     val systemSettings: Boolean = false,
 )
@@ -181,23 +209,47 @@ private data class RestartScopeDefaults(
 private fun SettingsDestination.requiredRestartScopes(): RestartScopeDefaults = when (this) {
     SettingsDestination.Compatibility -> RestartScopeDefaults(
         systemUi = true, launcher = true, plugin = true, miLink = true, xiaomiHealth = true,
-        market = true, miHome = true, amap = true, xiaomiCommunity = true,
-        bilibili = true, douyin = true, alipay = true, spotify = true, systemSettings = true,
+        nio = true, music = true, market = true, miHome = true, amap = true, xiaomiCommunity = true,
+        bilibili = true, douyin = true, kuaishou = true,
+        alipay = true, socialApps = true, qqMusic = true,
+        ecommerceApps = true,
+        spotify = true, systemSettings = true,
     )
     SettingsDestination.NotificationsControlCenter,
     SettingsDestination.UnifiedGlass,
     SettingsDestination.GlobalMaterialBlur -> RestartScopeDefaults(systemUi = true, plugin = true, miLink = true)
     SettingsDestination.ShadeCardGlass,
     SettingsDestination.ShadeCardGlassAdvanced -> RestartScopeDefaults(systemUi = true, plugin = true)
-    SettingsDestination.NavigationGlass -> RestartScopeDefaults(xiaomiHealth = true, market = true, miHome = true, amap = true, bilibili = true, spotify = true, douyin = true, alipay = true, xiaomiCommunity = true)
+    SettingsDestination.NavigationGlass -> RestartScopeDefaults(
+        xiaomiHealth = true, nio = true, music = true, market = true, miHome = true, amap = true,
+        bilibili = true, spotify = true, douyin = true,
+        kuaishou = true, alipay = true, socialApps = true, qqMusic = true,
+        xiaomiCommunity = true, ecommerceApps = true,
+    )
+    SettingsDestination.Ecommerce -> RestartScopeDefaults(ecommerceApps = true)
     SettingsDestination.XiaomiHealth -> RestartScopeDefaults(xiaomiHealth = true)
+    SettingsDestination.Music -> RestartScopeDefaults(music = true)
     SettingsDestination.Market -> RestartScopeDefaults(market = true)
     SettingsDestination.MiHome -> RestartScopeDefaults(miHome = true)
     SettingsDestination.Amap -> RestartScopeDefaults(amap = true)
     SettingsDestination.XiaomiCommunity -> RestartScopeDefaults(xiaomiCommunity = true)
+    SettingsDestination.Nio -> RestartScopeDefaults(nio = true)
     SettingsDestination.Alipay -> RestartScopeDefaults(alipay = true)
     SettingsDestination.Douyin -> RestartScopeDefaults(douyin = true)
+    SettingsDestination.Kuaishou -> RestartScopeDefaults(kuaishou = true)
+    SettingsDestination.Social -> RestartScopeDefaults(socialApps = true)
+    SettingsDestination.QQMusic -> RestartScopeDefaults(qqMusic = true)
     SettingsDestination.Bilibili -> RestartScopeDefaults(bilibili = true)
+    SettingsDestination.DouyinLite -> RestartScopeDefaults(douyin = true)
+    SettingsDestination.KuaishouLite -> RestartScopeDefaults(kuaishou = true)
+    SettingsDestination.Wechat -> RestartScopeDefaults(socialApps = true)
+    SettingsDestination.QQ -> RestartScopeDefaults(socialApps = true)
+    SettingsDestination.Pinduoduo -> RestartScopeDefaults(ecommerceApps = true)
+    SettingsDestination.Taobao -> RestartScopeDefaults(ecommerceApps = true)
+    SettingsDestination.Jingdong -> RestartScopeDefaults(ecommerceApps = true)
+    SettingsDestination.Xianyu -> RestartScopeDefaults(ecommerceApps = true)
+    SettingsDestination.DouyinMall -> RestartScopeDefaults(ecommerceApps = true)
+    SettingsDestination.Cainiao -> RestartScopeDefaults(ecommerceApps = true)
     SettingsDestination.HomeEntries,
     SettingsDestination.AboutPhone,
     SettingsDestination.PhoneImage -> RestartScopeDefaults(systemSettings = true)
@@ -212,6 +264,7 @@ private fun SettingsDestination.requiredRestartScopes(): RestartScopeDefaults = 
     SettingsDestination.StatusBar,
     SettingsDestination.GestureHandle,
     SettingsDestination.Volume -> RestartScopeDefaults(systemUi = true)
+    SettingsDestination.Foldables,
     SettingsDestination.Desktop,
     SettingsDestination.WidgetGlassApps -> RestartScopeDefaults(systemUi = true, launcher = true)
     SettingsDestination.KeyShortcuts -> RestartScopeDefaults()
@@ -248,15 +301,44 @@ fun MyHyperModifierSettingsApp() {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+    var checkingForUpdate by remember { mutableStateOf(false) }
+    var updateResult by remember { mutableStateOf<UpdateCheckResult?>(null) }
+    var startupCheckDone by rememberSaveable { mutableStateOf(false) }
+    val updateScope = androidx.compose.runtime.rememberCoroutineScope()
+    fun checkForUpdate() {
+        if (checkingForUpdate) return
+        checkingForUpdate = true
+        updateScope.launch {
+            try { updateResult = UpdateChecker.checkForUi(startup = false) }
+            finally { checkingForUpdate = false }
+        }
+    }
+    LaunchedEffect(Unit) {
+        if (!startupCheckDone) {
+            checkingForUpdate = true
+            try {
+                updateResult = UpdateChecker.checkForUi(startup = true)
+                    .takeUnless { it == UpdateCheckResult.Latest }
+                startupCheckDone = true
+            } finally { checkingForUpdate = false }
+        }
+    }
     PhonePresetWarmup(settings)
     var destination by remember { mutableStateOf(SettingsDestination.Home) }
+    val wideHome = isWideSettingsLayout()
     var homeSection by rememberSaveable { mutableIntStateOf(0) }
+    val navigationPreferences = remember(context) { context.getSharedPreferences("navigation_ui", Context.MODE_PRIVATE) }
+    LaunchedEffect(navigationPreferences) {
+        homeSection = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            navigationPreferences.getInt("home_section", 0).coerceIn(0, 1)
+        }
+    }
     val glassHomeScroll = rememberScrollState()
     val systemHomeScroll = rememberScrollState()
-    val selectedHomeScroll = if (homeSection == 0) glassHomeScroll else systemHomeScroll
-    val homeMaterialScrollObserver = rememberTopBarMaterialScrollObserver(homeSection)
-    LaunchedEffect(homeMaterialScrollObserver, selectedHomeScroll) {
-        snapshotFlow { selectedHomeScroll.value.toFloat() }
+    val selectedHomeScroll = if (wideHome || homeSection == 0) glassHomeScroll else systemHomeScroll
+    val homeMaterialScrollObserver = rememberTopBarMaterialScrollObserver(if (wideHome) 2 else homeSection)
+    LaunchedEffect(homeMaterialScrollObserver, selectedHomeScroll, wideHome) {
+        snapshotFlow { (if (wideHome) maxOf(glassHomeScroll.value, systemHomeScroll.value) else selectedHomeScroll.value).toFloat() }
             .collect(homeMaterialScrollObserver::updateAbsoluteScrollDistance)
     }
     var scrollProgress by remember { mutableFloatStateOf(0f) }
@@ -272,13 +354,19 @@ fun MyHyperModifierSettingsApp() {
     var restartPlugin by remember { mutableStateOf(true) }
     var restartMiLink by remember { mutableStateOf(false) }
     var restartXiaomiHealth by remember { mutableStateOf(false) }
+    var restartMusic by remember { mutableStateOf(false) }
     var restartMarket by remember { mutableStateOf(false) }
     var restartMiHome by remember { mutableStateOf(false) }
     var restartAmap by remember { mutableStateOf(false) }
     var restartXiaomiCommunity by remember { mutableStateOf(false) }
     var restartBilibili by remember { mutableStateOf(false) }
+    var restartNio by remember { mutableStateOf(false) }
     var restartAlipay by remember { mutableStateOf(false) }
     var restartDouyin by remember { mutableStateOf(false) }
+    var restartKuaishou by remember { mutableStateOf(false) }
+    var restartSocialApps by remember { mutableStateOf(false) }
+    var restartQQMusic by remember { mutableStateOf(false) }
+    var restartEcommerceApps by remember { mutableStateOf(false) }
     var restartSpotify by remember { mutableStateOf(false) }
     var restartSettings by remember { mutableStateOf(false) }
     var restartSystem by remember { mutableStateOf(false) }
@@ -292,7 +380,7 @@ fun MyHyperModifierSettingsApp() {
         animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
         label = "home-top-bar-button-material",
     )
-    val homeTopBarScrollBehavior = if (destination == SettingsDestination.Home) MiuixScrollBehavior() else null
+    val homeTopBarScrollBehavior = if (destination == SettingsDestination.Home) MiuixScrollBehavior(canScroll = { !wideHome }) else null
     fun update(value: ModifierSettings) { settings = value; ModifierSettingsStore.save(context, value) }
 
     MiuixTheme(colors = miuixColors) {
@@ -300,6 +388,19 @@ fun MyHyperModifierSettingsApp() {
             MaterialTheme(colorScheme = materialColors) {
             DeadlinerMiuixScaffold(
                 scrollProgress = activeScrollProgress,
+                navigationItems = if (destination.isTopLevel) floatingItems() else emptyList(),
+                selectedKey = destination.key,
+                navigationAction = {
+                    RestartScopeGlassButton {
+                        restartState = ScopeRestartState.Ready
+                        showRestartDialog = true
+                    }
+                },
+                onNavigationSelected = { selected ->
+                    destination = SettingsDestination.entries.first { it.key == selected.key }
+                    scrollProgress = 0f
+                },
+                deviceModeOverride = settings.deviceModeOverride,
                 topBar = when (destination) {
                     SettingsDestination.Home -> homeTopBarScrollBehavior?.let { scrollBehavior ->
                         {
@@ -308,20 +409,37 @@ fun MyHyperModifierSettingsApp() {
                                     title = "主页",
                                     largeTitle = "主页",
                                     color = Color.Transparent,
-                                    titleColor = MiuixTheme.colorScheme.onSurface,
-                                    largeTitleColor = MiuixTheme.colorScheme.onSurface,
                                     scrollBehavior = scrollBehavior,
+                                    actions = {
+                                        if (wideHome) RestartScopeTopBarButton {
+                                            restartState = ScopeRestartState.Ready
+                                            showRestartDialog = true
+                                        }
+                                    },
                                 )
-                                TabRow(
+                                if (!wideHome) TabRow(
                                     tabs = listOf("柔光玻璃", "系统界面"),
                                     selectedTabIndex = homeSection,
-                                    onTabSelected = { homeSection = it },
+                                    onTabSelected = { selected ->
+                                        homeSection = selected
+                                        updateScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                            navigationPreferences.edit().putInt("home_section", selected).apply()
+                                        }
+                                    },
                                     modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp),
                                 )
+
                             }
                         }
                     }
-                    SettingsDestination.About -> { { Spacer(Modifier.fillMaxWidth().height(88.dp)) } }
+                    SettingsDestination.About -> { {
+                        if (wideHome) TopAppBar(title = "关于", color = Color.Transparent, actions = {
+                            RestartScopeTopBarButton {
+                                restartState = ScopeRestartState.Ready
+                                showRestartDialog = true
+                            }
+                        }) else Spacer(Modifier.fillMaxWidth().height(88.dp))
+                    } }
                     else -> { { Spacer(Modifier.fillMaxWidth().height(88.dp)) } }
                 },
                 modifier = homeTopBarScrollBehavior?.let { Modifier.nestedScroll(it.nestedScrollConnection) } ?: Modifier,
@@ -345,7 +463,6 @@ fun MyHyperModifierSettingsApp() {
                                     destination = target
                                     scrollProgress = 0f
                                 },
-                                layout = MiuixFloatingTabLayout.Stacked,
                             )
                             Spacer(Modifier.width(12.dp))
                             RestartScopeGlassButton {
@@ -356,6 +473,12 @@ fun MyHyperModifierSettingsApp() {
                     }
                 },
                 overlay = {
+                    updateResult?.let { result ->
+                        UpdateCheckDialog(result, { updateResult = null }, { url ->
+                            updateResult = null
+                            context.openWebPage(url)
+                        })
+                    }
                     DeadlinerMiuixDialog(showRestartDialog, "重新启动", restartSummary(restartState), {
                         if (restartState != ScopeRestartState.Restarting) showRestartDialog = false
                     }) {
@@ -366,13 +489,19 @@ fun MyHyperModifierSettingsApp() {
                             restartPlugin = restartPlugin,
                             restartMiLink = restartMiLink,
                             restartXiaomiHealth = restartXiaomiHealth,
+                            restartMusic = restartMusic,
                             restartMarket = restartMarket,
                             restartMiHome = restartMiHome,
                             restartAmap = restartAmap,
                             restartXiaomiCommunity = restartXiaomiCommunity,
                             restartBilibili = restartBilibili,
+                            restartNio = restartNio,
                             restartAlipay = restartAlipay,
                             restartDouyin = restartDouyin,
+                            restartKuaishou = restartKuaishou,
+                            restartSocialApps = restartSocialApps,
+                            restartQQMusic = restartQQMusic,
+                            restartEcommerceApps = restartEcommerceApps,
                             restartSpotify = restartSpotify,
                             restartSettings = restartSettings,
                             restartSystem = restartSystem,
@@ -386,13 +515,19 @@ fun MyHyperModifierSettingsApp() {
                             },
                             onMiLinkChange = { restartMiLink = it },
                             onXiaomiHealthChange = { restartXiaomiHealth = it },
+                            onMusicChange = { restartMusic = it },
                             onMarketChange = { restartMarket = it },
                             onMiHomeChange = { restartMiHome = it },
                             onAmapChange = { restartAmap = it },
                             onXiaomiCommunityChange = { restartXiaomiCommunity = it },
                             onBilibiliChange = { restartBilibili = it },
+                            onNioChange = { restartNio = it },
                             onAlipayChange = { restartAlipay = it },
                             onDouyinChange = { restartDouyin = it },
+                            onKuaishouChange = { restartKuaishou = it },
+                            onSocialAppsChange = { restartSocialApps = it },
+                            onQQMusicChange = { restartQQMusic = it },
+                            onEcommerceAppsChange = { restartEcommerceApps = it },
                             onSpotifyChange = { restartSpotify = it },
                             onSettingsChange = { restartSettings = it },
                             onSystemChange = { checked ->
@@ -403,13 +538,19 @@ fun MyHyperModifierSettingsApp() {
                                     restartPlugin = false
                                     restartMiLink = false
                                     restartXiaomiHealth = false
+                                    restartMusic = false
                                     restartMarket = false
                                     restartMiHome = false
                                     restartAmap = false
                                     restartXiaomiCommunity = false
                                     restartBilibili = false
+                                    restartNio = false
                                     restartAlipay = false
                                     restartDouyin = false
+                                    restartKuaishou = false
+                                    restartSocialApps = false
+                                    restartQQMusic = false
+                                    restartEcommerceApps = false
                                     restartSpotify = false
                                     restartSettings = false
                                 }
@@ -417,7 +558,13 @@ fun MyHyperModifierSettingsApp() {
                             onDismiss = { showRestartDialog = false },
                             onConfirm = {
                                 restartState = ScopeRestartState.Restarting
-                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem, restartSettings, launcher = restartLauncher, douyin = restartDouyin, alipay = restartAlipay) {
+                                if (restartSystemUi || restartPlugin || restartSystem) {
+                                    update(settings.copy(
+                                        systemUiRetryGeneration =
+                                            settings.systemUiRetryGeneration + 1,
+                                    ))
+                                }
+                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMusic, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem, restartSettings, launcher = restartLauncher, douyin = restartDouyin, kuaishou = restartKuaishou, alipay = restartAlipay, socialApps = restartSocialApps, qqMusic = restartQQMusic, ecommerceApps = restartEcommerceApps, nio = restartNio) {
                                     restartState = if (it) ScopeRestartState.Succeeded else ScopeRestartState.Failed
                                 }
                             },
@@ -430,11 +577,12 @@ fun MyHyperModifierSettingsApp() {
                         padding = padding,
                         settings = settings,
                         update = ::update,
-                        selectedSection = homeSection,
-                        scrollState = if (homeSection == 0) glassHomeScroll else systemHomeScroll,
+                        scrollState = selectedHomeScroll,
+                        selectedSection = if (wideHome) null else homeSection,
+                        systemScrollState = systemHomeScroll,
                         onNavigate = context::openDetailSettings,
                     )
-                    SettingsDestination.About -> AboutSettingsPage(padding, onSettingsRestored = { settings = ModifierSettingsStore.load(context) }) { scrollProgress = it }
+                    SettingsDestination.About -> AboutSettingsPage(padding, settings, ::update, ::checkForUpdate, checkingForUpdate, onSettingsRestored = { settings = ModifierSettingsStore.load(context) }) { scrollProgress = it }
                     else -> Unit
                 }
             }
@@ -494,13 +642,19 @@ internal fun MyHyperModifierDetailSettingsApp(
     var restartPlugin by remember { mutableStateOf(defaultScopes.plugin) }
     var restartMiLink by remember { mutableStateOf(defaultScopes.miLink) }
     var restartXiaomiHealth by remember { mutableStateOf(defaultScopes.xiaomiHealth) }
+    var restartMusic by remember { mutableStateOf(defaultScopes.music) }
     var restartMarket by remember { mutableStateOf(defaultScopes.market) }
     var restartMiHome by remember { mutableStateOf(defaultScopes.miHome) }
     var restartAmap by remember { mutableStateOf(defaultScopes.amap) }
     var restartXiaomiCommunity by remember { mutableStateOf(defaultScopes.xiaomiCommunity) }
     var restartBilibili by remember { mutableStateOf(defaultScopes.bilibili) }
+    var restartNio by remember { mutableStateOf(defaultScopes.nio) }
     var restartAlipay by remember { mutableStateOf(defaultScopes.alipay) }
     var restartDouyin by remember { mutableStateOf(defaultScopes.douyin) }
+    var restartKuaishou by remember { mutableStateOf(defaultScopes.kuaishou) }
+    var restartSocialApps by remember { mutableStateOf(defaultScopes.socialApps) }
+    var restartQQMusic by remember { mutableStateOf(defaultScopes.qqMusic) }
+    var restartEcommerceApps by remember { mutableStateOf(defaultScopes.ecommerceApps) }
     var restartSpotify by remember { mutableStateOf(defaultScopes.spotify) }
     var restartSettings by remember { mutableStateOf(defaultScopes.systemSettings) }
     var restartSystem by remember { mutableStateOf(false) }
@@ -523,6 +677,7 @@ internal fun MyHyperModifierDetailSettingsApp(
             MaterialTheme(colorScheme = materialColors) {
             DeadlinerMiuixScaffold(
                 scrollProgress = activeScrollProgress,
+                deviceModeOverride = settings.deviceModeOverride,
                 topBar = {
                     Column(Modifier.fillMaxWidth()) {
                         SmallTopAppBar(
@@ -538,13 +693,19 @@ internal fun MyHyperModifierDetailSettingsApp(
                                     restartPlugin = defaultScopes.plugin
                                     restartMiLink = defaultScopes.miLink
                                     restartXiaomiHealth = defaultScopes.xiaomiHealth
+                                    restartMusic = defaultScopes.music
                                     restartMarket = defaultScopes.market
                                     restartMiHome = defaultScopes.miHome
                                     restartAmap = defaultScopes.amap
                                     restartXiaomiCommunity = defaultScopes.xiaomiCommunity
                                     restartBilibili = defaultScopes.bilibili
+                                    restartNio = defaultScopes.nio
                                     restartAlipay = defaultScopes.alipay
                                     restartDouyin = defaultScopes.douyin
+                                    restartKuaishou = defaultScopes.kuaishou
+                                    restartSocialApps = defaultScopes.socialApps
+                                    restartQQMusic = defaultScopes.qqMusic
+                                    restartEcommerceApps = defaultScopes.ecommerceApps
                                     restartSpotify = defaultScopes.spotify
                                     restartSettings = defaultScopes.systemSettings
                                     restartSystem = false
@@ -574,13 +735,19 @@ internal fun MyHyperModifierDetailSettingsApp(
                             restartPlugin = restartPlugin,
                             restartMiLink = restartMiLink,
                             restartXiaomiHealth = restartXiaomiHealth,
+                            restartMusic = restartMusic,
                             restartMarket = restartMarket,
                             restartMiHome = restartMiHome,
                             restartAmap = restartAmap,
                             restartXiaomiCommunity = restartXiaomiCommunity,
                             restartBilibili = restartBilibili,
+                            restartNio = restartNio,
                             restartAlipay = restartAlipay,
                             restartDouyin = restartDouyin,
+                            restartKuaishou = restartKuaishou,
+                            restartSocialApps = restartSocialApps,
+                            restartQQMusic = restartQQMusic,
+                            restartEcommerceApps = restartEcommerceApps,
                             restartSpotify = restartSpotify,
                             restartSettings = restartSettings,
                             restartSystem = restartSystem,
@@ -592,13 +759,19 @@ internal fun MyHyperModifierDetailSettingsApp(
                             },
                             onMiLinkChange = { restartMiLink = it },
                             onXiaomiHealthChange = { restartXiaomiHealth = it },
+                            onMusicChange = { restartMusic = it },
                             onMarketChange = { restartMarket = it },
                             onMiHomeChange = { restartMiHome = it },
                             onAmapChange = { restartAmap = it },
                             onXiaomiCommunityChange = { restartXiaomiCommunity = it },
                             onBilibiliChange = { restartBilibili = it },
+                            onNioChange = { restartNio = it },
                             onAlipayChange = { restartAlipay = it },
                             onDouyinChange = { restartDouyin = it },
+                            onKuaishouChange = { restartKuaishou = it },
+                            onSocialAppsChange = { restartSocialApps = it },
+                            onQQMusicChange = { restartQQMusic = it },
+                            onEcommerceAppsChange = { restartEcommerceApps = it },
                             onSpotifyChange = { restartSpotify = it },
                             onSettingsChange = { restartSettings = it },
                             onSystemChange = { checked ->
@@ -609,13 +782,19 @@ internal fun MyHyperModifierDetailSettingsApp(
                                     restartPlugin = false
                                     restartMiLink = false
                                     restartXiaomiHealth = false
+                                    restartMusic = false
                                     restartMarket = false
                                     restartMiHome = false
                                     restartAmap = false
                                     restartXiaomiCommunity = false
                                     restartBilibili = false
+                                    restartNio = false
                                     restartAlipay = false
                                     restartDouyin = false
+                                    restartKuaishou = false
+                                    restartSocialApps = false
+                                    restartQQMusic = false
+                                    restartEcommerceApps = false
                                     restartSpotify = false
                                     restartSettings = false
                                 }
@@ -623,7 +802,13 @@ internal fun MyHyperModifierDetailSettingsApp(
                             onDismiss = { showRestartDialog = false },
                             onConfirm = {
                                 restartState = ScopeRestartState.Restarting
-                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem, restartSettings, launcher = restartLauncher, douyin = restartDouyin, alipay = restartAlipay) {
+                                if (restartSystemUi || restartPlugin || restartSystem) {
+                                    update(settings.copy(
+                                        systemUiRetryGeneration =
+                                            settings.systemUiRetryGeneration + 1,
+                                    ))
+                                }
+                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMusic, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem, restartSettings, launcher = restartLauncher, douyin = restartDouyin, kuaishou = restartKuaishou, alipay = restartAlipay, socialApps = restartSocialApps, qqMusic = restartQQMusic, ecommerceApps = restartEcommerceApps, nio = restartNio) {
                                     restartState = if (it) ScopeRestartState.Succeeded else ScopeRestartState.Failed
                                 }
                             },
@@ -699,13 +884,29 @@ internal fun MyHyperModifierDetailSettingsApp(
                         scope = glassScope,
                     )
                     SettingsDestination.XiaomiHealth -> XiaomiHealthSettingsPage(padding, settings, ::update) { scrollProgress = it }
+                    SettingsDestination.Music -> MusicSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Market -> MarketSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.MiHome -> MiHomeSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Amap -> AmapSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Bilibili -> BilibiliSettingsPage(padding, settings, ::update) { scrollProgress = it }
+                    SettingsDestination.Wechat -> SocialNavigationSettingsPage(padding, settings, ::update, { scrollProgress = it }, onlyPackage = ModuleScopePackage.WECHAT)
+                    SettingsDestination.QQ -> SocialNavigationSettingsPage(padding, settings, ::update, { scrollProgress = it }, onlyPackage = ModuleScopePackage.QQ)
+                    SettingsDestination.Pinduoduo -> EcommerceSettingsPage(padding, settings, ::update, { scrollProgress = it }, onlyPackage = ModuleScopePackage.PINDUODUO)
+                    SettingsDestination.Taobao -> EcommerceSettingsPage(padding, settings, ::update, { scrollProgress = it }, onlyPackage = ModuleScopePackage.TAOBAO)
+                    SettingsDestination.Jingdong -> EcommerceSettingsPage(padding, settings, ::update, { scrollProgress = it }, onlyPackage = ModuleScopePackage.JINGDONG)
+                    SettingsDestination.Xianyu -> EcommerceSettingsPage(padding, settings, ::update, { scrollProgress = it }, onlyPackage = ModuleScopePackage.XIANYU)
+                    SettingsDestination.DouyinMall -> EcommerceSettingsPage(padding, settings, ::update, { scrollProgress = it }, onlyPackage = ModuleScopePackage.DOUYIN_MALL)
+                    SettingsDestination.Cainiao -> EcommerceSettingsPage(padding, settings, ::update, { scrollProgress = it }, onlyPackage = ModuleScopePackage.CAINIAO)
                     SettingsDestination.NavigationGlass -> NavigationGlassSettingsPage(padding, settings, ::update) { scrollProgress = it }
+                    SettingsDestination.Nio -> NioSettingsPage(padding, settings, ::update) { scrollProgress = it }
+                    SettingsDestination.Ecommerce -> EcommerceSettingsPage(padding, settings, ::update, { scrollProgress = it })
                     SettingsDestination.Alipay -> AlipaySettingsPage(padding, settings, ::update) { scrollProgress = it }
-                    SettingsDestination.Douyin -> DouyinSettingsPage(padding, settings, ::update) { scrollProgress = it }
+                    SettingsDestination.Douyin -> DouyinSettingsPage(padding, settings, ::update, { scrollProgress = it }, lite = false)
+                    SettingsDestination.DouyinLite -> DouyinSettingsPage(padding, settings, ::update, { scrollProgress = it }, lite = true)
+                    SettingsDestination.Kuaishou -> KuaishouSettingsPage(padding, settings, ::update, { scrollProgress = it }, lite = false)
+                    SettingsDestination.KuaishouLite -> KuaishouSettingsPage(padding, settings, ::update, { scrollProgress = it }, lite = true)
+                    SettingsDestination.Social -> SocialNavigationSettingsPage(padding, settings, ::update, { scrollProgress = it })
+                    SettingsDestination.QQMusic -> QQMusicSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.XiaomiCommunity -> XiaomiCommunitySettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Spotify -> SpotifySettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Media -> MediaSettingsPage(
@@ -718,6 +919,7 @@ internal fun MyHyperModifierDetailSettingsApp(
                     SettingsDestination.Lockscreen -> LockscreenSettingsPage(padding, settings, ::update,
                         { context.openDetailSettings(SettingsDestination.HyperMusicCover) }) { scrollProgress = it }
                     SettingsDestination.HyperMusicCover -> HyperMusicCoverSettingsPage(padding, settings, ::update) { scrollProgress = it }
+                    SettingsDestination.Foldables -> FoldSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Desktop -> DesktopSettingsPage(padding, settings, ::update,
                         onOpenWidgetGlassApps = { context.openDetailSettings(SettingsDestination.WidgetGlassApps) }) { scrollProgress = it }
                     SettingsDestination.WidgetGlassApps -> AndroidWidgetGlassSettingsPage(padding, settings, ::update) { scrollProgress = it }
@@ -810,7 +1012,7 @@ private fun RestartScopeGlassButton(onClick: () -> Unit) {
     val advancedMaterial = LocalAdvancedMaterialSpec.current
     SoftGlassSurface(
         modifier = Modifier
-            .size(54.dp)
+            .size(MiuixFloatingTabBarDefaults.Height)
             .floatingNavigationShadow(
                 shape = Capsule(),
                 isDark = MiuixTheme.colorScheme.onSurface.luminance() > 0.5f,
@@ -827,7 +1029,7 @@ private fun RestartScopeGlassButton(onClick: () -> Unit) {
                 painter = rememberVectorPainter(MiuixIcons.Refresh),
                 contentDescription = "重新启动以应用修改",
                 tint = MiuixTheme.colorScheme.onSurface,
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier.size(androidx.compose.ui.unit.lerp(24.dp, 20.dp, LocalDockScrollFraction.current)),
             )
         }
     }
@@ -882,6 +1084,9 @@ private fun scopeStatuses(
             settings.sinkLockscreenNotificationsForFingerprint,
             settings.hideLockscreenClockLeadingZero,
             settings.hideDesktopClockLeadingZero,
+            settings.foldPortraitIconPercent < 100,
+            settings.foldPortraitDualPageEnabled,
+            (!settings.disableMediaIslandHooks && settings.foldIslandPosition != 0 && android.os.Build.DEVICE == "lhasa"),
             settings.desktopClockMaterial != 0,
             settings.desktopSearch4x7Enabled,
             settings.androidWidgetStackEnabled,
@@ -933,13 +1138,14 @@ private fun scopeStatuses(
     ScopeStatus(
         appName = "系统桌面",
         packageName = ModuleScopePackage.LAUNCHER,
-        hasModification = settings.desktopSearch4x7Enabled || settings.hideDesktopClockLeadingZero || settings.desktopClockMaterial != 0 || settings.androidWidgetStackEnabled || settings.androidWidgetGlassEnabled,
+        hasModification = settings.foldPortraitDualPageEnabled || settings.foldPortraitIconPercent < 100 || settings.desktopSearch4x7Enabled || settings.hideDesktopClockLeadingZero || settings.desktopClockMaterial != 0 || settings.androidWidgetStackEnabled || settings.androidWidgetGlassEnabled,
         isActive = framework.isActive(ModuleScopePackage.LAUNCHER),
     ),
     ScopeStatus(
         appName = "系统界面插件",
         packageName = ModuleScopePackage.PLUGIN,
-        hasModification = (!settings.disableMediaIslandHooks && !settings.disableShadeGlassHooks && settings.dynamicIslandOpacityEnabled) || settings.controlCenterEnabled || settings.globalBackgroundBlurPercent != 100f ||
+        hasModification = (!settings.disableMediaIslandHooks && settings.foldIslandPosition != 0 && android.os.Build.DEVICE == "lhasa") ||
+            (!settings.disableMediaIslandHooks && !settings.disableShadeGlassHooks && settings.dynamicIslandOpacityEnabled) || settings.controlCenterEnabled || settings.globalBackgroundBlurPercent != 100f ||
             settings.globalBackgroundDimEnabled || settings.shadeBackgroundScaleDisabled || GlassParameterScope.ShadeCards.enabled(settings) ||
             (!settings.disableShadeGlassHooks && (settings.globalGlassBlurEnabled || settings.unifiedGlassEnabled)),
         isActive = framework.isActive(ModuleScopePackage.PLUGIN),
@@ -968,6 +1174,12 @@ private fun scopeStatuses(
         packageName = ModuleScopePackage.XIAOMI_HEALTH,
         hasModification = settings.xiaomiHealthFloatingNavigationEnabled,
         isActive = framework.isActive(ModuleScopePackage.XIAOMI_HEALTH),
+    ),
+    ScopeStatus(
+        appName = "小米音乐手机版",
+        packageName = ModuleScopePackage.MI_MUSIC,
+        hasModification = settings.miMusicFloatingNavigationEnabled,
+        isActive = framework.isActive(ModuleScopePackage.MI_MUSIC),
     ),
     ScopeStatus(
         appName = "应用商店",
@@ -1001,6 +1213,12 @@ private fun scopeStatuses(
         isActive = framework.isActive(ModuleScopePackage.SPOTIFY),
     ),
     ScopeStatus(
+        appName = "蔚来汽车",
+        packageName = ModuleScopePackage.NIO,
+        hasModification = settings.nioFloatingNavigationEnabled,
+        isActive = framework.isActive(ModuleScopePackage.NIO),
+    ),
+    ScopeStatus(
         appName = "支付宝",
         packageName = ModuleScopePackage.ALIPAY,
         hasModification = settings.alipayFloatingNavigationEnabled,
@@ -1011,6 +1229,42 @@ private fun scopeStatuses(
         packageName = ModuleScopePackage.DOUYIN,
         hasModification = settings.douyinFloatingNavigationEnabled,
         isActive = framework.isActive(ModuleScopePackage.DOUYIN),
+    ),
+    ScopeStatus(
+        appName = "抖音极速版",
+        packageName = ModuleScopePackage.DOUYIN_LITE,
+        hasModification = settings.douyinLiteFloatingNavigationEnabled,
+        isActive = framework.isActive(ModuleScopePackage.DOUYIN_LITE),
+    ),
+    ScopeStatus(
+        appName = "微信",
+        packageName = ModuleScopePackage.WECHAT,
+        hasModification = settings.wechatFloatingNavigationEnabled,
+        isActive = framework.isActive(ModuleScopePackage.WECHAT),
+    ),
+    ScopeStatus(
+        appName = "QQ",
+        packageName = ModuleScopePackage.QQ,
+        hasModification = settings.qqFloatingNavigationEnabled,
+        isActive = framework.isActive(ModuleScopePackage.QQ),
+    ),
+    ScopeStatus(
+        appName = "快手",
+        packageName = ModuleScopePackage.KUAISHOU,
+        hasModification = settings.kuaishouFloatingNavigationEnabled,
+        isActive = framework.isActive(ModuleScopePackage.KUAISHOU),
+    ),
+    ScopeStatus(
+        appName = "快手极速版",
+        packageName = ModuleScopePackage.KUAISHOU_LITE,
+        hasModification = settings.kuaishouLiteFloatingNavigationEnabled,
+        isActive = framework.isActive(ModuleScopePackage.KUAISHOU_LITE),
+    ),
+    ScopeStatus(
+        appName = "QQ音乐",
+        packageName = ModuleScopePackage.QQ_MUSIC,
+        hasModification = false,
+        isActive = framework.isActive(ModuleScopePackage.QQ_MUSIC),
     ),
     ScopeStatus(
         appName = "哔哩哔哩",
@@ -1033,7 +1287,13 @@ private fun scopeStatuses(
         settings.globalGlassBlurEnabled && !settings.disableShadeGlassHooks &&
             scope.packageName != ModuleScopePackage.SYSTEM_FRAMEWORK &&
             scope.packageName != ModuleScopePackage.DOUYIN &&
-            scope.packageName != ModuleScopePackage.ALIPAY -> scope.copy(hasModification = true)
+            scope.packageName != ModuleScopePackage.DOUYIN_LITE &&
+            scope.packageName != ModuleScopePackage.KUAISHOU &&
+            scope.packageName != ModuleScopePackage.KUAISHOU_LITE &&
+            scope.packageName != ModuleScopePackage.ALIPAY &&
+            scope.packageName != ModuleScopePackage.WECHAT &&
+            scope.packageName != ModuleScopePackage.NIO &&
+            scope.packageName != ModuleScopePackage.QQ -> scope.copy(hasModification = true)
         else -> scope
     }
 }
@@ -1043,40 +1303,31 @@ private fun HomeDashboardPage(
     padding: PaddingValues,
     settings: ModifierSettings,
     update: (ModifierSettings) -> Unit,
-    selectedSection: Int,
     scrollState: ScrollState,
+    selectedSection: Int?,
+    systemScrollState: ScrollState = scrollState,
+    showHeading: Boolean = false,
     onNavigate: (SettingsDestination) -> Unit,
-) = SettingsScrollPage(padding, {}, scrollState) {
-    var showScopeStatus by remember { mutableStateOf(false) }
-    val framework by ModuleFrameworkState.snapshot
-    val scopes = remember(settings, framework) { scopeStatuses(settings, framework) }
-    val diagnostics = rememberHookDiagnostics()
-    val features = remember(diagnostics) { HookDiagnosticPolicy.latestFeatures(diagnostics) }
-    val modifiedCount = scopes.count { it.hasModification }
-    val activeCount = scopes.count { it.hasModification && it.isActive }
-    val health = remember(settings.moduleHooksEnabled, settings.systemUiCompatibilityMode,
-        framework, modifiedCount, activeCount, features) {
-        ModuleHealthPolicy.resolve(
-            settings.moduleHooksEnabled, settings.systemUiCompatibilityMode,
-            framework.connected, framework.apiVersion >= ModuleFrameworkState.MIN_SUPPORTED_API,
-            modifiedCount, activeCount, features,
-        )
-    }
-
-    ModuleStatusHero(health) { onNavigate(SettingsDestination.Compatibility) }
-    SettingsSection {
-        NavigationSettingItem(
-            "作用域状态",
-            "$activeCount/$modifiedCount 个已修改作用域激活 · ${if (showScopeStatus) "点击收起" else "点击展开"}",
-            onClick = { showScopeStatus = !showScopeStatus },
-        )
-        if (showScopeStatus) {
-            scopes.forEach { scope ->
-                ScopeStatusItem(scope.appName, scope.hasModification, scope.isActive)
+) {
+    if (selectedSection == null) {
+        // Match Deadliner ModernHost: equal panes, 8dp outer spacing and gap, separate lists.
+        Row(Modifier.fillMaxSize().padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.weight(1f)) {
+                HomeDashboardPage(padding, settings, update, scrollState, 0,
+                    showHeading = true, onNavigate = onNavigate)
+            }
+            Box(Modifier.weight(1f)) {
+                HomeDashboardPage(padding, settings, update, systemScrollState, 1,
+                    showHeading = true, onNavigate = onNavigate)
             }
         }
+        return
     }
-    SettingsSection {
+    SettingsScrollPage(padding, {}, scrollState) {
+    if (showHeading) Text(if (selectedSection == 0) "柔光玻璃" else "系统界面",
+        style = MiuixTheme.textStyles.title2, modifier = Modifier.padding(vertical = 12.dp))
+    if (selectedSection == 0) SettingsSection {
         NavigationSettingItem(
             "捐赠",
             "支持 HyperModifier 的持续开发",
@@ -1088,18 +1339,11 @@ private fun HomeDashboardPage(
         SettingsSection {
             NavigationSettingItem("底栏柔光玻璃参数调节", "预览与自定义", onClick = { onNavigate(SettingsDestination.NavigationGlass) })
         }
-        SettingsSection {
-            NavigationSettingItem("小米运动健康", "", onClick = { onNavigate(SettingsDestination.XiaomiHealth) }, leadingContent = { HomeAppIcon(ModuleScopePackage.XIAOMI_HEALTH) })
-            NavigationSettingItem("米家", "", onClick = { onNavigate(SettingsDestination.MiHome) }, leadingContent = { HomeAppIcon(ModuleScopePackage.MI_HOME) })
-            NavigationSettingItem("高德地图", "实验功能", onClick = { onNavigate(SettingsDestination.Amap) }, leadingContent = { HomeAppIcon(ModuleScopePackage.AMAP) })
-            NavigationSettingItem("Spotify", "媒体卡片按钮", onClick = { onNavigate(SettingsDestination.Spotify) }, leadingContent = { HomeAppIcon(ModuleScopePackage.SPOTIFY) })
-            NavigationSettingItem("哔哩哔哩", "", onClick = { onNavigate(SettingsDestination.Bilibili) }, leadingContent = { HomeAppIcon(ModuleScopePackage.BILIBILI) })
-            NavigationSettingItem("支付宝", "经典模式 · 原生静态图标", onClick = { onNavigate(SettingsDestination.Alipay) }, leadingContent = { HomeAppIcon(ModuleScopePackage.ALIPAY) })
-            NavigationSettingItem("抖音", "", onClick = { onNavigate(SettingsDestination.Douyin) }, leadingContent = { HomeAppIcon(ModuleScopePackage.DOUYIN) })
-            NavigationSettingItem("小米社区", "", onClick = { onNavigate(SettingsDestination.XiaomiCommunity) }, leadingContent = { HomeAppIcon(ModuleScopePackage.XIAOMI_COMMUNITY) })
-            NavigationSettingItem("应用商店", "已有官方底栏方案 · 默认关闭", onClick = { onNavigate(SettingsDestination.Market) }, leadingContent = { HomeAppIcon(ModuleScopePackage.MARKET) })
-        }
-    } else {
+        InstalledGlassApplications(onNavigate)
+
+    }
+    if (selectedSection == 1) {
+        SystemHookStatus(settings) { onNavigate(SettingsDestination.Compatibility) }
         SettingsSection {
             NavigationSettingItem(
                 "通知/控制中心",
@@ -1122,8 +1366,82 @@ private fun HomeDashboardPage(
             NavigationSettingItem("系统设置", "", onClick = { onNavigate(SettingsDestination.AboutPhone) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_settings, Color(0xFF607D8B)) })
             NavigationSettingItem("快捷键", "", onClick = { onNavigate(SettingsDestination.KeyShortcuts) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_mobile_arrow_up_right, Color(0xFFC52C79)) })
             NavigationSettingItem("音量面板", "", onClick = { onNavigate(SettingsDestination.Volume) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_volume_up, Color(0xFFC52C79)) })
+            NavigationSettingItem("折叠屏专区", "", onClick = { onNavigate(SettingsDestination.Foldables) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_foldable, Color(0xFF5276C7)) })
         }
     }
+}
+
+}
+
+@Composable
+internal fun DeviceModeStatusCard(
+    settings: ModifierSettings,
+    update: (ModifierSettings) -> Unit,
+) {
+    val override = LargeScreenDevicePolicy.normalizeOverride(settings.deviceModeOverride)
+    val detected = LargeScreenDevicePolicy.detectedMode()
+    val effective = LargeScreenDevicePolicy.effectiveMode(override)
+    val automatic = override == LargeScreenDevicePolicy.AUTO
+    val largeScreen = LargeScreenDevicePolicy.usesLargeScreenLayout(override)
+    val badgeContainer = if (largeScreen) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+    val badgeContent = if (largeScreen) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val deviceIdentity = listOf(Build.DEVICE, Build.MODEL)
+        .filter { it.isNotBlank() }
+        .distinct()
+        .joinToString(" / ")
+    val source = if (automatic) {
+        "自动识别"
+    } else {
+        "手动覆盖 · 自动识别为${workModeLabel(detected)}模式"
+    }
+
+    androidx.compose.runtime.CompositionLocalProvider {
+        SettingItem(
+            headlineText = "当前：${workModeLabel(effective)}模式",
+            supportingText = listOf(source, deviceIdentity)
+                .filter { it.isNotBlank() }
+                .joinToString(" · "),
+            trailingContent = {
+                Box(
+                    modifier = Modifier
+                        .clip(Capsule())
+                        .background(badgeContainer)
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                ) {
+                    Text(
+                        text = if (automatic) "自动" else "手动",
+                        color = badgeContent,
+                        style = MiuixTheme.textStyles.footnote1,
+                    )
+                }
+            },
+        )
+        WindowDropdownPreference(
+            title = "设备工作模式",
+            summary = "识别不准时可手动覆盖；重启系统界面和相关应用，系统框架适配需重启手机",
+            items = listOf("自动识别", "手机模式", "折叠屏模式", "平板模式"),
+            selectedIndex = override,
+            onSelectedIndexChange = {
+                update(settings.copy(
+                    deviceModeOverride = LargeScreenDevicePolicy.normalizeOverride(it),
+                ))
+            },
+        )
+    }
+}
+
+private fun workModeLabel(mode: Int): String = when (mode) {
+    LargeScreenDevicePolicy.FOLDABLE -> "折叠屏"
+    LargeScreenDevicePolicy.TABLET -> "平板"
+    else -> "手机"
 }
 
 @Composable
@@ -1228,4 +1546,33 @@ private fun ScopeStatusItem(
             modifier = Modifier.size(22.dp),
         )
     }
+}
+
+@Composable
+internal fun ScopeStatusSection(settings: ModifierSettings, containerAlpha: Float = 1f) {
+    val framework by ModuleFrameworkState.snapshot
+    val scopes = remember(settings, framework) { scopeStatuses(settings, framework).filter { it.packageName != ModuleScopePackage.PILIPLUS } }
+    var expanded by remember { mutableStateOf(false) }
+    SettingsSection(topLabel = "作用域状态", containerAlpha = containerAlpha) {
+        NavigationSettingItem("查看作用域", "${scopes.count { it.isActive && it.hasModification }}/${scopes.count { it.hasModification }} 个已修改作用域激活",
+            onClick = { expanded = !expanded })
+        if (expanded) scopes.filter { it.packageName != ModuleScopePackage.PILIPLUS }.forEach {
+            ScopeStatusItem(it.appName, it.hasModification, it.isActive)
+        }
+    }
+}
+
+@Composable
+private fun SystemHookStatus(settings: ModifierSettings, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val framework by ModuleFrameworkState.snapshot
+    val diagnostics = rememberHookDiagnostics()
+    val scopes = remember(settings, framework) { scopeStatuses(settings, framework) }
+    val features = remember(diagnostics) { HookDiagnosticPolicy.latestFeatures(diagnostics) }
+    val modified = scopes.count { it.hasModification }
+    val active = scopes.count { it.hasModification && it.isActive }
+    val health = ModuleHealthPolicy.resolve(settings.moduleHooksEnabled, settings.systemUiCompatibilityMode,
+        framework.connected, framework.apiVersion >= ModuleFrameworkState.MIN_SUPPORTED_API,
+        modified, active, features)
+    ModuleStatusHero(health, onClick)
 }

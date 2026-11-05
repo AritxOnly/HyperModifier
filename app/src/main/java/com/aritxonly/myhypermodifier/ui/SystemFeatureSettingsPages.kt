@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -731,12 +732,11 @@ private val MEDIA_ISLAND_CONSTRAINT_SET_TEMPLATE = """
 """.trimIndent()
 
 @Composable
-internal fun AboutSettingsPage(padding: PaddingValues, onSettingsRestored: () -> Unit, onScroll: (Float) -> Unit) {
+internal fun AboutSettingsPage(padding: PaddingValues, settings: ModifierSettings, update: (ModifierSettings) -> Unit, checkForUpdate: () -> Unit, checkingForUpdate: Boolean, onSettingsRestored: () -> Unit, onScroll: (Float) -> Unit) {
     val context = LocalContext.current
     val layoutDirection = LocalLayoutDirection.current
     val scroll = rememberScrollState()
-    var checkingForUpdate by remember { mutableStateOf(false) }
-    var updateResult by remember { mutableStateOf<UpdateCheckResult?>(null) }
+    val wide = com.aritxonly.myhypermodifier.adaptive.isWideSettingsLayout()
     var powerAnalysisVisible by rememberSaveable { mutableStateOf(false) }
     var apiTapCount by remember { mutableStateOf(0) }
     var lastApiTapAt by remember { mutableStateOf(0L) }
@@ -752,77 +752,54 @@ internal fun AboutSettingsPage(padding: PaddingValues, onSettingsRestored: () ->
     }
     val progress by remember(scroll) { derivedStateOf { (scroll.value / 320f).coerceIn(0f, 1f) } }
     LaunchedEffect(progress) { onScroll(progress) }
-    fun checkForUpdate() {
-        if (checkingForUpdate) return
-        checkingForUpdate = true
-        Thread {
-            val result = UpdateChecker.check()
-            Handler(Looper.getMainLooper()).post {
-                checkingForUpdate = false
-                updateResult = result
+    val information: @Composable () -> Unit = {
+            AboutAppHeader(checkForUpdate, checkingForUpdate, compact = wide)
+            SettingsSection(topLabel = "关于与致谢", containerAlpha = 0.5f + progress * 0.5f) {
+                AuthorRow("AritxOnly", "authors/aritxonly.jpg", "https://github.com/AritxOnly")
+                AuthorRow("TerryMiFan", "authors/terrymifan.jpg", "https://github.com/TerryMifan0406")
             }
-        }.start()
-    }
-    Box(Modifier.fillMaxSize()) {
-        AboutFloatingBackground(Modifier.fillMaxSize(), alpha = 1f - progress)
-        Column(
-            Modifier
-                .fillMaxSize()
-                .verticalScroll(scroll)
-                // The titleless blur layer overlays this blank header area; do not let its
-                // measured height move the requested 180dp icon offset.
-                .padding(
-                    start = padding.calculateLeftPadding(layoutDirection),
-                    end = padding.calculateRightPadding(layoutDirection),
-                    bottom = padding.calculateBottomPadding(),
-                )
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 82.dp),
-        ) {
-            AboutAppHeader()
-            SettingsSection(topLabel = "版本信息", containerAlpha = 0.5f + progress * 0.5f) {
-                SettingItem("版本号", "v${BuildConfig.VERSION_NAME}")
-                SettingItem("LSPosed API", "API 102", onClick = ::onApiTap)
-                SettingItem(
-                    "检查更新",
-                    if (checkingForUpdate) "正在检查 GitHub Release…" else "检查 GitHub 上的最新稳定版本",
-                    enabled = !checkingForUpdate,
-                    onClick = ::checkForUpdate,
-                )
-            }
-            if (powerAnalysisVisible) {
-                PowerAnalysisSection(containerAlpha = 0.5f + progress * 0.5f)
-            }
-            ModuleSettingsSection(containerAlpha = 0.5f + progress * 0.5f, onSettingsRestored = onSettingsRestored)
-            SettingsSection(topLabel = "致谢", containerAlpha = 0.5f + progress * 0.5f) {
+            SettingsSection(containerAlpha = 0.5f + progress * 0.5f) {
                 SettingItem("HyperBlackScreen", "功能参考与适配贡献 · 酷安@不愧是小睦")
             }
-            SettingsSection(topLabel = "关于", containerAlpha = 0.5f + progress * 0.5f) {
-                SettingItem("作者", "AritxOnly · GitHub", onClick = { context.openWebPage("https://github.com/AritxOnly") })
-                SettingItem("设计参考：Deadliner", "AritxOnly 开发 · 点击查看项目", onClick = { context.openWebPage("https://github.com/AritxOnly/Deadliner") })
+    }
+    val moduleContent: @Composable () -> Unit = {
+            ModuleSettingsSection(containerAlpha = 0.5f + progress * 0.5f, onSettingsRestored = onSettingsRestored) {
+                DeviceModeStatusCard(settings, update)
             }
+            ScopeStatusSection(settings, containerAlpha = 0.5f + progress * 0.5f)
+            if (powerAnalysisVisible) PowerAnalysisSection(containerAlpha = 0.5f + progress * 0.5f)
             SettingsSection(topLabel = "使用的库", containerAlpha = 0.5f + progress * 0.5f) {
                 SettingItem("LSPosed API", "模块运行时 API 102", onClick = ::onApiTap)
                 SettingItem("MIUIX Compose", "HyperOS 风格组件、图标与模糊效果")
                 SettingItem("Jetpack Compose", "Android 声明式界面")
                 SettingItem("Material Kolor", "预设色与 HyperOS 背景配色")
             }
-        }
-        updateResult?.let { result ->
-            UpdateCheckDialog(
-                result = result,
-                onDismiss = { updateResult = null },
-                onOpenRelease = { url ->
-                    updateResult = null
-                    context.openWebPage(url)
-                },
-            )
+    }
+    Box(Modifier.fillMaxSize()) {
+        AboutFloatingBackground(Modifier.fillMaxSize(), alpha = 1f - progress)
+        if (wide) {
+            Row(Modifier.fillMaxSize().verticalScroll(scroll).padding(padding).padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f)
+                    .padding(horizontal = 16.dp).padding(bottom = 82.dp)) { information() }
+                Column(Modifier.weight(1f)
+                    .padding(horizontal = 16.dp).padding(bottom = 82.dp)) { moduleContent() }
+            }
+        } else {
+            Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(
+                start = padding.calculateLeftPadding(layoutDirection),
+                end = padding.calculateRightPadding(layoutDirection),
+                bottom = padding.calculateBottomPadding(),
+            ).padding(horizontal = 16.dp).padding(bottom = 82.dp)) {
+                information()
+                moduleContent()
+            }
         }
     }
 }
 
 @Composable
-private fun UpdateCheckDialog(
+internal fun UpdateCheckDialog(
     result: UpdateCheckResult,
     onDismiss: () -> Unit,
     onOpenRelease: (String) -> Unit,
@@ -865,7 +842,7 @@ private fun UpdateCheckDialog(
     Column(Modifier.fillMaxSize().verticalScroll(scrollState).padding(padding).padding(horizontal = 16.dp).padding(bottom = 82.dp)) { content() }
 }
 
-@Composable private fun AboutAppHeader() = Column(Modifier.fillMaxWidth().height(404.dp).padding(top = 180.dp, bottom = 28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+@Composable private fun AboutAppHeader(onCheckUpdate: () -> Unit, checking: Boolean, compact: Boolean = false) = Column(Modifier.fillMaxWidth().height(if (compact) 260.dp else 404.dp).padding(top = if (compact) 36.dp else 180.dp, bottom = 28.dp).clickable(enabled = !checking, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = "检查更新", onClick = onCheckUpdate), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
     // Compose's painterResource cannot load the launcher's v26 adaptive-icon variant.
     Image(
         painter = painterResource(R.drawable.ic_about_hypermodifier),
@@ -874,7 +851,7 @@ private fun UpdateCheckDialog(
         contentScale = ContentScale.Fit,
     )
     Text("HyperModifier", style = MiuixTheme.textStyles.title1, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-    Text("v${BuildConfig.VERSION_NAME}", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+    Text(if (checking) "正在检查更新…" else "v${BuildConfig.VERSION_NAME} · 点击检查更新", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
 }
 
 private fun settingNumber(value: Float): String =
@@ -900,13 +877,19 @@ internal fun RestartScopeDialogContent(
     restartPlugin: Boolean,
     restartMiLink: Boolean,
     restartXiaomiHealth: Boolean,
+    restartMusic: Boolean,
     restartMarket: Boolean,
     restartMiHome: Boolean,
     restartAmap: Boolean,
     restartXiaomiCommunity: Boolean,
     restartBilibili: Boolean,
+    restartNio: Boolean,
     restartAlipay: Boolean,
     restartDouyin: Boolean,
+    restartKuaishou: Boolean,
+    restartSocialApps: Boolean,
+    restartQQMusic: Boolean,
+    restartEcommerceApps: Boolean,
     restartSpotify: Boolean,
     restartSettings: Boolean,
     restartSystem: Boolean,
@@ -915,13 +898,19 @@ internal fun RestartScopeDialogContent(
     onPluginChange: (Boolean) -> Unit,
     onMiLinkChange: (Boolean) -> Unit,
     onXiaomiHealthChange: (Boolean) -> Unit,
+    onMusicChange: (Boolean) -> Unit,
     onMarketChange: (Boolean) -> Unit,
     onMiHomeChange: (Boolean) -> Unit,
     onAmapChange: (Boolean) -> Unit,
     onXiaomiCommunityChange: (Boolean) -> Unit,
     onBilibiliChange: (Boolean) -> Unit,
+    onNioChange: (Boolean) -> Unit,
     onAlipayChange: (Boolean) -> Unit,
     onDouyinChange: (Boolean) -> Unit,
+    onKuaishouChange: (Boolean) -> Unit,
+    onSocialAppsChange: (Boolean) -> Unit,
+    onQQMusicChange: (Boolean) -> Unit,
+    onEcommerceAppsChange: (Boolean) -> Unit,
     onSpotifyChange: (Boolean) -> Unit,
     onSettingsChange: (Boolean) -> Unit,
     onSystemChange: (Boolean) -> Unit,
@@ -946,13 +935,19 @@ internal fun RestartScopeDialogContent(
                 restartPlugin = restartPlugin,
                 restartMiLink = restartMiLink,
                 restartXiaomiHealth = restartXiaomiHealth,
+                restartMusic = restartMusic,
                 restartMarket = restartMarket,
                 restartMiHome = restartMiHome,
                 restartAmap = restartAmap,
                 restartXiaomiCommunity = restartXiaomiCommunity,
                 restartBilibili = restartBilibili,
+                restartNio = restartNio,
                 restartAlipay = restartAlipay,
                 restartDouyin = restartDouyin,
+                restartKuaishou = restartKuaishou,
+                restartSocialApps = restartSocialApps,
+                restartQQMusic = restartQQMusic,
+                restartEcommerceApps = restartEcommerceApps,
                 restartSpotify = restartSpotify,
                 restartSettings = restartSettings,
                 restartSystem = restartSystem,
@@ -961,13 +956,19 @@ internal fun RestartScopeDialogContent(
                 onPluginChange = onPluginChange,
                 onMiLinkChange = onMiLinkChange,
                 onXiaomiHealthChange = onXiaomiHealthChange,
+                onMusicChange = onMusicChange,
                 onMarketChange = onMarketChange,
                 onMiHomeChange = onMiHomeChange,
                 onAmapChange = onAmapChange,
                 onXiaomiCommunityChange = onXiaomiCommunityChange,
                 onBilibiliChange = onBilibiliChange,
+                onNioChange = onNioChange,
                 onAlipayChange = onAlipayChange,
                 onDouyinChange = onDouyinChange,
+                onKuaishouChange = onKuaishouChange,
+                onSocialAppsChange = onSocialAppsChange,
+                onQQMusicChange = onQQMusicChange,
+                onEcommerceAppsChange = onEcommerceAppsChange,
                 onSpotifyChange = onSpotifyChange,
                 onSettingsChange = onSettingsChange,
                 onSystemChange = onSystemChange,
@@ -984,13 +985,19 @@ internal fun RestartScopeDialogContent(
     restartPlugin: Boolean,
     restartMiLink: Boolean,
     restartXiaomiHealth: Boolean,
+    restartMusic: Boolean,
     restartMarket: Boolean,
     restartMiHome: Boolean,
     restartAmap: Boolean,
     restartXiaomiCommunity: Boolean,
     restartBilibili: Boolean,
+    restartNio: Boolean,
     restartAlipay: Boolean,
     restartDouyin: Boolean,
+    restartKuaishou: Boolean,
+    restartSocialApps: Boolean,
+    restartQQMusic: Boolean,
+    restartEcommerceApps: Boolean,
     restartSpotify: Boolean,
     restartSettings: Boolean,
     restartSystem: Boolean,
@@ -999,13 +1006,19 @@ internal fun RestartScopeDialogContent(
     onPluginChange: (Boolean) -> Unit,
     onMiLinkChange: (Boolean) -> Unit,
     onXiaomiHealthChange: (Boolean) -> Unit,
+    onMusicChange: (Boolean) -> Unit,
     onMarketChange: (Boolean) -> Unit,
     onMiHomeChange: (Boolean) -> Unit,
     onAmapChange: (Boolean) -> Unit,
     onXiaomiCommunityChange: (Boolean) -> Unit,
     onBilibiliChange: (Boolean) -> Unit,
+    onNioChange: (Boolean) -> Unit,
     onAlipayChange: (Boolean) -> Unit,
     onDouyinChange: (Boolean) -> Unit,
+    onKuaishouChange: (Boolean) -> Unit,
+    onSocialAppsChange: (Boolean) -> Unit,
+    onQQMusicChange: (Boolean) -> Unit,
+    onEcommerceAppsChange: (Boolean) -> Unit,
     onSpotifyChange: (Boolean) -> Unit,
     onSettingsChange: (Boolean) -> Unit,
     onSystemChange: (Boolean) -> Unit,
@@ -1047,6 +1060,18 @@ internal fun RestartScopeDialogContent(
             DeadlinerCheckbox(
                 restartXiaomiHealth,
                 onXiaomiHealthChange,
+                enabled = editable && !restartSystem,
+            )
+        },
+    )
+    SettingItem(
+        "小米音乐手机版",
+        "",
+        enabled = editable && !restartSystem,
+        trailingContent = {
+            DeadlinerCheckbox(
+                restartMusic,
+                onMusicChange,
                 enabled = editable && !restartSystem,
             )
         },
@@ -1094,6 +1119,10 @@ internal fun RestartScopeDialogContent(
         trailingContent = { DeadlinerCheckbox(restartSpotify, onSpotifyChange, enabled = editable && !restartSystem) },
     )
     SettingItem(
+        "蔚来汽车", "", enabled = editable && !restartSystem,
+        trailingContent = { DeadlinerCheckbox(restartNio, onNioChange, enabled = editable && !restartSystem) },
+    )
+    SettingItem(
         "支付宝",
         "",
         enabled = editable && !restartSystem,
@@ -1103,6 +1132,48 @@ internal fun RestartScopeDialogContent(
         "抖音", "",
         enabled = editable && !restartSystem,
         trailingContent = { DeadlinerCheckbox(restartDouyin, onDouyinChange, enabled = editable && !restartSystem) },
+    )
+    SettingItem(
+        "快手", "",
+        enabled = editable && !restartSystem,
+        trailingContent = { DeadlinerCheckbox(restartKuaishou, onKuaishouChange, enabled = editable && !restartSystem) },
+    )
+    SettingItem(
+        "微信 / QQ",
+        "",
+        enabled = editable && !restartSystem,
+        onClick = {
+            if (editable && !restartSystem) onSocialAppsChange(!restartSocialApps)
+        },
+        trailingContent = {
+            DeadlinerCheckbox(
+                restartSocialApps,
+                onSocialAppsChange,
+                enabled = editable && !restartSystem,
+            )
+        },
+    )
+    SettingItem(
+        "QQ音乐", "",
+        enabled = editable && !restartSystem,
+        trailingContent = { DeadlinerCheckbox(restartQQMusic, onQQMusicChange, enabled = editable && !restartSystem) },
+    )
+    SettingItem(
+        "电商应用",
+        "拼多多、淘宝、京东、闲鱼、抖音商城、菜鸟",
+        enabled = editable && !restartSystem,
+        onClick = {
+            if (editable && !restartSystem) {
+                onEcommerceAppsChange(!restartEcommerceApps)
+            }
+        },
+        trailingContent = {
+            DeadlinerCheckbox(
+                restartEcommerceApps,
+                onEcommerceAppsChange,
+                enabled = editable && !restartSystem,
+            )
+        },
     )
     SettingItem(
         "哔哩哔哩",
@@ -1145,6 +1216,7 @@ internal fun restartSelectedScope(
     plugin: Boolean,
     miLink: Boolean,
     xiaomiHealth: Boolean,
+    music: Boolean,
     market: Boolean,
     miHome: Boolean,
     amap: Boolean,
@@ -1154,8 +1226,14 @@ internal fun restartSelectedScope(
     system: Boolean,
     systemSettings: Boolean = false,
     launcher: Boolean = false,
+    nio: Boolean = false,
     alipay: Boolean = false,
     douyin: Boolean = false,
+    kuaishou: Boolean = false,
+    socialApps: Boolean = false,
+    qqMusic: Boolean = false,
+    ecommerceApps: Boolean = false,
+    piliPlus: Boolean = false,
     onCompleted: (Boolean) -> Unit,
 ) {
     Thread {
@@ -1164,19 +1242,42 @@ internal fun restartSelectedScope(
         // again and rebuilds both MIUISystemUI and MIUISystemUIPlugin content.
         val command = when {
             system -> "reboot"
-            systemUi || plugin || miLink || xiaomiHealth || market || miHome || amap ||
-                xiaomiCommunity || bilibili || spotify || douyin || alipay || systemSettings || launcher -> buildList {
+            systemUi || plugin || miLink || xiaomiHealth || music || market || miHome || amap ||
+                xiaomiCommunity || bilibili || piliPlus || spotify || douyin || kuaishou ||
+                alipay || nio || socialApps || qqMusic || ecommerceApps ||
+                systemSettings || launcher -> buildList {
                 if (systemUi || plugin) add("killall com.android.systemui")
                 if (launcher) add("killall com.miui.home")
                 if (miLink) add("am force-stop com.milink.service")
                 if (xiaomiHealth) add("am force-stop com.mi.health")
+                if (music) add("am force-stop com.miui.player")
                 if (market) add("am force-stop com.xiaomi.market")
                 if (miHome) add("am force-stop com.xiaomi.smarthome")
                 if (amap) add("am force-stop com.autonavi.minimap")
                 if (xiaomiCommunity) add("am force-stop com.xiaomi.vipaccount")
+                if (nio) add("am force-stop cn.com.weilaihui3")
                 if (alipay) add("am force-stop com.eg.android.AlipayGphone")
                 if (douyin) add("am force-stop com.ss.android.ugc.aweme")
+                if (douyin) add("am force-stop com.ss.android.ugc.aweme.lite")
+                if (kuaishou) {
+                    add("am force-stop com.smile.gifmaker")
+                    add("am force-stop com.kuaishou.nebula")
+                }
+                if (socialApps) {
+                    add("am force-stop com.tencent.mm")
+                    add("am force-stop com.tencent.mobileqq")
+                }
+                if (qqMusic) add("am force-stop com.tencent.qqmusic")
+                if (ecommerceApps) {
+                    add("am force-stop com.xunmeng.pinduoduo")
+                    add("am force-stop com.taobao.taobao")
+                    add("am force-stop com.jingdong.app.mall")
+                    add("am force-stop com.taobao.idlefish")
+                    add("am force-stop com.ss.android.ugc.livelite")
+                    add("am force-stop com.cainiao.wireless")
+                }
                 if (bilibili) add("am force-stop tv.danmaku.bili")
+                if (piliPlus) add("am force-stop com.example.piliplus")
                 if (spotify) add("am force-stop com.spotify.music")
                 if (systemSettings) add("am force-stop com.android.settings")
             }.joinToString("; ")
@@ -1196,7 +1297,7 @@ internal fun restartSelectedScope(
     }.start()
 }
 
-private fun Context.openWebPage(url: String) {
+internal fun Context.openWebPage(url: String) {
     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 }
 

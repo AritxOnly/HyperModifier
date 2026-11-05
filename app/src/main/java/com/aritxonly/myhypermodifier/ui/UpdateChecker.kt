@@ -1,5 +1,6 @@
 package com.aritxonly.myhypermodifier
 
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -12,6 +13,15 @@ sealed interface UpdateCheckResult {
 
 /** Reads the public GitHub release feed; APK download and installation remain user-controlled. */
 object UpdateChecker {
+    private val requestMutex = kotlinx.coroutines.sync.Mutex()
+    private var startupResult: UpdateCheckResult? = null
+
+    suspend fun checkForUi(startup: Boolean): UpdateCheckResult = requestMutex.withLock {
+        if (startup) startupResult?.let { return@withLock it }
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { check() }
+            .also { if (startup) startupResult = it }
+    }
+
     private const val LATEST_RELEASE_URL =
         "https://api.github.com/repos/AritxOnly/HyperModifier/releases/latest"
 

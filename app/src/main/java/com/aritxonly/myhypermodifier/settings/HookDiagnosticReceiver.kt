@@ -31,7 +31,7 @@ class HookDiagnosticReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        const val ACTION_REPORT = "com.aritxonly.myhypermodifier.HOOK_DIAGNOSTIC"
+        val ACTION_REPORT = "${BuildConfig.APPLICATION_ID}.HOOK_DIAGNOSTIC"
         const val EXTRA_TOKEN = "token"
         const val EXTRA_PACKAGE = "package"
         const val EXTRA_FEATURE = "feature"

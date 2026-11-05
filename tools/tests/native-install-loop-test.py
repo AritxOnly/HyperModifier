@@ -143,6 +143,14 @@ void WidgetStatusSocket::wait(int milliseconds, int) const {
 }
 bool androidWidgetHooksSettled() { return sim::widgetSettled; }
 bool androidWidgetPickerHooksSettled() { return sim::pickerSettled; }
+void loadFoldDualPageConfig() {}
+bool configureFoldDualPage(bool) { return false; }
+void installFoldDualPage(ClockGlassImage, WidgetNativeHook, WidgetNativeUnhook) {}
+void loadFoldIconConfig() {}
+bool configureFoldIconScale(unsigned) { return false; }
+void installFoldIcons(ClockGlassImage, WidgetNativeHook) {}
+bool widgetColdGuardPending() { return false; }
+WidgetHookBackend widgetColdGuard(ClockGlassImage, WidgetHookBackend backend) { return backend; }
 void installAndroidWidgetHooks(void *, WidgetNativeHook) {
     sim::widgetSettled = true; widget_status::schema.store(widget_status::Ready);
 }
@@ -259,16 +267,22 @@ int main() {
     getExtras = +[](void *intent) -> void * { return intent; };
     getBool = +[](void *, const char *, size_t) -> uint64_t { return UINT64_C(1) << 8; };
     getInteger = +[](void *, const char *key, size_t length) -> uint64_t {
+        constexpr char readerKey[] = "mhm_status_reader_uid";
+        if (length == sizeof(readerKey)-1 && !std::memcmp(key,readerKey,length)) return uint64_t(10193) << 32;
+        constexpr char iconKey[] = "mhm_fold_icon_percent";
+        if (length == sizeof(iconKey)-1 && !std::memcmp(key,iconKey,length)) return 1; // optional, absent
         assert(length == 19 && !std::memcmp(key, "mhm_clock_tuning_v1", length));
         return (uint64_t(40 | (80 << 6)) << 32) | (sim::integerError ? 1 : 0);
     };
     receiverHook(nullptr, nullptr, reinterpret_cast<void *>(1));
     assert(sim::tuningCalls == 1 && sim::lastTuning == (40 | (80 << 6)) && !sim::forwarded);
+    assert(widget_status::readerUid.load() == 10193);
     sim::integerError = true; receiverHook(nullptr, nullptr, reinterpret_cast<void *>(1));
     assert(sim::tuningCalls == 1); // Missing/invalid extra preserves current parameters.
-    sim::integerError = false; sim::trustedSender = false;
+    sim::integerError = false; widget_status::readerUid.store(1000); sim::trustedSender = false;
     receiverHook(nullptr, nullptr, reinterpret_cast<void *>(1));
     assert(sim::tuningCalls == 1 && sim::forwarded == 1);
+    assert(widget_status::readerUid.load() == 1000);
     sim::trustedSender = true; getInteger = nullptr;
     receiverHook(nullptr, nullptr, reinterpret_cast<void *>(1)); assert(sim::tuningCalls == 1);
     // A rejected clock profile is terminal without any backend call.

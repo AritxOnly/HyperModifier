@@ -18,6 +18,7 @@ internal object XiaomiCommunityFloatingNavigation {
             bottomBarClassNames = setOf(
                 "com.xiaomi.vipaccount.ui.widget.tab.BottomNavView",
             ),
+            resolveNativeChromeShells = ::compactNativeChromeShells,
             tabClassNames = setOf(
                 "com.xiaomi.vipaccount.ui.widget.tab.NavItemView",
             ),
@@ -31,7 +32,8 @@ internal object XiaomiCommunityFloatingNavigation {
             contentHostMethodName = "M0",
             reservationViewMethodNames = setOf("M0", "l1"),
             trimNativeIconTransparentPadding = true,
-            nativeRefreshIntervalMs = 32L,
+            nativeRefreshIntervalMs = 100L,
+            stableNavigationInset = true,
             useNativeGpuBackdrop = true,
             inTreeOverlay = true,
             useHardwareBackdrop = false,

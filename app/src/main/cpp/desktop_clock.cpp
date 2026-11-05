@@ -1,7 +1,10 @@
 #include "clock_format.h"
 #include "widget_hooks.h"
+#include "widget_cold_guard.h"
 #include "widget_status_socket.h"
 #include "desktop_search.h"
+#include "fold_icons.h"
+#include "fold_dual_page.h"
 #include "native_install_control.h"
 #include "clock_glass.h"
 
@@ -149,11 +152,21 @@ void receiverHook(void *receiver, void *context, void *intent) {
             cacheConfig(value);
             if (previous != value) changedLogs.store(0);
             if (getInteger) {
+                constexpr char readerKey[] = "mhm_status_reader_uid";
+                uint64_t reader = getInteger(extras, readerKey, sizeof(readerKey) - 1);
+                if (static_cast<uint32_t>(reader) == 0)
+                    widget_status::authorizeReader(static_cast<uint32_t>(reader >> 32), getuid());
+                constexpr char foldKey[] = "mhm_fold_icon_percent";
+                uint64_t scale = getInteger(extras, foldKey, sizeof(foldKey) - 1);
+                if (static_cast<uint32_t>(scale) == 0 && configureFoldIconScale(scale >> 32)) requestInstall();
                 constexpr char key[] = "mhm_clock_tuning_v1";
                 uint64_t result = getInteger(extras, key, sizeof(key) - 1);
                 if (static_cast<uint32_t>(result) == 0)
                     configureClockGlassParameters(static_cast<uint32_t>(result >> 32));
             }
+            bool foldDualPage = false;
+            if (readBool(extras, "mhm_fold_portrait_dual_page", foldDualPage)
+                    && configureFoldDualPage(foldDualPage)) requestInstall();
             bool clockBlur = false, clockGlass = false;
             if (readBool(extras, "mhm_clock_blur", clockBlur)
                     && readBool(extras, "mhm_clock_soft_glass", clockGlass)
@@ -181,7 +194,7 @@ void receiverHook(void *receiver, void *context, void *intent) {
 }
 
 struct Images {
-    ClockGlassImage clockMaml, clockFlutter;
+    ClockGlassImage clockMaml, clockFlutter, dartImage;
     uintptr_t maml = 0, dart = 0;
     const ElfW(Phdr) *headers = nullptr;
     size_t headerCount = 0;
@@ -198,7 +211,8 @@ int findImages(dl_phdr_info *info, size_t, void *opaque) {
         images.clockFlutter = {info->dlpi_addr, info->dlpi_phdr, info->dlpi_phnum};
     } else if (std::strstr(name, "/libapp_launcher.so")) images.launcherPath = name;
     else if (std::strstr(name, "/libhyper_os_broadcast_private.dylib.so")) images.broadcastPath = name;
-    else if (std::strstr(name, "/libapp.so")) { images.dart = info->dlpi_addr; images.dartPath = name; }
+    else if (std::strstr(name, "/libapp.so")) { images.dart = info->dlpi_addr; images.dartPath = name;
+        images.dartImage = {info->dlpi_addr, info->dlpi_phdr, info->dlpi_phnum}; }
     return 0;
 }
 bool matchingProfile(const Images &images, const CalendarProfile &profile) {
@@ -233,16 +247,19 @@ void install() {
     if (!guard.owns_lock()) return;
     NativeInstallScope installing;
     Images images; dl_iterate_phdr(findImages, &images);
+    auto widgetHooks = widgetColdGuard(images.clockFlutter, {hook, unhook});
     installClockGlass(images.clockMaml, images.clockFlutter, hook, unhook, requestInstall);
     if (images.launcherPath && !androidWidgetHooksSettled()) {
         void *launcher = dlopen(images.launcherPath, RTLD_NOW | RTLD_NOLOAD);
         if (launcher) {
-            installAndroidWidgetHooks(launcher, hook);
+            installAndroidWidgetHooks(launcher, widgetHooks.hook);
             dlclose(launcher);
         }
     }
     if (images.dartPath && !androidWidgetPickerHooksSettled())
-        installAndroidWidgetPickerHooks(images.dartPath, images.dart, hook, unhook);
+        installAndroidWidgetPickerHooks(images.dartPath, images.dart, widgetHooks.hook, widgetHooks.unhook);
+    installFoldIcons(images.dartImage, hook);
+    installFoldDualPage(images.dartImage, hook, unhook);
     installDesktopSearch(images.dartPath, images.dart, hook, unhook);
     int schemaStage = widget_status::schema.load();
     if (schemaStage == widget_status::Incompatible || schemaStage == widget_status::Failed)
@@ -264,10 +281,10 @@ void install() {
             getInteger = reinterpret_cast<GetBool>(dlsym(launcher, "Bundle_get_i32"));
             void *target = dlsym(broadcast, RECEIVER_SYMBOL);
             if (getAction && getSender && getExtras && getBool && target && unhook) {
-                int result = hook(target, reinterpret_cast<void *>(receiverHook), &originalReceiver);
+                int result = widgetHooks.hook(target, reinterpret_cast<void *>(receiverHook), &originalReceiver);
                 widget_status::bridge.store(result == 0 && originalReceiver ? widget_status::Ready : widget_status::Failed);
                 if (result == 0 && !originalReceiver) {
-                    int rollback = unhook(target);
+                    int rollback = widgetHooks.unhook(target);
                     __android_log_print(ANDROID_LOG_WARN, TAG, "BRIDGE missing trampoline: rollback=%d", rollback);
                 }
                 __android_log_print(ANDROID_LOG_INFO, TAG, "BRIDGE install result=%d ready=%d", result,
@@ -327,7 +344,7 @@ void *worker(void *) {
             std::lock_guard<std::mutex> guard(installMutex);
             settled = (bridgeAttempted || widget_status::schema.load() == widget_status::Incompatible
                     || widget_status::schema.load() == widget_status::Failed)
-                && calendarAttempted
+                && calendarAttempted && !widgetColdGuardPending()
                 && androidWidgetHooksSettled() && androidWidgetPickerHooksSettled();
         }
         now = milliseconds();
@@ -373,6 +390,8 @@ Loaded native_init(const NativeAPIEntries *entries) {
     readCachedConfig();
     loadAndroidWidgetConfig();
     loadDesktopSearchConfig();
+    loadFoldIconConfig();
+    loadFoldDualPageConfig();
     loadClockGlassConfig();
     __android_log_print(ANDROID_LOG_INFO, TAG, "INIT launcher uid=%u api=%u", getuid(), entries->version);
     if (!workerStarted.exchange(true)) {

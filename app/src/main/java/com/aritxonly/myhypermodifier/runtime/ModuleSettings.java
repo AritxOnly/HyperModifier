@@ -18,6 +18,7 @@ import java.util.concurrent.ExecutorService;
 final class ModuleSettings {
     private static final String TAG = "MyHyperModifier";
     static volatile boolean moduleHooksEnabled = true;
+    static volatile int deviceModeOverride = LargeScreenDevicePolicy.AUTO;
     static volatile boolean systemUiCompatibilityMode;
     static volatile int systemUiRetryGeneration;
     static volatile String diagnosticToken = "";
@@ -83,6 +84,7 @@ final class ModuleSettings {
     static volatile boolean miLinkMainCardsEnabled = ModuleDefaultValues.MI_LINK_MAIN_CARDS_ENABLED;
     static volatile float miLinkMainCardRadius = ModuleDefaultValues.MI_LINK_MAIN_CARD_RADIUS;
     static volatile boolean disableMediaIslandHooks = false;
+    static volatile int foldIslandPosition;
     static volatile boolean mediaEnabled = ModuleDefaultValues.MEDIA_ENABLED;
     static volatile float expandedHeight = 152f;
     static volatile float collapsedHeight = 120f;
@@ -161,8 +163,10 @@ final class ModuleSettings {
     // A target process can begin drawing before the companion Provider becomes reachable. Keep
     // that bootstrap state visually neutral; the saved default is published once loading succeeds.
     static volatile String navigationGlassParameters = "";
+    static volatile String navigationBarGeometry = "";
     static volatile float hyperGlassifyHiddenNavigationLift = 0f;
     static volatile boolean xiaomiHealthFloatingNavigationEnabled = ModuleDefaultValues.XIAOMI_HEALTH_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean miMusicFloatingNavigationEnabled = ModuleDefaultValues.MI_MUSIC_FLOATING_NAVIGATION_ENABLED;
     static volatile boolean xiaomiHealthMiuixIconsEnabled = false;
     static volatile boolean xiaomiHealthMonochromeIconsEnabled = true;
     static volatile boolean marketFloatingNavigationEnabled = ModuleDefaultValues.MARKET_FLOATING_NAVIGATION_ENABLED;
@@ -179,8 +183,28 @@ final class ModuleSettings {
     static volatile boolean amapMiuixIconsEnabled = false;
     static volatile boolean amapMonochromeIconsEnabled = true;
     static volatile boolean amapHideLongPressVoiceTabEnabled = ModuleDefaultValues.AMAP_HIDE_LONG_PRESS_VOICE_TAB_ENABLED;
+    static volatile boolean nioDiscoverTabVisible = true;
+    static volatile boolean nioFriendsTabVisible = true;
+    static volatile boolean nioCarTabVisible = true;
+    static volatile boolean nioMallTabVisible = true;
+    static volatile boolean nioMineTabVisible = true;
+    static volatile boolean nioFloatingNavigationEnabled = ModuleDefaultValues.NIO_FLOATING_NAVIGATION_ENABLED;
     static volatile boolean alipayFloatingNavigationEnabled = ModuleDefaultValues.ALIPAY_FLOATING_NAVIGATION_ENABLED;
     static volatile boolean douyinFloatingNavigationEnabled = ModuleDefaultValues.DOUYIN_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean douyinLiteFloatingNavigationEnabled =
+            ModuleDefaultValues.DOUYIN_LITE_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean kuaishouFloatingNavigationEnabled =
+            ModuleDefaultValues.KUAISHOU_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean kuaishouLiteFloatingNavigationEnabled =
+            ModuleDefaultValues.KUAISHOU_LITE_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean weChatFloatingNavigationEnabled =
+            ModuleDefaultValues.WECHAT_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean weChatNavigationBadgesEnabled = true;
+    static volatile boolean qqFloatingNavigationEnabled =
+            ModuleDefaultValues.QQ_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean qqNavigationBadgesEnabled = true;
+    static volatile boolean qqMusicFloatingNavigationEnabled =
+            ModuleDefaultValues.QQ_MUSIC_FLOATING_NAVIGATION_ENABLED;
     static volatile boolean xiaomiCommunityFloatingNavigationEnabled = ModuleDefaultValues.XIAOMI_COMMUNITY_FLOATING_NAVIGATION_ENABLED;
     static volatile boolean xiaomiCommunityMiuixIconsEnabled = false;
     static volatile boolean xiaomiCommunityMonochromeIconsEnabled = true;
@@ -193,6 +217,13 @@ final class ModuleSettings {
     static volatile boolean bilibiliMallTabVisible = true;
     static volatile boolean bilibiliMineTabVisible = true;
     static volatile boolean bilibiliPublishButtonVisible = true;
+    static volatile boolean piliPlusFloatingNavigationEnabled = ModuleDefaultValues.PILIPLUS_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean pinduoduoFloatingNavigationEnabled = ModuleDefaultValues.PINDUODUO_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean taobaoFloatingNavigationEnabled = ModuleDefaultValues.TAOBAO_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean jingdongFloatingNavigationEnabled = ModuleDefaultValues.JINGDONG_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean xianyuFloatingNavigationEnabled = ModuleDefaultValues.XIANYU_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean douyinMallFloatingNavigationEnabled = ModuleDefaultValues.DOUYIN_MALL_FLOATING_NAVIGATION_ENABLED;
+    static volatile boolean cainiaoFloatingNavigationEnabled = ModuleDefaultValues.CAINIAO_FLOATING_NAVIGATION_ENABLED;
     static volatile boolean spotifyFloatingNavigationEnabled = ModuleDefaultValues.SPOTIFY_FLOATING_NAVIGATION_ENABLED;
     static volatile boolean spotifyFavoriteButtonEnabled = ModuleDefaultValues.SPOTIFY_FAVORITE_BUTTON_ENABLED;
     static volatile boolean spotifyShuffleButtonEnabled = ModuleDefaultValues.SPOTIFY_SHUFFLE_BUTTON_ENABLED;
@@ -245,6 +276,13 @@ final class ModuleSettings {
         // provider IPC is needed: LSPosed has already supplied the preferences snapshot.
         try {
             moduleHooksEnabled = preferences.getBoolean("module_hooks_enabled", true);
+            deviceModeOverride = LargeScreenDevicePolicy.normalizeOverride(
+                    preferences.getInt("device_mode_override", LargeScreenDevicePolicy.AUTO));
+            navigationBarGeometry = preferences.getString("navigation_bar_geometry", "");
+            NavigationBarGeometryBridge.applyRaw(navigationBarGeometry);
+            miMusicFloatingNavigationEnabled = preferences.getBoolean(
+                    "mi_music_floating_navigation_enabled",
+                    ModuleDefaultValues.MI_MUSIC_FLOATING_NAVIGATION_ENABLED);
             desktopStatusBarIconMode = DesktopStatusBarPolicy.normalize(preferences.getInt("desktop_status_bar_icon_mode", 0));
             androidWidgetGlassEnabled = preferences.getBoolean("deadliner_widget_glass_enabled", false);
             androidWidgetGlassTargets = preferences.getString(AndroidWidgetGlassPolicy.KEY, AndroidWidgetGlassPolicy.DEFAULT_TARGETS);
@@ -480,6 +518,8 @@ final class ModuleSettings {
             lastLoadStatus = "remote-preferences";
             Bundle values = preferencesToBundle(preferences);
             moduleHooksEnabled = values.getBoolean("module_hooks_enabled", true);
+            deviceModeOverride = LargeScreenDevicePolicy.normalizeOverride(
+                    values.getInt("device_mode_override", LargeScreenDevicePolicy.AUTO));
             systemUiCompatibilityMode = values.getBoolean("systemui_compatibility_mode", false);
             systemUiRetryGeneration = values.getInt("systemui_retry_generation", 0);
             gestureHandleEnabled = values.getBoolean("gesture_handle_enabled", false);
@@ -511,6 +551,7 @@ final class ModuleSettings {
                     "heads_up_glass_parameters_enabled", false);
             shadeCardGlassParametersEnabled = values.getBoolean("shade_card_glass_parameters_enabled", false);
             disableMediaIslandHooks = values.getBoolean("disable_media_island_hooks", false);
+            foldIslandPosition = FoldIslandPlacement.normalize(values.getInt(FoldIslandPlacement.KEY, 0));
             disableShadeGlassHooks = values.getBoolean("disable_shade_glass_hooks", false);
             unifiedGlassParameters = UnifiedGlassPolicy.sanitize(parseHeadsUpGlassParameters(
                     values.getString("unified_glass_parameters", ""), ShadeCardGlassPolicy.defaults()));
@@ -662,10 +703,14 @@ final class ModuleSettings {
             statusBarNetworkTypeBold = values.getBoolean("status_bar_network_type_bold", true);
             statusBarNetworkTypeOffset = values.getFloat("status_bar_network_type_offset", 0f);
             navigationGlassParameters = values.getString("navigation_glass_parameters", "");
+            navigationBarGeometry = values.getString("navigation_bar_geometry", "");
+            NavigationBarGeometryBridge.applyRaw(navigationBarGeometry);
             hyperGlassifyHiddenNavigationLift = Math.max(0f, Math.min(48f, values.getFloat(
                     "hyper_glassify_hidden_navigation_lift", ModuleDefaultValues.HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT)));
             xiaomiHealthFloatingNavigationEnabled = values.getBoolean(
                     "xiaomi_health_floating_navigation_enabled", ModuleDefaultValues.XIAOMI_HEALTH_FLOATING_NAVIGATION_ENABLED);
+            miMusicFloatingNavigationEnabled = values.getBoolean(
+                    "mi_music_floating_navigation_enabled", ModuleDefaultValues.MI_MUSIC_FLOATING_NAVIGATION_ENABLED);
             xiaomiHealthMiuixIconsEnabled = values.getBoolean(
                     "xiaomi_health_miuix_icons_enabled", false);
             xiaomiHealthMonochromeIconsEnabled = values.getBoolean(
@@ -694,8 +739,35 @@ final class ModuleSettings {
                     "amap_monochrome_icons_enabled", true);
             amapHideLongPressVoiceTabEnabled = values.getBoolean(
                     "amap_hide_long_press_voice_tab_enabled", ModuleDefaultValues.AMAP_HIDE_LONG_PRESS_VOICE_TAB_ENABLED);
+            nioDiscoverTabVisible = values.getBoolean("nio_discover_tab_visible", true);
+            nioFriendsTabVisible = values.getBoolean("nio_friends_tab_visible", true);
+            nioCarTabVisible = values.getBoolean("nio_car_tab_visible", true);
+            nioMallTabVisible = values.getBoolean("nio_mall_tab_visible", true);
+            nioMineTabVisible = values.getBoolean("nio_mine_tab_visible", true);
+            nioFloatingNavigationEnabled = values.getBoolean("nio_floating_navigation_enabled", ModuleDefaultValues.NIO_FLOATING_NAVIGATION_ENABLED);
             alipayFloatingNavigationEnabled = values.getBoolean("alipay_floating_navigation_enabled", ModuleDefaultValues.ALIPAY_FLOATING_NAVIGATION_ENABLED);
             douyinFloatingNavigationEnabled = values.getBoolean("douyin_floating_navigation_enabled", ModuleDefaultValues.DOUYIN_FLOATING_NAVIGATION_ENABLED);
+            douyinLiteFloatingNavigationEnabled = values.getBoolean(
+                    "douyin_lite_floating_navigation_enabled",
+                    ModuleDefaultValues.DOUYIN_LITE_FLOATING_NAVIGATION_ENABLED);
+            kuaishouFloatingNavigationEnabled = values.getBoolean(
+                    "kuaishou_floating_navigation_enabled",
+                    ModuleDefaultValues.KUAISHOU_FLOATING_NAVIGATION_ENABLED);
+            kuaishouLiteFloatingNavigationEnabled = values.getBoolean(
+                    "kuaishou_lite_floating_navigation_enabled",
+                    ModuleDefaultValues.KUAISHOU_LITE_FLOATING_NAVIGATION_ENABLED);
+            weChatFloatingNavigationEnabled = values.getBoolean(
+                    "wechat_floating_navigation_enabled",
+                    ModuleDefaultValues.WECHAT_FLOATING_NAVIGATION_ENABLED);
+            weChatNavigationBadgesEnabled =
+                    values.getBoolean("wechat_navigation_badges_enabled", true);
+            qqFloatingNavigationEnabled = values.getBoolean(
+                    "qq_floating_navigation_enabled",
+                    ModuleDefaultValues.QQ_FLOATING_NAVIGATION_ENABLED);
+            qqNavigationBadgesEnabled = values.getBoolean("qq_navigation_badges_enabled", true);
+            qqMusicFloatingNavigationEnabled = values.getBoolean(
+                    "qq_music_floating_navigation_enabled",
+                    ModuleDefaultValues.QQ_MUSIC_FLOATING_NAVIGATION_ENABLED);
             xiaomiCommunityFloatingNavigationEnabled = values.getBoolean(
                     "xiaomi_community_floating_navigation_enabled", ModuleDefaultValues.XIAOMI_COMMUNITY_FLOATING_NAVIGATION_ENABLED);
             xiaomiCommunityMiuixIconsEnabled = values.getBoolean(
@@ -712,6 +784,21 @@ final class ModuleSettings {
             bilibiliMallTabVisible = values.getBoolean("bilibili_mall_tab_visible", true);
             bilibiliMineTabVisible = values.getBoolean("bilibili_mine_tab_visible", true);
             bilibiliPublishButtonVisible = values.getBoolean("bilibili_publish_button_visible", true);
+            piliPlusFloatingNavigationEnabled = values.getBoolean(
+                    "piliplus_floating_navigation_enabled",
+                    ModuleDefaultValues.PILIPLUS_FLOATING_NAVIGATION_ENABLED);
+            pinduoduoFloatingNavigationEnabled = values.getBoolean(
+                    "pinduoduo_floating_navigation_enabled", ModuleDefaultValues.PINDUODUO_FLOATING_NAVIGATION_ENABLED);
+            taobaoFloatingNavigationEnabled = values.getBoolean(
+                    "taobao_floating_navigation_enabled", ModuleDefaultValues.TAOBAO_FLOATING_NAVIGATION_ENABLED);
+            jingdongFloatingNavigationEnabled = values.getBoolean(
+                    "jingdong_floating_navigation_enabled", ModuleDefaultValues.JINGDONG_FLOATING_NAVIGATION_ENABLED);
+            xianyuFloatingNavigationEnabled = values.getBoolean(
+                    "xianyu_floating_navigation_enabled", ModuleDefaultValues.XIANYU_FLOATING_NAVIGATION_ENABLED);
+            douyinMallFloatingNavigationEnabled = values.getBoolean(
+                    "douyin_mall_floating_navigation_enabled", ModuleDefaultValues.DOUYIN_MALL_FLOATING_NAVIGATION_ENABLED);
+            cainiaoFloatingNavigationEnabled = values.getBoolean(
+                    "cainiao_floating_navigation_enabled", ModuleDefaultValues.CAINIAO_FLOATING_NAVIGATION_ENABLED);
             spotifyFloatingNavigationEnabled = values.getBoolean(
                     "spotify_floating_navigation_enabled", ModuleDefaultValues.SPOTIFY_FLOATING_NAVIGATION_ENABLED);
             spotifyFavoriteButtonEnabled = values.getBoolean(

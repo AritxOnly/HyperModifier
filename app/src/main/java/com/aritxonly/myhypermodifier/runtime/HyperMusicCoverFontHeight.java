@@ -16,7 +16,6 @@ final class HyperMusicCoverFontHeight {
     private final Field height, weight, width, size, text, paint;
     private final Method variation;
     private final HyperMusicCoverClockLayout layout;
-    private final HyperMusicCoverClockExit exit;
     private final XposedModule module;
     private final WeakHashMap<View, HyperMusicCoverClockFramePolicy.Gate> frames = new WeakHashMap<>();
     private HyperMusicCoverExtensionPolicy.FontReference sessionReference;
@@ -39,7 +38,6 @@ final class HyperMusicCoverFontHeight {
     HyperMusicCoverFontHeight(XposedModule module, ClassLoader loader) throws ReflectiveOperationException {
         Class<?> owner = Class.forName("com.miui.clock.allInOne.TimeView", false, loader);
         this.module = module;
-        exit = new HyperMusicCoverClockExit(module);
         layout = new HyperMusicCoverClockLayout(module, loader);
         height = field(owner, "height"); weight = field(owner, "weight"); width = field(owner, "width");
         size = field(owner, "textSizePx"); text = field(owner, "mText"); paint = field(owner, "textPaint");
@@ -58,7 +56,7 @@ final class HyperMusicCoverFontHeight {
                     Ink box = ink.get(tv);
                     if (box == null) { box = new Ink(); ink.put(tv, box); }
                     Float progress = HyperMusicCoverExtensions.fontProgress(tv);
-                    if (!exit.retains(tv)) observeReference(box, tv, progress != null);
+                    observeReference(box, tv, progress != null);
                     if (progress == null) { layout.restore(tv); box.baseline = box.shaped = 0f; return chain.proceed(); }
                     float originalWidth = width.getFloat(tv), originalSize = size.getFloat(tv);
                     float originalWeight = weight.getFloat(tv);
@@ -147,7 +145,6 @@ final class HyperMusicCoverFontHeight {
         return value;
     }
     private void prepare(View tv, float progress) throws ReflectiveOperationException {
-        if (exit.retains(tv)) return;
         View owner = layout.owner(tv);
         View key = owner == null ? tv : owner;
         HyperMusicCoverClockFramePolicy.Gate gate = frames.get(key);
@@ -226,29 +223,8 @@ final class HyperMusicCoverFontHeight {
         box.selectedHeight = selectedHeight; box.selectedSize = selectedSize;
         box.progress = progress;
     }
-    void observeTargets(HyperMusicCoverAdapter adapter) throws ReflectiveOperationException {
-        exit.clearInvisible();
-        if (HyperMusicCoverExtensions.fontLeaving()) return;
-        for (View root : adapter.roots()) if (root != null) {
-            View target = (View) adapter.clockTarget.invoke(null, root);
-            if (largestInk(target) != null) exit.observe(target);
-        }
-    }
-    void beginUnlock() {
-        try { exit.begin(); } catch (ReflectiveOperationException error) {
-            HookDiagnostics.failure("com.android.systemui", "HMC 时钟退出", error);
-        }
-    }
     void finishUnlock() {
-        try { exit.finish(); } catch (ReflectiveOperationException error) {
-            HookDiagnostics.failure("com.android.systemui", "HMC 时钟退出", error);
-        }
         frames.clear();
-    }
-    boolean retainingExit() { return exit.retained(); }
-    Float exitProgress(View view) {
-        Ink box = ink.get(view);
-        return box != null && box.plannedBounds != null && exit.retains(view) ? box.progress : null;
     }
     private void observeReference(Ink box, View tv, boolean active) throws ReflectiveOperationException {
         if (active) {
@@ -267,7 +243,6 @@ final class HyperMusicCoverFontHeight {
         if (!held && sessionReference != null) {
             sessionReference = null;
             frames.clear();
-            exit.clearObserved();
             for (Ink box : ink.values()) {
                 box.reference = new HyperMusicCoverExtensionPolicy.FontReference();
                 box.baseline = box.shaped = 0f; box.solution = null; box.plannedBounds = null; box.position = null;

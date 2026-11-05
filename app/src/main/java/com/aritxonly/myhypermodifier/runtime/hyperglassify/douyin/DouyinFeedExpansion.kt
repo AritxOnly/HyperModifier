@@ -45,7 +45,7 @@ internal object DouyinFeedExpansion {
     private fun bind(view: View, reservation: Reservation, owner: Activity?) {
         reservation.owner = WeakReference(owner)
         reservation.enabled = owner != null && ModuleSettings.moduleHooksEnabled &&
-            ModuleSettings.douyinFloatingNavigationEnabled
+            DouyinTargetPolicy.enabled()
         apply(view, reservation)
     }
 
@@ -55,7 +55,7 @@ internal object DouyinFeedExpansion {
         val reservation = Reservation(owner, view.visibility)
         spaces[view] = reservation
         view.addOnAttachStateChangeListener(attachment)
-        reservation.enabled = owner != null && ModuleSettings.moduleHooksEnabled && ModuleSettings.douyinFloatingNavigationEnabled
+        reservation.enabled = owner != null && DouyinTargetPolicy.enabled()
         apply(view, reservation)
         if (view.isAttachedToWindow) attachment.onViewAttachedToWindow(view)
     }

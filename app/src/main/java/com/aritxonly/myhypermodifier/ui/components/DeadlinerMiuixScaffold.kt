@@ -1,15 +1,24 @@
 package com.aritxonly.myhypermodifier
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
+import com.aritxonly.myhypermodifier.adaptive.*
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.*
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
@@ -30,6 +39,8 @@ import com.aritxonly.deadliner.ui.material.glass.LocalTopBarScrollProgress
 import com.aritxonly.deadliner.ui.material.glass.LocalImmersiveExperienceEnabled
 import com.aritxonly.deadliner.ui.material.glass.ProgressiveTopBarMaterial
 
+private val LocalLargeScreenLayout = staticCompositionLocalOf { false }
+
 /**
  * Deadliner's Miuix scaffold composition: record only the page layer, then let chrome sample it.
  * Keeping the recorder separate from top/bottom chrome avoids an Android HWUI RenderNode cycle.
@@ -37,13 +48,22 @@ import com.aritxonly.deadliner.ui.material.glass.ProgressiveTopBarMaterial
 @Composable
 fun DeadlinerMiuixScaffold(
     scrollProgress: Float,
+    navigationItems: List<MiuixFloatingTabItem> = emptyList(),
+    selectedKey: String = "",
+    navigationAction: @Composable () -> Unit = {},
+    onNavigationSelected: (MiuixFloatingTabItem) -> Unit = {},
     topBar: (@Composable BoxScope.() -> Unit)? = null,
     bottomBar: @Composable () -> Unit,
     overlay: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
+    maxContentWidth: Dp = 1040.dp,
+    deviceModeOverride: Int = LargeScreenDevicePolicy.AUTO,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val advancedMaterial = remember { AdvancedMaterialSpec(enabled = true) }
+    val largeScreen = remember(deviceModeOverride) {
+        LargeScreenDevicePolicy.usesLargeScreenLayout(deviceModeOverride)
+    }
     val captureColor = MiuixTheme.colorScheme.background
     val backdrop = rememberLayerBackdrop {
         drawRect(captureColor)
@@ -54,20 +74,41 @@ fun DeadlinerMiuixScaffold(
         LocalAdvancedMaterialBackdrop provides backdrop,
         LocalImmersiveExperienceEnabled provides true,
         LocalTopBarScrollProgress provides scrollProgress,
+        LocalLargeScreenLayout provides largeScreen,
     ) {
-        MiuixScaffold(
+        SettingsAdaptiveChrome(navigationItems, selectedKey, onNavigationSelected, navigationAction) { contentInset ->
+        if (LocalTabletNavigationHeader.current) {
+            val density = LocalDensity.current
+            var topHeight by remember { mutableIntStateOf(0) }
+            Box(modifier.fillMaxSize()) {
+                Box(Modifier.fillMaxSize().layerBackdrop(backdrop).background(captureColor)) {
+                    Box(Modifier.fillMaxSize().then(contentInset)) {
+                        content(PaddingValues(top = with(density) { topHeight.toDp() },
+                            bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()))
+                    }
+                }
+                // Lists live outside Scaffold and scroll beneath the single material host.
+                topBar?.let { bar ->
+                    ProgressiveTopBarMaterial(enabled = true) {
+                        Box(Modifier.fillMaxWidth().then(contentInset).onSizeChanged { topHeight = it.height }) { bar() }
+                    }
+                }
+                // Only overlays need the Miuix popup host; never record this layer.
+                MiuixScaffold(containerColor = Color.Transparent) { overlay() }
+            }
+        } else MiuixScaffold(
             modifier = modifier,
-            containerColor = Color.Transparent,
+            containerColor = if (largeScreen) MiuixTheme.colorScheme.background else Color.Transparent,
             topBar = {
                 topBar?.let { topBarContent ->
                     ProgressiveTopBarMaterial(enabled = true) {
-                        topBarContent()
+                        Box(Modifier.fillMaxWidth().then(contentInset)) { topBarContent() }
                     }
                 }
             },
             bottomBar = {
                 CompositionLocalProvider(LocalAdvancedMaterialBackdrop provides backdrop) {
-                    bottomBar()
+                    if (!LocalTabletNavigationHeader.current) bottomBar()
                 }
             },
         ) { padding ->
@@ -77,11 +118,12 @@ fun DeadlinerMiuixScaffold(
                     .layerBackdrop(backdrop)
                     .background(MiuixTheme.colorScheme.background),
             ) {
-                content(padding)
+                Box(Modifier.fillMaxSize().then(contentInset)) { content(padding) }
                 // OverlayDialog and OverlayBottomSheet must be descendants of MiuixScaffold.
                 overlay()
             }
         }
+    }
     }
 }
 
@@ -95,6 +137,7 @@ fun DeadlinerMiuixDialog(
 ) {
     val advanced = LocalAdvancedMaterialSpec.current
     val backdrop = LocalAdvancedMaterialBackdrop.current
+    val largeScreen = LocalLargeScreenLayout.current
     val modifier = if (advanced.enabled && backdrop != null) {
         Modifier.deadlinerGlassMaterial(
             advancedMaterial = advanced,
@@ -114,7 +157,7 @@ fun DeadlinerMiuixDialog(
         modifier = modifier,
         backgroundColor = if (modifier == Modifier) MiuixTheme.colorScheme.surfaceContainer else Color.Transparent,
         cornerRadius = 36.dp,
-        maxWidth = 420.dp,
+        maxWidth = if (largeScreen) 560.dp else 420.dp,
         content = content,
     )
 }
@@ -128,6 +171,7 @@ fun DeadlinerMiuixBottomSheet(
 ) {
     val advanced = LocalAdvancedMaterialSpec.current
     val backdrop = LocalAdvancedMaterialBackdrop.current
+    val largeScreen = LocalLargeScreenLayout.current
     val modifier = if (advanced.enabled && backdrop != null) {
         Modifier.deadlinerGlassMaterial(
             advancedMaterial = advanced,
@@ -146,7 +190,7 @@ fun DeadlinerMiuixBottomSheet(
         modifier = modifier,
         backgroundColor = if (modifier == Modifier) MiuixTheme.colorScheme.surfaceContainer else Color.Transparent,
         cornerRadius = 36.dp,
-        sheetMaxWidth = 560.dp,
+        sheetMaxWidth = if (largeScreen) 760.dp else 560.dp,
         content = content,
     )
 }

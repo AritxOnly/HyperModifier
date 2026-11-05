@@ -10,6 +10,8 @@ import androidx.compose.ui.unit.dp
 import android.widget.Toast
 import com.aritxonly.deadliner.model.AdvancedMaterialTuning
 import top.yukonga.miuix.kmp.basic.Slider
+import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
+import kotlin.math.roundToInt
 
 internal object SettingsItemDefaults { val HorizontalPadding = 24.dp }
 @Composable internal fun SettingsHeroSection(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) =
@@ -23,6 +25,9 @@ internal fun NavigationGlassSettingsPage(
     val saved = remember(settings.navigationGlassParameters) { NavigationGlassParameters.decode(settings.navigationGlassParameters) }
     var preview by remember(saved) { mutableStateOf(saved) }
     var lift by remember(settings.hyperGlassifyHiddenNavigationLift) { mutableFloatStateOf(settings.hyperGlassifyHiddenNavigationLift) }
+    var geometry by remember(settings.navigationBarGeometry) {
+        mutableStateOf(NavigationBarGeometryParameters.decode(settings.navigationBarGeometry))
+    }
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     fun commit(value: NavigationGlassParameters = preview, liftValue: Float = lift) {
@@ -30,6 +35,17 @@ internal fun NavigationGlassSettingsPage(
         update(settings.copy(navigationGlassParameters = preview.encode(),
             hyperGlassifyHiddenNavigationLift = liftValue.coerceIn(0f, 48f)))
     }
+    fun commitGeometry(value: NavigationBarGeometryParameters = geometry) {
+        geometry = value.normalized()
+        update(settings.copy(navigationBarGeometry = geometry.encode()))
+    }
+    fun updateActiveGeometry(value: NavigationBarGeometry) {
+        geometry = geometry.withActiveGeometry(value).normalized()
+    }
+    fun normalizedWidth(value: Float): Float = if (value < 80f) 0f
+        else ((value / 5f).roundToInt() * 5).coerceIn(160, 600).toFloat()
+    fun normalizedHeight(value: Float): Float = if (value < 18f) 0f
+        else ((value / 2f).roundToInt() * 2).coerceIn(36, 80).toFloat()
     SettingsScrollPage(padding, onScroll) {
         SettingsSection(topLabel = "模糊度") {
             NavigationMaterialRadiusSlider(value = preview.blurRadius, enabled = true,
@@ -42,6 +58,84 @@ internal fun NavigationGlassSettingsPage(
             Slider(value = lift, valueRange = 0f..48f, steps = 47,
                 onValueChange = { lift = it }, onValueChangeFinished = { commit() },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp))
+        }
+        SettingsSection(topLabel = "底栏尺寸") {
+            val active = geometry.activeGeometry()
+            SettingsSwitchItem(
+                label = "同步至所有底栏",
+                supportingText = if (geometry.syncAll) {
+                    "当前设置会统一应用到所有悬浮底栏"
+                } else {
+                    "关闭后只调节所选底栏，其他底栏保持原尺寸"
+                },
+                checked = geometry.syncAll,
+                onCheckedChange = { commitGeometry(geometry.copy(syncAll = it)) },
+            )
+            if (!geometry.syncAll) {
+                val visibleTargets = NavigationBarGeometryTargets.all.filter { it.key != "PiliPlus" }
+                val selectedIndex = visibleTargets.indexOfFirst {
+                    it.key == geometry.selectedTarget
+                }.coerceAtLeast(0)
+                WindowDropdownPreference(
+                    title = "调节对象",
+                    summary = "逐底栏保存左侧边距、宽度和高度",
+                    items = visibleTargets.map { it.label },
+                    selectedIndex = selectedIndex,
+                    onSelectedIndexChange = {
+                        commitGeometry(
+                            geometry.copy(
+                                selectedTarget = visibleTargets[it].key,
+                            ),
+                        )
+                    },
+                )
+            }
+            SettingItem(
+                "横向左边距",
+                "${active.leftMarginDp.roundToInt()} dp · 在现有对齐位置右侧增加",
+            )
+            Slider(
+                value = active.leftMarginDp,
+                valueRange = 0f..160f,
+                steps = 159,
+                onValueChange = {
+                    updateActiveGeometry(active.copy(leftMarginDp = it.roundToInt().toFloat()))
+                },
+                onValueChangeFinished = { commitGeometry() },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+            )
+            SettingItem(
+                "底栏宽度",
+                if (active.maximumWidthDp == 0f) "自动 · 跟随当前底栏规则"
+                else "${active.maximumWidthDp.roundToInt()} dp",
+            )
+            Slider(
+                value = active.maximumWidthDp,
+                valueRange = 0f..600f,
+                steps = 119,
+                onValueChange = {
+                    updateActiveGeometry(
+                        active.copy(maximumWidthDp = normalizedWidth(it)),
+                    )
+                },
+                onValueChangeFinished = { commitGeometry() },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+            )
+            SettingItem(
+                "底栏高度",
+                if (active.heightDp == 0f) "自动 · 跟随当前底栏规则"
+                else "${active.heightDp.roundToInt()} dp",
+            )
+            Slider(
+                value = active.heightDp,
+                valueRange = 0f..80f,
+                steps = 40,
+                onValueChange = {
+                    updateActiveGeometry(active.copy(heightDp = normalizedHeight(it)))
+                },
+                onValueChangeFinished = { commitGeometry() },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+            )
         }
         SettingsSection(topLabel = "高级参数调节") {
             AdvancedMaterialFineTuningPanel(

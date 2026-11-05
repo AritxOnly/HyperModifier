@@ -37,14 +37,13 @@ final class BackgroundDimHooks {
     static void installSystemUi(XposedModule module, ClassLoader loader) {
         if (!INSTALLED.compareAndSet(false, true)) return;
         try {
-            Class<?> controller = Class.forName(
-                    "com.miui.systemui.shade.blur.ShadeBlendBlurControllerImpl", false, loader);
+            Class<?> controller = ShadeBlurControllers.blend(loader);
             Class<?> compat = Class.forName("com.miui.systemui.util.MiBlurCompat", false, loader);
-            Method start = controller.getDeclaredMethod("start");
+            ShadeBlurControllers.Start start = ShadeBlurControllers.start(controller, "blendBlurController");
             Method setColors = compat.getDeclaredMethod(
                     "setMiBackgroundBlendColors", View.class, int[].class, float.class);
             Class<?> blendBackground = Class.forName(
-                    "com.miui.systemui.shade.blur.ShadeBlendBlurControllerImpl$BlendBackground",
+                    controller.getName() + "$BlendBackground",
                     false, loader);
             Field blendView = blendBackground.getDeclaredField("view");
             Field blendRecipe = blendBackground.getDeclaredField("blendColors");
@@ -85,15 +84,16 @@ final class BackgroundDimHooks {
                 backgrounds[i] = controller.getDeclaredField(names[i]);
                 backgrounds[i].setAccessible(true);
             }
-            module.hook(start)
+            module.hook(start.method)
                     .setId("global-background-dim-owners")
                     .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
                         // Identify exact injected background Views, not all blur API callers.
                         // Register before start: it creates BlendBackground and launches flows.
+                        Object owner = start.controller(chain.getThisObject());
                         for (Field field : backgrounds) {
                             try {
-                                Object lazy = field.get(chain.getThisObject());
+                                Object lazy = field.get(owner);
                                 Object view = lazy == null ? null : lazyGet.invoke(lazy);
                                 if (view instanceof View) SHADE_BACKGROUNDS.put((View) view, true);
                             } catch (ReflectiveOperationException | RuntimeException exception) {
@@ -149,8 +149,7 @@ final class BackgroundDimHooks {
             Log.i(TAG, "Global backdrop dim hooks installed (notification/control/combined)");
             HookDiagnostics.available("com.android.systemui", "全局背景压暗");
             deoptimizeCallers(module, loader,
-                    "com.miui.systemui.shade.blur.ShadeBlendBlurControllerImpl$BlendBackground",
-                    "com.miui.systemui.shade.blur.ShadeBlendBlurControllerImpl$start$2$1");
+                    blendBackground.getName(), controller.getName() + "$start$2$1");
         } catch (Throwable throwable) {
             INSTALLED.set(false);
             Log.w(TAG, "Global backdrop dim hook unavailable", throwable);

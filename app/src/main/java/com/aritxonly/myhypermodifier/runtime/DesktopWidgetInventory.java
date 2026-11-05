@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /** On-demand, read-only widget inventory through the already scoped SystemUI process. */
 public final class DesktopWidgetInventory {
-    public static final String ACTION = "com.aritxonly.myhypermodifier.DESKTOP_WIDGET_INVENTORY";
+    public static final String ACTION = BuildConfig.APPLICATION_ID + ".DESKTOP_WIDGET_INVENTORY";
     private static final AtomicBoolean ATTACHED = new AtomicBoolean(), BUSY = new AtomicBoolean();
     private static final java.util.concurrent.Executor EXECUTOR = Executors.newSingleThreadExecutor();
     private DesktopWidgetInventory() {}
@@ -27,8 +27,9 @@ public final class DesktopWidgetInventory {
             @Override public void onReceive(Context ignored, Intent intent) {
                 try {
                     // The module publishes sender identity; do not disclose inventory to other apps.
-                    if (!"com.aritxonly.myhypermodifier".equals(getSentFromPackage())
-                            || getSentFromUid() != context.getPackageManager().getPackageUid("com.aritxonly.myhypermodifier", 0)) return;
+                    if (!BuildConfig.APPLICATION_ID.equals(getSentFromPackage())
+                            || getSentFromUid() != context.getPackageManager().getPackageUid(
+                                    BuildConfig.APPLICATION_ID, 0)) return;
                     ResultReceiver reply = intent.getParcelableExtra("reply", ResultReceiver.class);
                     if (reply == null) return;
                     if (!BUSY.compareAndSet(false, true)) { reply.send(1, error("正在读取，请稍后刷新")); return; }
@@ -51,7 +52,7 @@ public final class DesktopWidgetInventory {
                             Bundle result = new Bundle(); result.putStringArrayList("widgets", entries); reply.send(0, result);
                         } catch (Throwable failure) {
                             reply.send(1, error(intent.getBooleanExtra("compatibility", false)
-                                    ? "桌面兼容状态不可用，请确认系统桌面与系统界面作用域，并在更新模块后重启两者。请勿据此判断 schema 不兼容。"
+                                    ? DesktopClockSettingsBridge.diagnosticSummary() + "\n桌面诊断连接未建立。无法据此判断 Hook 或布局是否生效。"
                                     : "无法读取桌面小组件，请确认系统界面作用域已启用并重启系统界面"));
                         } finally {
                             if (file != null) file.delete();

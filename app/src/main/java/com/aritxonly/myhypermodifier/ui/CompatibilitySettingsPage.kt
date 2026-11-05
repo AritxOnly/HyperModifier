@@ -30,7 +30,14 @@ internal fun CompatibilitySettingsPage(
     val context = LocalContext.current
     val diagnostics = rememberHookDiagnostics()
     var autoClean by remember(context) { mutableStateOf(HookDiagnosticStore.autoClean(context)) }
-    val features = HookDiagnosticPolicy.latestFeatures(diagnostics)
+    val features = remember(diagnostics) { HookDiagnosticPolicy.latestFeatures(diagnostics) }
+    val (failures, recoveredFailures) = remember(diagnostics) { HookDiagnosticPolicy.errorGroups(diagnostics) }
+    fun copyError(text: String) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("Hook 错误日志", text))
+        android.widget.Toast.makeText(context, "已复制错误日志", android.widget.Toast.LENGTH_SHORT).show()
+    }
+    HookErrorLogSection("Hook 错误日志", failures, ::copyError)
     SettingsSection(topLabel = "模块恢复") {
         SettingsSwitchItem(
             "启用模块 Hook", "关闭后重启设备生效，功能设置保留",
@@ -62,6 +69,7 @@ internal fun CompatibilitySettingsPage(
             },
         )
     }
+    HookErrorLogSection("已恢复的 Hook 错误日志", recoveredFailures, ::copyError)
     SettingsSection(topLabel = "功能可用性") {
         if (features.isEmpty()) {
             SettingItem("尚未检测", "重启目标应用后查看功能安装结果")
@@ -106,6 +114,21 @@ internal fun CompatibilitySettingsPage(
                     "${if (item.warning) "安装失败" else if (item.feature == "模块注入") "已进入进程" else "已安装"} · ${item.feature}",
                     "${formatDiagnosticTime(item.time)} · ${item.packageName}\n${item.detail}",
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HookErrorLogSection(title: String, failures: List<HookDiagnostic>, copyError: (String) -> Unit) {
+    if (failures.isNotEmpty()) SettingsSection(topLabel = title) {
+        NavigationSettingItem("复制全部错误", "${failures.size} 条", onClick = {
+            copyError(failures.joinToString("\n") { "${formatDiagnosticTime(it.time)} ${it.packageName} ${it.feature}: ${it.detail}" })
+        })
+        failures.forEach { item ->
+            val log = "${formatDiagnosticTime(item.time)} · ${item.packageName}\n${item.detail}"
+            androidx.compose.foundation.text.selection.SelectionContainer {
+                SettingItem(item.feature, log, onClick = { copyError("${item.feature}\n$log") })
             }
         }
     }

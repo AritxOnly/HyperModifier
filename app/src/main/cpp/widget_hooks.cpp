@@ -1,4 +1,6 @@
 #include "widget_hooks.h"
+#include "fold_widget_material.h"
+#include "fold_widget_rules.h"
 #include "widget_policy.h"
 #include "schema_abi_origin.h"
 #include <memory>
@@ -18,6 +20,7 @@ extern "C" {
 __attribute__((visibility("hidden"))) void *mhm_original_widget_picker = nullptr;
 __attribute__((visibility("hidden"))) uint8_t mhm_widget_picker_enabled = 0;
 void mhm_widget_picker_entry();
+__attribute__((visibility("hidden"))) uint8_t mhm_fold_widget_enabled = 0;
 }
 
 namespace {
@@ -44,6 +47,7 @@ void *originalProviderClone = nullptr, *originalProviderDrop = nullptr, *origina
 std::atomic<bool> stackEnabled{false}, glassEnabled{false}, active{false}, pickerReady{false};
 std::atomic<bool> clockGlassEnabled{false};
 std::atomic<unsigned> metadataLogs{0};
+std::atomic<unsigned> materialGeneration{1};
 bool attempted = false, pickerAttempted = false;
 GetBoolean getInteger = nullptr;
 std::mutex configMutex, persistenceMutex;
@@ -51,9 +55,22 @@ WidgetGlassRules glassRules, clockGlassRules;
 WidgetStyleRules styleRules;
 std::string encodedStyles;
 std::string encodedRules = "*", encodedClockGlassRules = "*";
+bool foldRulesInstalled = false;
+std::shared_ptr<const FoldWidgetRules> publishedFoldRules;
+
+// Caller holds configMutex. Only the verified 6325 renderer needs a snapshot.
+void publishFoldRules() {
+    std::shared_ptr<const FoldWidgetRules> next;
+    if (glassEnabled.load())
+        next = std::make_shared<FoldWidgetRules>(FoldWidgetRules{
+            glassRules, clockGlassRules, styleRules, clockGlassEnabled.load()});
+    std::atomic_store_explicit(&publishedFoldRules, std::move(next), std::memory_order_release);
+    materialGeneration.fetch_add(1, std::memory_order_release);
+}
 // Called with configMutex held. A rejected / unavailable native bridge must not
 // alter picker classification just because a saved option was enabled.
 void refreshPickerEnabled() {
+    __atomic_store_n(&mhm_fold_widget_enabled, static_cast<uint8_t>(active.load() && glassEnabled.load()), __ATOMIC_RELEASE);
     bool enabled = active.load(std::memory_order_acquire) && pickerReady.load(std::memory_order_acquire)
         && (stackEnabled.load() || (glassEnabled.load() && (!encodedRules.empty() || !encodedStyles.empty())));
     __atomic_store_n(&mhm_widget_picker_enabled, static_cast<uint8_t>(enabled), __ATOMIC_RELEASE);
@@ -277,6 +294,69 @@ bool matchingInstanceAbi(void *launcher) {
 
 }
 
+// Called only by the two reviewed 6325 AppWidget build paths. Borrow Dart
+// strings during this synchronous leaf call; only native copies survive it.
+extern "C" __attribute__((preserve_all)) bool mhm_fold_widget_clear(uintptr_t model, uintptr_t heap) {
+    if (!active.load(std::memory_order_acquire) || !glassEnabled.load()) return false;
+    auto word = [](uintptr_t address) {
+        uint32_t result;
+        std::memcpy(&result, reinterpret_cast<const void *>(address), sizeof(result));
+        return result;
+    };
+    if (!(model & 1) || (word(model - 1) >> 12) != 0x7a8) return false;
+    uint32_t taggedId = word(model + 0x12b);
+    int64_t numericId = static_cast<int32_t>(taggedId) >> 1;
+    if (taggedId & 1) {
+        uintptr_t mint = heap + taggedId;
+        if ((word(mint - 1) >> 12) != 61) return false;
+        std::memcpy(&numericId, reinterpret_cast<const void *>(mint + 7), sizeof(numericId));
+    }
+    if (numericId <= 0 || numericId > INT32_MAX) return false;
+    auto text = [&](uint32_t compressed) -> FoldWidgetText {
+        if (!(compressed & 1)) return {};
+        uintptr_t string = heap + compressed;
+        unsigned cid = word(string - 1) >> 12;
+        if (cid != 94 && cid != 95) return {};
+        uint32_t length = word(string + 7);
+        if ((length & 1) || length > 2 * 16384) return {};
+        bool wide = cid == 95;
+        return {{reinterpret_cast<const char *>(string + 15), wide ? length : length >> 1}, wide};
+    };
+    auto package = text(word(model + 0x12f)), name = text(word(model + 0x133));
+    if (package.bytes.empty() || name.bytes.empty()) return false;
+    struct Cached {
+        unsigned generation = 0;
+        int id = 0;
+        bool clear = false, widePackage = false, wideName = false;
+        std::string package, name;
+    };
+    static thread_local Cached recent[16];
+    int id = static_cast<int>(numericId);
+    auto &entry = recent[static_cast<unsigned>(id) % std::size(recent)];
+    unsigned generation = materialGeneration.load(std::memory_order_acquire);
+    if (entry.generation == generation && entry.id == id
+            && entry.widePackage == package.wide && entry.package == package.bytes
+            && entry.wideName == name.wide && entry.name == name.bytes)
+        return entry.clear;
+    auto rules = std::atomic_load_explicit(&publishedFoldRules, std::memory_order_acquire);
+    if (!rules) return false;
+    WidgetIdentity identity = widgetIdentity(package.ruleKey(), name.ruleKey());
+    identity.appWidgetId = id;
+    entry.clear = rules->clear(identity);
+    entry.package.assign(package.bytes);
+    entry.name.assign(name.bytes);
+    entry.widePackage = package.wide;
+    entry.wideName = name.wide;
+    entry.id = id;
+    // Keep the generation observed before acquiring the snapshot. A concurrent
+    // publish may cause one extra lookup but cannot mark old rules as current.
+    entry.generation = generation;
+    static std::atomic<unsigned> logged{};
+    if (logged.load(std::memory_order_relaxed) < 8 && logged.fetch_add(1, std::memory_order_relaxed) < 8)
+        __android_log_print(ANDROID_LOG_INFO, TAG, "6325 material id=%d clear=%d", id, entry.clear);
+    return entry.clear;
+}
+
 void loadAndroidWidgetConfig() {
     {
         char path[256]; stylesPath(path);
@@ -347,15 +427,22 @@ bool configureAndroidWidgets(bool stack, bool glass, void *extras) {
     // Serialize configuration persistence, but keep disk writes away from capability readers.
     std::lock_guard<std::mutex> persist(persistenceMutex);
     std::unique_lock<std::mutex> guard(configMutex);
-    glassRules = std::move(parsedGlass); clockGlassRules = std::move(parsedStyle);
-    bool changed = stackEnabled.exchange(stack) != stack || encodedStyles != styles;
-    ::styleRules = std::move(parsedStyles); encodedStyles = styles;
-    changed = (clockGlassEnabled.exchange(experiment) != experiment) || changed || encodedClockGlassRules != styleRules;
-    encodedClockGlassRules = styleRules;
-    changed = (glassEnabled.exchange(glass) != glass) || changed || encodedRules != rules;
-    encodedRules = rules;
+    bool stackChanged = stackEnabled.exchange(stack) != stack;
+    bool previousClock = clockGlassEnabled.exchange(experiment);
+    bool previousGlass = glassEnabled.exchange(glass);
+    bool materialChanged = previousClock != experiment || previousGlass != glass
+        || styles != encodedStyles || styleRules != encodedClockGlassRules || rules != encodedRules;
+    if (materialChanged) {
+        glassRules = std::move(parsedGlass);
+        clockGlassRules = std::move(parsedStyle);
+        ::styleRules = std::move(parsedStyles);
+        encodedStyles = styles;
+        encodedClockGlassRules = styleRules;
+        encodedRules = rules;
+        if (foldRulesInstalled) publishFoldRules();
+    }
     refreshPickerEnabled();
-    if (!changed) return true;
+    if (!stackChanged && !materialChanged) return true;
     guard.unlock();
     char stylesFile[256], stylesTemp[272]; stylesPath(stylesFile);
     std::snprintf(stylesTemp, sizeof(stylesTemp), "%s.tmp", stylesFile);
@@ -474,10 +561,11 @@ void installAndroidWidgetPickerHooks(const char *path, uintptr_t base, WidgetNat
     widget_status::picker.store(widget_status::Incompatible);
     // Probe the loaded executable image once. A changed whole-file hash is
     // harmless if this unique reviewed classification context still exists.
-    struct Search { uintptr_t base; std::vector<widget_picker::Code> ranges; } search{base, {}};
+    struct Search { uintptr_t base; std::vector<widget_picker::Code> ranges; ClockGlassImage dart; } search{base, {}, {}};
     dl_iterate_phdr([](dl_phdr_info *info, size_t, void *opaque) {
         auto &value = *static_cast<Search *>(opaque);
         if (info->dlpi_addr != value.base) return 0;
+        value.dart = {value.base, info->dlpi_phdr, info->dlpi_phnum};
         for (size_t i = 0; i < info->dlpi_phnum; ++i) {
             const auto &segment = info->dlpi_phdr[i];
             if (segment.p_type == PT_LOAD && (segment.p_flags & (PF_R | PF_X)) == (PF_R | PF_X))
@@ -485,6 +573,11 @@ void installAndroidWidgetPickerHooks(const char *path, uintptr_t base, WidgetNat
         }
         return 1;
     }, &search);
+    installFoldWidgetMaterial(search.dart, hook, unhook, [] {
+        std::lock_guard<std::mutex> guard(configMutex);
+        foldRulesInstalled = true;
+        publishFoldRules();
+    });
     uintptr_t site = widget_picker::find(search.ranges);
     if (!site) {
         __android_log_print(ANDROID_LOG_WARN, TAG,

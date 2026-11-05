@@ -1,15 +1,14 @@
 package com.aritxonly.myhypermodifier
 
 import android.app.Activity
-import android.content.res.Configuration
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import java.util.WeakHashMap
 import android.view.WindowInsets
 import android.widget.TextView
+import androidx.compose.ui.unit.dp
 import java.lang.reflect.Method
-import java.lang.reflect.Field
 import java.util.concurrent.CopyOnWriteArrayList
 import java.lang.ref.WeakReference
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -23,7 +22,6 @@ import top.yukonga.miuix.kmp.icon.extended.Messages
 /** 40.7.0: BottomTab owns selection, click analytics and account-specific tab ordering. */
 internal object DouyinFloatingNavigation {
     private const val OUTER_BAR = "com.ss.android.ugc.aweme.homepage.tab.bottom.ui.tabbar.container.MainBottomTabContainer"
-    private const val INNER_BAR = "X.0gnN"
     private val innerBars = WeakHashMap<View, WeakReference<View>>()
     private val tabGroups = WeakHashMap<View, WeakReference<ViewGroup>>()
     private val tabIds = WeakHashMap<View, String?>()
@@ -31,11 +29,13 @@ internal object DouyinFloatingNavigation {
     private val chatViews = WeakHashMap<Activity, ArrayList<WeakReference<View>>>()
     // Class metadata only: no Activity/View/Context retained by reflection caches.
     private val accessors = HashMap<Class<*>, TabAccess>()
-    private var sceneDarkField: Field? = null
-    private var sceneAccessResolved = false
     private val delegate = NativeViewBottomBarNavigation(
         NativeViewBottomBarTarget(
-            logName = "Douyin", bottomEdgeMask = false, testedVersion = "40.7.0",
+            logName = if (DouyinTargetPolicy.packageName() == ModuleScopePackage.DOUYIN_LITE)
+                "Douyin Lite" else "Douyin",
+            bottomEdgeMask = false,
+            testedVersion = if (DouyinTargetPolicy.packageName() == ModuleScopePackage.DOUYIN_LITE)
+                "40.4.0" else "40.7.0",
             // Outer FrameLayout has no anti-burn setAlpha override; inner state remains authoritative.
             bottomBarClassNames = emptySet(), // Only attach after the inner bar is available.
             resolveBottomBar = ::findReadyBar,
@@ -46,7 +46,7 @@ internal object DouyinFloatingNavigation {
             },
             tabClassNames = setOf("com.ss.android.ugc.aweme.homepage.tab.ui.bottom.BottomTab"),
             fallbackLabels = listOf("首页", "朋友", "发布", "消息", "我"),
-            enabled = { ModuleSettings.moduleHooksEnabled && ModuleSettings.douyinFloatingNavigationEnabled },
+            enabled = DouyinTargetPolicy::enabled,
             useMiuixIcons = { true }, useMonochromeIcons = { true }, showBadges = { false },
             fallbackIcon = { label, _ ->
                 when {
@@ -57,6 +57,9 @@ internal object DouyinFloatingNavigation {
                     label.contains("朋友") || label.contains("关注") -> MiuixIcons.All
                     else -> MiuixIcons.Home
                 }
+            },
+            tabLabelOffsetY = { _, _ ->
+                0.dp
             },
             resolveTabLabel = { tab, index ->
                 val access = access(tab)
@@ -75,17 +78,14 @@ internal object DouyinFloatingNavigation {
                     }
                 }.orEmpty()
             },
-            resolveDarkTheme = { activity, tabs, index ->
+            resolveDarkTheme = { activity, _, tabs, index ->
                 val tab = tabs.getOrNull(index)
                 val title = tab?.let { access(it).read(access(it).title, it) as? TextView }
                 val id = tab?.let { access(it).id(it) }
                 val video = DouyinNavigationPolicy.isVideoPage(id, title?.text?.toString())
-                val dark = DouyinNavigationPolicy.resolveDarkTheme(
-                    nativeSceneDark(tab),
-                    title?.currentTextColor ?: 0,
-                    activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
-                        Configuration.UI_MODE_NIGHT_YES,
-                )
+                // Use Douyin's resolved application theme, not the current page/scene background.
+                // This also resolves an in-app "follow system" choice before it reaches the dock.
+                val dark = HostThemeResolver.resolve(activity)
                 activities.firstOrNull { it.activity.get() === activity }?.let {
                     it.setVideoPage(video, id)
                     it.setDarkTheme(dark)
@@ -93,10 +93,14 @@ internal object DouyinFloatingNavigation {
                 dark
             },
             sampleBackdropForTabs = { tabs, index ->
-                val tab = tabs.getOrNull(index)
-                val id = tab?.let { access(it).id(it) }
-                val label = tab?.let { access(it).read(access(it).title, it) as? TextView }?.text?.toString()
-                !DouyinNavigationPolicy.isVideoPage(id, label)
+                if (DouyinTargetPolicy.packageName() == ModuleScopePackage.DOUYIN_LITE) {
+                    true
+                } else {
+                    val tab = tabs.getOrNull(index)
+                    val id = tab?.let { access(it).id(it) }
+                    val label = tab?.let { access(it).read(access(it).title, it) as? TextView }?.text?.toString()
+                    !DouyinNavigationPolicy.isVideoPage(id, label)
+                }
             },
             onNavigationBoundsChanged = { activity, bounds ->
                 activities.firstOrNull { it.activity.get() === activity }?.setDockBounds(bounds)
@@ -106,16 +110,37 @@ internal object DouyinFloatingNavigation {
             // Original listener routes navigation/publish and preserves login checks and analytics.
             onNativeTabClick = { it.performClick() },
             nativeRefreshIntervalMs = 100L,
-            useNativeGpuBackdrop = true,
+            useNativeGpuBackdrop = DouyinTargetPolicy.packageName() != ModuleScopePackage.DOUYIN_LITE,
+            // Lite feed playback is a SurfaceView child. Capture that layer directly on video
+            // pages while retaining the window sampler as a fallback for live/regular pages.
             useVideoSurfaceBackdrop = true,
-            inTreeOverlay = true,
-            gpuContentResourceName = "1mw",
+            inTreeOverlay = DouyinTargetPolicy.packageName() != ModuleScopePackage.DOUYIN_LITE,
+            gpuContentResourceName =
+                if (DouyinTargetPolicy.packageName() == ModuleScopePackage.DOUYIN_LITE) null else "1mw",
             manageWindowImmersion = false,
             retainNativeSuppressionDuringCover = true,
             retainReplacementDuringCover = true,
-            useHardwareBackdrop = true, allowSoftwareBackdrop = false,
-            minimumCaptureIntervalMs = 250L, sampleBackdropOnSourceFrame = false,
+            useHardwareBackdrop = true,
+            allowSoftwareBackdrop = DouyinTargetPolicy.packageName() == ModuleScopePackage.DOUYIN_LITE,
+            minimumCaptureIntervalMs =
+                if (DouyinTargetPolicy.packageName() == ModuleScopePackage.DOUYIN_LITE) 200L else 250L,
+            // Lite is a video feed that updates a Surface without causing View redraws. Refresh a
+            // tiny cropped PixelCopy at 5 fps while the dock is visible.
+            sampleBackdropOnSourceFrame = false,
+            continuousBackdropSampling =
+                DouyinTargetPolicy.packageName() == ModuleScopePackage.DOUYIN_LITE,
+            glassTintAlpha =
+                if (DouyinTargetPolicy.packageName() == ModuleScopePackage.DOUYIN_LITE) 0.58f else null,
             stableNavigationInset = true,
+            lateAttachWindowMs = 30_000L,
+            onAttachDiagnostic = { detail ->
+                val packageName = DouyinTargetPolicy.packageName()
+                if (detail == "floating navigation attached") {
+                    HookDiagnostics.available(packageName, "抖音柔光底栏")
+                } else {
+                    HookDiagnostics.observed(packageName, "抖音柔光底栏", detail)
+                }
+            },
             // Only the per-video controls layer reserves space; the page/video remains full size.
             onChromeReplacement = { activity, replacing ->
                 activities.firstOrNull { it.activity.get() === activity }?.setReplacing(replacing)
@@ -129,7 +154,7 @@ internal object DouyinFloatingNavigation {
 
     init {
         ModuleSettings.onChanged {
-            val enabled = ModuleSettings.moduleHooksEnabled && ModuleSettings.douyinFloatingNavigationEnabled
+            val enabled = DouyinTargetPolicy.enabled()
             val lift = ModuleSettings.hyperGlassifyHiddenNavigationLift
             activities.forEach { it.schedule(enabled, lift) }
         }
@@ -227,42 +252,16 @@ internal object DouyinFloatingNavigation {
 
     private fun findReadyBar(root: View): View? {
         if (root.javaClass.name == OUTER_BAR) {
-            val inner = findInnerBar(root) ?: return null
-            if (!sceneAccessResolved) {
-                sceneAccessResolved = true
-                // 40.7.0: LIZIZ(Integer, boolean dark, boolean transparent) stores dark in n.
-                sceneDarkField = runCatching { inner.javaClass.getDeclaredField("n").apply { isAccessible = true } }.getOrNull()
-            }
             val groupId = root.resources.getIdentifier("root_view", "id", root.context.packageName)
-            val group = inner.findViewById<View>(groupId) as? ViewGroup ?: return null
+            val group = root.findViewById<View>(groupId) as? ViewGroup ?: return null
             if (group.childCount < 2) return null
+            val inner = group.parent as? View ?: return null
             innerBars[root] = WeakReference(inner)
             tabGroups[root] = WeakReference(group)
             return root
         }
         if (root is ViewGroup) repeat(root.childCount) { index ->
             findReadyBar(root.getChildAt(index))?.let { return it }
-        }
-        return null
-    }
-    private fun findInnerBar(root: View): View? {
-        if (root.javaClass.name == INNER_BAR) return root
-        if (root is ViewGroup) repeat(root.childCount) { index ->
-            findInnerBar(root.getChildAt(index))?.let { return it }
-        }
-        return null
-    }
-
-    private fun nativeSceneDark(tab: View?): Boolean? {
-        val field = sceneDarkField ?: return null
-        var view = tab
-        repeat(8) {
-            val current = view ?: return null
-            if (current.javaClass.name == INNER_BAR) {
-                return try { field.getBoolean(current) }
-                catch (_: IllegalAccessException) { sceneDarkField = null; null }
-            }
-            view = current.parent as? View
         }
         return null
     }
@@ -286,7 +285,7 @@ internal object DouyinFloatingNavigation {
     /** Settings thread posts only relevant changes; one reusable task per weak Activity. */
     private class ActivityState(activity: Activity) : Runnable {
         val activity = WeakReference(activity)
-        private var enabled = ModuleSettings.moduleHooksEnabled && ModuleSettings.douyinFloatingNavigationEnabled
+        private var enabled = DouyinTargetPolicy.enabled()
         private var lift = ModuleSettings.hyperGlassifyHiddenNavigationLift
         private var darkTheme = false
         private var videoPage = false
@@ -397,10 +396,10 @@ internal object DouyinFloatingNavigation {
         override fun run() {
             val host = activity.get() ?: return
             if (host.isDestroyed || host.isFinishing) return
-            val enabled = ModuleSettings.moduleHooksEnabled && ModuleSettings.douyinFloatingNavigationEnabled
+            val enabled = DouyinTargetPolicy.enabled()
             setImmersive(enabled)
             DouyinFeedExpansion.setEnabled(host, enabled)
-            if (!ModuleSettings.moduleHooksEnabled || !ModuleSettings.douyinFloatingNavigationEnabled) {
+            if (!DouyinTargetPolicy.enabled()) {
                 delegate.dispose(host)
             } else if (host.hasWindowFocus()) {
                 delegate.attach(host)

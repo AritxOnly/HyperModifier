@@ -9,22 +9,12 @@ final class DouyinNavigationPolicy {
                 || "首页".equals(label) || "主页".equals(label) || "朋友".equals(label);
     }
 
-    static boolean resolveDarkTheme(Boolean nativeDark, int color, boolean configurationDark) {
-        if (nativeDark != null) return nativeDark;
-        return darkFromTitleColor(color, configurationDark);
-    }
-
-    static boolean darkFromTitleColor(int color, boolean configurationDark) {
-        if ((color >>> 24) == 0) return configurationDark;
-        int brightness = (((color >> 16) & 255) * 299 + ((color >> 8) & 255) * 587
-                + (color & 255) * 114) / 1000;
-        return brightness >= 128;
-    }
-
-    static int controlsBottomMargin(int original, int viewportTop, int parentTop, int pageTop,
-                                    int parentHeight, int dockTop, int clearance, int nativeBottomInset) {
-        int settledBottom = viewportTop + parentTop - pageTop + parentHeight;
-        return Math.max(original, Math.max(0, settledBottom - dockTop + clearance - nativeBottomInset));
+    /**
+     * Minimum upward translation for an already laid-out controls layer. Zero means the native
+     * position is safe and must not be moved farther up.
+     */
+    static float controlsTranslation(float untranslatedContentBottom, int dockTop) {
+        return Math.min(0f, dockTop - untranslatedContentBottom);
     }
 
     static float progressTranslation(float original, float current, float trackScreenTop,

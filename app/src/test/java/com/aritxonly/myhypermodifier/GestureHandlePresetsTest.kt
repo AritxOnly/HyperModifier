@@ -67,4 +67,16 @@ class GestureHandlePresetsTest {
         assertEquals(GestureHandlePresets.SHOW, GestureHandlePresets.fromStored("system", true))
         assertEquals(GestureHandlePresets.STOCK, GestureHandlePresets.fromStored("stock", true))
     }
+
+    @Test fun globalPresetDoesNotDependOnForegroundMetadata() {
+        for (preset in listOf(
+            GestureHandlePresets.SHOW,
+            GestureHandlePresets.HIDE,
+            GestureHandlePresets.IMMERSIVE,
+        )) {
+            assertEquals(preset, GestureHandleDefaults.mode(preset, null, false, emptySet()))
+        }
+        assertNull(GestureHandleDefaults.mode(
+            GestureHandlePresets.MODULE, null, false, emptySet()))
+    }
 }

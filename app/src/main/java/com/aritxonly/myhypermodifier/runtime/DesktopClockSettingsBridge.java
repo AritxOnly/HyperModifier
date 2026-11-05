@@ -11,6 +11,8 @@ import android.util.Log;
 /** Publishes LSPosed-owned settings from SystemUI into the JNI-free launcher runtime. */
 final class DesktopClockSettingsBridge {
     private static final String KEY = "hide_desktop_clock_leading_zero";
+    private static final String FOLD_DUAL_PAGE = "fold_portrait_dual_page_enabled";
+    private static final String FOLD_ICON = "fold_portrait_icon_percent";
     private static final String SEARCH = "desktop_search_4x7_enabled";
     private static final String CLOCK_MATERIAL = "desktop_clock_material";
     private static final String CLOCK_RADIUS = "desktop_clock_blur_radius";
@@ -24,6 +26,12 @@ final class DesktopClockSettingsBridge {
     private static int startupAttempts;
     private static SharedPreferences.OnSharedPreferenceChangeListener listener;
     private static boolean unlockReceiverRegistered;
+    private static volatile boolean diagnosticPublished, diagnosticFoldEnabled;
+    static String diagnosticSummary() {
+        return "系统界面已加载诊断版（UID " + android.os.Process.myUid() + "）。"
+                + (diagnosticPublished ? "已发送双页" + (diagnosticFoldEnabled ? "开启" : "关闭") + "设置。尚不能确认桌面已收到。"
+                : "尚未发送设置，正在等待模块配置。");
+    }
     private static final Runnable PUBLISH = new Runnable() {
         @Override public void run() {
             if (context == null || preferences == null) return;
@@ -37,20 +45,29 @@ final class DesktopClockSettingsBridge {
                 Intent intent = new Intent("com.android.systemui.fsgesture")
                         .setPackage("com.miui.home")
                         .putExtra("mhm_desktop_clock_control", true)
+                        .putExtra("mhm_status_reader_uid", android.os.Process.myUid())
                         .putExtra("mhm_desktop_clock_enabled", enabled)
                         .putExtra("mhm_clock_tuning_v1", radius | (tint << 6))
                         .putExtra("mhm_clock_blur", material == 1)
                         .putExtra("mhm_clock_soft_glass", material == 2)
+                        .putExtra("mhm_fold_portrait_dual_page", moduleEnabled
+                                && !preferences.getBoolean("systemui_compatibility_mode", false)
+                                && preferences.getBoolean(FOLD_DUAL_PAGE, false))
+                        .putExtra("mhm_fold_icon_percent", moduleEnabled && !preferences.getBoolean("systemui_compatibility_mode", false)
+                                ? preferences.getInt(FOLD_ICON, 100) : 100)
                         .putExtra("mhm_desktop_search_4x7", moduleEnabled && preferences.getBoolean(SEARCH, false))
                         .putExtra("mhm_android_widget_stack", moduleEnabled && preferences.getBoolean(STACK, false))
                         .putExtra("mhm_android_widget_glass", moduleEnabled && preferences.getBoolean(GLASS, false))
                         .putExtra("mhm_deadliner_clock_glass", moduleEnabled && preferences.getBoolean(EXPERIMENT, false));
+                boolean sentFold = intent.getBooleanExtra("mhm_fold_portrait_dual_page", false);
                 // Packed i32 words use the verified scalar schema ABI; no owned Rust strings.
                 putRules(intent, "mhm_widget_rules_size", "mhm_widget_rule_", AndroidWidgetGlassPolicy.KEY);
                 putRules(intent, "mhm_clock_glass_rules_size", "mhm_clock_glass_rule_", AndroidWidgetGlassPolicy.CLOCK_STYLE_KEY);
                 putPacked(intent, "mhm_glass_styles_size", "mhm_glass_style_", WidgetGlassStyles.encode(WidgetGlassStyles.parse(preferences.getString(WidgetGlassStyles.KEY, ""))));
                 context.sendBroadcast(intent, null,
                         BroadcastOptions.makeBasic().setShareIdentityEnabled(true).toBundle());
+                diagnosticFoldEnabled = sentFold;
+                diagnosticPublished = true;
             } catch (Throwable error) {
                 Log.w("MyHyperModifier", "Desktop clock settings carrier unavailable", error);
             }
@@ -85,7 +102,7 @@ final class DesktopClockSettingsBridge {
             preferences = value;
             if (value != null) {
                 listener = (prefs, key) -> {
-                    if (CLOCK_RADIUS.equals(key) || CLOCK_TINT.equals(key) || CLOCK_MATERIAL.equals(key) || SEARCH.equals(key) || KEY.equals(key) || STACK.equals(key) || GLASS.equals(key) || EXPERIMENT.equals(key) || AndroidWidgetGlassPolicy.KEY.equals(key) || AndroidWidgetGlassPolicy.CLOCK_STYLE_KEY.equals(key) || WidgetGlassStyles.KEY.equals(key) || "module_hooks_enabled".equals(key))
+                    if (FOLD_DUAL_PAGE.equals(key) || FOLD_ICON.equals(key) || "systemui_compatibility_mode".equals(key) || CLOCK_RADIUS.equals(key) || CLOCK_TINT.equals(key) || CLOCK_MATERIAL.equals(key) || SEARCH.equals(key) || KEY.equals(key) || STACK.equals(key) || GLASS.equals(key) || EXPERIMENT.equals(key) || AndroidWidgetGlassPolicy.KEY.equals(key) || AndroidWidgetGlassPolicy.CLOCK_STYLE_KEY.equals(key) || WidgetGlassStyles.KEY.equals(key) || "module_hooks_enabled".equals(key))
                         HANDLER.post(DesktopClockSettingsBridge::publishSoon);
                 };
                 value.registerOnSharedPreferenceChangeListener(listener);

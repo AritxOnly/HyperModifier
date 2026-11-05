@@ -24,14 +24,15 @@ with tempfile.TemporaryDirectory(prefix='mhm-widget-compat-') as tmp:
   for path in a.schema:
    file=pathlib.Path(path);data=file.read_bytes();e=Elf(data);schema_paths += ['1',file]
    # All changed ABI/semantic edges must reject, even with identical exports.
-   for tag,mutate in [
-    ('return',lambda b,o:struct.pack_into('<I',b,o+76,0xd503201f)),
-    ('entry',lambda b,o:struct.pack_into('<I',b,o,0xd503201f)),
-   ]:
-    b=bytearray(data);addr,size=e.syms['Bundle_get_boolean'];s=e.ss['.text'];offset=s[4]+addr-s[3]
-    mutate(b,offset);out=work/(file.name+str(len(schema_paths))+tag);out.write_bytes(b);schema_paths += ['0',out]
+   addr,size=e.syms['Bundle_get_boolean'];s=e.ss['.text'];offset=s[4]+addr-s[3]
+   # ORR x0,x9,x8,LSL #8 packs the bool result; its offset varies by prologue.
+   packed=data.index(struct.pack('<I',0xaa082120),offset,offset+size)
+   for tag,at in [('return',packed),('entry',offset)]:
+    b=bytearray(data);struct.pack_into('<I',b,at,0xd503201f)
+    out=work/(file.name+str(len(schema_paths))+tag);out.write_bytes(b);schema_paths += ['0',out]
    # Internal helper mutation is rejected too.
-   branch=e.syms['Bundle_clone'][0]+20;s=e.ss['.text'];o=s[4]+branch-s[3];w=struct.unpack_from('<I',data,o)[0]
+   clone,clone_size=e.syms['Bundle_clone'];branch=clone+clone_size-4
+   o=s[4]+branch-s[3];w=struct.unpack_from('<I',data,o)[0];assert w>>26==0b000101
    delta=w&0x3ffffff;delta=delta-(1<<26) if delta&(1<<25) else delta
    helper=branch+delta*4;b=bytearray(data);struct.pack_into('<I',b,s[4]+helper-s[3],0xd503201f)
    out=work/(file.name+str(len(schema_paths))+'helper');out.write_bytes(b);schema_paths += ['0',out]
@@ -42,14 +43,18 @@ with tempfile.TemporaryDirectory(prefix='mhm-widget-compat-') as tmp:
    out=work/(file.name+str(len(schema_paths))+'build');out.write_bytes(b);schema_paths += ['1',out]
    out=work/(file.name+str(len(schema_paths))+'truncated');out.write_bytes(data[:80]);schema_paths += ['0',out]
   compile_run('schema',r'''
-#include "schema_abi.h"
+#include "schema_abi_origin.h"
 #include <cassert>
 #include <iostream>
 int main(int argc,char **argv) {
  for(int i=1;i+1<argc;i+=2) {
   std::vector<uint8_t> bytes; std::string reason;
   bool loaded=schema_abi::load(argv[i+1],bytes); schema_abi::Image image(bytes);
-  bool result=loaded && image.init() && image.compatible(reason);
+  bool result=loaded && image.init();
+  for(const auto &root:schema_abi::functions) if(result && root.name) {
+   const schema_abi::Contract *matched=nullptr; std::vector<uint64_t> locations;
+   result=schema_abi::compatibleExport(image,root.name,reason,matched,locations);
+  }
   if(result!=(argv[i][0]=='1')) {std::cerr<<argv[i+1]<<": "<<reason<<"\n";return 1;}
  }
  std::cout<<"Schema: reviewed ROMs, return/entry/helper/call mutation, build-only change and truncation passed\n";
@@ -96,6 +101,17 @@ int main() {
  for(int delta:{-0x124,-0x7c,0x10,0x124,0xf4,0x54,0x140}) {
   fixture(0);words[site+delta/4]^=1<<10;assert(!widget_picker::find(ranges));
  }
+ // Fold 6325 moves the false initialization and hidden-item join together.
+ fixture(0);set(-0x10,0x140000d3);
+ assert(!widget_picker::find(ranges));
+ set(-0x124,0xd503201f);set(-0x114,0x9100c2c4);
+ set(-0x110,0xd28028f1);set(-0x10c,0xb8316804);
+ set(0x33c,0xf85d83a0);set(0x340,0x91000404);
+ assert(widget_picker::find(ranges)==address+site*4);
+ for(int delta:{-0x114,-0x110,-0x10c,0x33c,0x340}) {
+  words[site+delta/4]^=1;assert(!widget_picker::find(ranges));words[site+delta/4]^=1;
+ }
+ set(-0x10,0x140000d2);assert(!widget_picker::find(ranges));
  fixture(0);set(4,0x97ffffff); // executable but loops into the classification block
  assert(!widget_picker::find(ranges));
  set(4,0x95000000);assert(!widget_picker::find(ranges)); // BL points outside executable mappings

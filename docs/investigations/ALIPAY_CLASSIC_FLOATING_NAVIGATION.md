@@ -95,3 +95,58 @@ IPC、截图或采样层；只在应用/恢复阶段额外请求 inset，不逐�
 本次 edge-to-edge 调整验证：381 项 JVM 回归通过，Release/R8 和 APK v2 签名校验通过；
 Lint 仍有 17 项已有错误、205 项警告。未新增专项窗口运行测试，未进行真机性能测量或截图。
 构建日志 `/private/tmp/hmc-alipay-dark-e2e.log`。
+
+## 二级页面返回崩溃与原生底栏闪现
+
+2026-10-24。从已连接设备的 crash buffer 读取到 22:56:21、22:56:44、23:07:33
+三次相同主线程崩溃：系统请求 AssistStructure，遍历 Compose 的虚拟无障碍节点，
+`ComposeAccessibilityNodeProvider.createAccessibilityNodeInfo` 查询字符串
+`0x7f090090` 时进入支付宝 `BundleResources.getString` 并抛出 NotFoundException。
+修复前本地 Release 的资源表确认该 ID 为 Compose 的 `string/tab`；R8 mapping
+也将日志中的 `x5.u` / `z1.createAccessibilityNodeInfo` 对应到 Compose/AndroidX
+无障碍提供器。用户补充同 Activity 内二级页面普遍触发，另开 Activity 的小程序不触发。
+原始日志留在 `/private/tmp/hmc-alipay-crash.txt`，不提交包含设备应用信息的完整日志。
+
+支付宝注入的 ComposeView 现在单独使用模块包 Resources、Assets 和主题，窗口等
+服务仍委托给原 Activity。保留标签的无障碍语义，不关闭 AssistStructure，也不 Hook
+支付宝/框架的全局资源读取。模块资源上下文只在 host 创建时获取，没有全局 Activity
+缓存；其他适配器继续使用各自原有 Context。
+
+原实现 Launcher Fragment onPause 直接 dispose host，会在转场期间恢复原生底栏，
+返回再创建 Compose、GPU backdrop 和宿主。现在暂停复用 host、隐藏替换栏并停用
+背景采样，沿共享 retainNativeSuppressionDuringCover 策略继续隐藏原生栏；恢复时
+复用现有 host，去掉一次重复强制同步。暂停仍恢复窗口沉浸参数和内容 margin，
+关闭功能、退出支持模式、销毁 View 时仍完整 dispose 并恢复原生 alpha/无障碍状态。
+
+性能检查为代码审查与结构性分析：减少页面往返时的 Compose/背景对象重建，不新增
+Hook、轮询、定时任务、IPC、像素回读或渲染层。Resources 查找不进入逐帧路径。
+没有 Perfetto、FrameTimeline 或耗电前后对照数据，不声称量化性能改善。
+
+新增 Robolectric 回归模拟宿主缺失 Compose tab 字符串，确认原宿主读取抛错、模块
+上下文读取成功，且窗口服务仍由 Activity 提供；修订后的测试同时模拟包名查询
+抛 NameNotFoundException，确认注入上下文不会进行额外的包名查询。
+真机页面往返、原生栏闪现、主题/实时启停及其他模块共存仍需安装新包后复测。
+
+最终验证：429 项 JVM 回归全部通过，Release/R8、Lint Vital 和 APK v2 签名校验
+通过；未运行完整 Lint。构建日志 `/private/tmp/hmc-alipay-return-fix-build.log`。
+
+### 包可见性导致的新底栏无法挂载
+
+同日用户反馈修复包底栏空白，稍后回退官方底栏。设备日志明确记录
+`Could not attach Alipay classic navigation`，异常为 `createPackageContext` 查询
+模块包时抛出的 `PackageManager.NameNotFoundException`。上一轮 JVM 测试未覆盖
+宿主看不到模块包的条件，不能以其通过代替实际注入验证。
+
+改为使用 libxposed `getModuleApplicationInfo().sourceDir` 提供的 APK 路径，通过
+公开的 ResourcesProvider/ResourcesLoader 加载编译资源，注入 View 的 Resources
+仅包含系统资源与模块资源。APK provider 在进程内复用，不保留 Activity/Context；
+包文件只在首次构建资源时打开，不查询宿主 PackageManager。每个 host 持有独立
+Resources，宿主配置变化时按差异更新，主题和窗口服务边界保持。
+日志保存在 `/private/tmp/hmc-alipay-missing-bar-logcat.txt`。
+
+修订后 429 项 JVM 回归通过，Release/R8、Lint Vital、APK v2 签名验证通过；
+构建日志 `/private/tmp/hmc-alipay-apk-resources-build.log`，最终测试日志
+`/private/tmp/hmc-alipay-apk-resources-tests.log`。修复包已安装并重启支付宝。
+本轮自动启动后未取得新进程的明确挂载日志，不能声称日志验证成功；随后用户在
+手机上复测并反馈“没问题了。算是修好了”。这是用户实测反馈，没有执行截图、
+系统化页面覆盖回归或性能量化测试。

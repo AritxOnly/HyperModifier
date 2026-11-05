@@ -14,6 +14,7 @@ import android.graphics.Canvas;
 import android.graphics.Point;
 import android.graphics.RectF;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Log;
@@ -26,6 +27,7 @@ import android.view.ViewConfiguration;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Map;
@@ -54,9 +56,12 @@ final class GestureHandleHooks {
     private static Handler main;
     private static ClassLoader loader;
     private static boolean receiverInstalled;
-    private static boolean inputMonitorInstalled;
-    private static Object inputMonitor;
-    private static Object inputReceiver;
+    private static volatile boolean inputMonitorInstalled;
+    private static volatile boolean inputMonitorInstalling;
+    private static volatile Object inputMonitor;
+    private static volatile Object inputReceiver;
+    private static volatile HandlerThread inputThread;
+    private static final InputEventBridge INPUT_EVENTS = new InputEventBridge();
     private static boolean rulesPresent;
     private static boolean stockHidden;
     private static Context runtimeContext;
@@ -438,8 +443,11 @@ final class GestureHandleHooks {
     }
 
     private static void installInputMonitor() {
-        if (!ModuleSettings.gestureHandleEnabled || hasInputMonitor() || loader == null) return;
+        if (!needsInputMonitor() || hasInputMonitor() || inputMonitorInstalling
+                || loader == null) return;
+        inputMonitorInstalling = true;
         Object monitor = null;
+        HandlerThread monitorThread = null;
         try {
             // The navigation-bar window does not receive every gestural input stream. Use the
             // same passive monitor wrapper as SystemUI, without pilfering or consuming events.
@@ -451,30 +459,57 @@ final class GestureHandleHooks {
                     (proxy, method, args) -> {
                         if ("onInputEvent".equals(method.getName()) && args != null
                                 && args.length == 1 && args[0] instanceof MotionEvent) {
-                            try {
-                                observeTouch(null, (MotionEvent) args[0]);
-                            } catch (Throwable error) {
-                                Log.w(TAG, "Gesture handle monitored input unavailable", error);
-                            }
+                            INPUT_EVENTS.offer((MotionEvent) args[0]);
                         }
                         return null;
                     });
             monitor = monitorType.getConstructor(String.class, int.class)
-                    .newInstance("mhm-gesture-handle", 0);
-            Object receiver = monitorType.getMethod("getInputReceiver", Looper.class,
-                    Choreographer.class, listenerType).invoke(monitor,
-                    Looper.getMainLooper(), Choreographer.getInstance(), listener);
-            inputMonitor = monitor;
-            inputReceiver = receiver;
-            inputMonitorInstalled = true;
-            Log.i(TAG, "Gesture handle input monitor installed");
+                    .newInstance("mhm-gesture-observer", 0);
+            monitorThread = new HandlerThread("mhm-gesture-input");
+            monitorThread.start();
+            Object createdMonitor = monitor;
+            HandlerThread createdThread = monitorThread;
+            Method getReceiver = monitorType.getMethod("getInputReceiver", Looper.class,
+                    Choreographer.class, listenerType);
+            new Handler(createdThread.getLooper()).post(() -> {
+                Object receiver = null;
+                try {
+                    // Never put a system input monitor on SystemUI's main looper. A busy startup
+                    // frame would otherwise block input dispatch and fail the process startup.
+                    receiver = getReceiver.invoke(createdMonitor, createdThread.getLooper(),
+                            Choreographer.getInstance(), listener);
+                    if (!inputMonitorInstalling || !needsInputMonitor()) {
+                        disposeReceiver(receiver);
+                        disposeMonitor(createdMonitor);
+                        createdThread.quitSafely();
+                        return;
+                    }
+                    inputMonitor = createdMonitor;
+                    inputReceiver = receiver;
+                    inputThread = createdThread;
+                    inputMonitorInstalled = true;
+                    Log.i(TAG, "Gesture handle input monitor installed off main");
+                } catch (Throwable error) {
+                    disposeReceiver(receiver);
+                    disposeMonitor(createdMonitor);
+                    createdThread.quitSafely();
+                    Log.w(TAG, "Gesture handle input monitor unavailable; using view events", error);
+                } finally {
+                    inputMonitorInstalling = false;
+                }
+            });
         } catch (Throwable error) {
-            if (monitor != null) {
-                try { monitor.getClass().getMethod("dispose").invoke(monitor); }
-                catch (Throwable ignored) { }
-            }
+            disposeMonitor(monitor);
+            if (monitorThread != null) monitorThread.quitSafely();
+            inputMonitorInstalling = false;
             Log.w(TAG, "Gesture handle input monitor unavailable; using view events", error);
         }
+    }
+
+    private static boolean needsInputMonitor() {
+        return ModuleSettings.gestureHandleEnabled
+                && (ModuleSettings.gestureHandleTouchReveal
+                    || ModuleSettings.gestureHandleSwipeMotion);
     }
 
     private static boolean hasInputMonitor() {
@@ -482,18 +517,41 @@ final class GestureHandleHooks {
     }
 
     private static void stopInputMonitor() {
+        inputMonitorInstalling = false;
         Object receiver = inputReceiver;
         Object monitor = inputMonitor;
+        HandlerThread thread = inputThread;
         inputReceiver = null;
         inputMonitor = null;
+        inputThread = null;
         inputMonitorInstalled = false;
-        if (receiver != null) {
-            try { receiver.getClass().getMethod("dispose").invoke(receiver); }
-            catch (Throwable error) { Log.w(TAG, "Gesture handle input receiver disposal unavailable", error); }
+        INPUT_EVENTS.clear();
+        if (thread != null && thread.isAlive()) {
+            Handler handler = new Handler(thread.getLooper());
+            handler.post(() -> {
+                disposeReceiver(receiver);
+                disposeMonitor(monitor);
+                thread.quitSafely();
+            });
+        } else {
+            disposeReceiver(receiver);
+            disposeMonitor(monitor);
         }
-        if (monitor != null) {
-            try { monitor.getClass().getMethod("dispose").invoke(monitor); }
-            catch (Throwable error) { Log.w(TAG, "Gesture handle input monitor disposal unavailable", error); }
+    }
+
+    private static void disposeReceiver(Object receiver) {
+        if (receiver == null) return;
+        try { receiver.getClass().getMethod("dispose").invoke(receiver); }
+        catch (Throwable error) {
+            Log.w(TAG, "Gesture handle input receiver disposal unavailable", error);
+        }
+    }
+
+    private static void disposeMonitor(Object monitor) {
+        if (monitor == null) return;
+        try { monitor.getClass().getMethod("dispose").invoke(monitor); }
+        catch (Throwable error) {
+            Log.w(TAG, "Gesture handle input monitor disposal unavailable", error);
         }
     }
 
@@ -554,7 +612,11 @@ final class GestureHandleHooks {
                 MOTION.reset();
                 stopInputMonitor();
             } else {
-                if (receiverInstalled) installInputMonitor();
+                if (receiverInstalled && needsInputMonitor()) {
+                    installInputMonitor();
+                } else {
+                    stopInputMonitor();
+                }
             }
             if (!ModuleSettings.gestureHandleTouchReveal) POLICY.clearTouchReveal();
             if (!ModuleSettings.gestureHandleSwipeMotion) {
@@ -639,6 +701,87 @@ final class GestureHandleHooks {
 
     private static Object injector(Object owner) {
         return ReflectiveAccess.fieldValue(owner, "mNavigationModeControllerInjector");
+    }
+
+    /**
+     * Copies input-monitor events off the system input callback and coalesces queued moves before
+     * touching Views on SystemUI's main thread.
+     */
+    private static final class InputEventBridge {
+        private static final int MAX_EVENTS = 24;
+        private final ArrayDeque<MotionEvent> queue = new ArrayDeque<>();
+        private boolean scheduled;
+
+        void offer(MotionEvent source) {
+            if (source == null || main == null) return;
+            MotionEvent event = MotionEvent.obtain(source);
+            boolean post = false;
+            synchronized (this) {
+                int action = event.getActionMasked();
+                if (action == MotionEvent.ACTION_MOVE) {
+                    MotionEvent tail = queue.peekLast();
+                    if (tail != null && tail.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                        queue.removeLast().recycle();
+                    }
+                }
+                if (queue.size() >= MAX_EVENTS) {
+                    if (action == MotionEvent.ACTION_MOVE) {
+                        event.recycle();
+                        return;
+                    }
+                    MotionEvent oldestMove = firstMove();
+                    if (oldestMove == null) {
+                        event.recycle();
+                        return;
+                    }
+                    queue.remove(oldestMove);
+                    oldestMove.recycle();
+                }
+                queue.addLast(event);
+                if (!scheduled) {
+                    scheduled = true;
+                    post = true;
+                }
+            }
+            if (post && !main.post(this::drain)) {
+                synchronized (this) { scheduled = false; }
+                clear();
+            }
+        }
+
+        private MotionEvent firstMove() {
+            for (MotionEvent event : queue) {
+                if (event.getActionMasked() == MotionEvent.ACTION_MOVE) return event;
+            }
+            return null;
+        }
+
+        private void drain() {
+            for (;;) {
+                MotionEvent event;
+                synchronized (this) {
+                    event = queue.pollFirst();
+                    if (event == null) {
+                        scheduled = false;
+                        return;
+                    }
+                }
+                try {
+                    observeTouch(null, event);
+                } catch (Throwable error) {
+                    Log.w(TAG, "Gesture handle monitored input unavailable", error);
+                } finally {
+                    event.recycle();
+                }
+            }
+        }
+
+        void clear() {
+            synchronized (this) {
+                while (!queue.isEmpty()) queue.removeFirst().recycle();
+                scheduled = false;
+            }
+        }
     }
 
     private static boolean bool(Object owner, String field) {

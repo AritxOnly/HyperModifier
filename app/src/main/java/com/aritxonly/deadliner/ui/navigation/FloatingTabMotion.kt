@@ -12,6 +12,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 internal object FloatingTabMotionDefaults {
+    const val PressedScale = 52f / 56f
     const val MaximumStretch = 0.18f
     const val FullStretchTabsPerSecond = 8f
     const val MaximumPanelOffsetDp = 4f
@@ -65,6 +66,21 @@ internal fun floatingTabTransformOriginX(
     return (0.5f + direction * normalizedStretch * 0.35f).coerceIn(0.15f, 0.85f)
 }
 
+/**
+ * A selection entered while the indicator is still travelling keeps its current momentum.
+ * Comparing against the last requested tab also catches the new coroutine that replaces a
+ * cancelled LaunchedEffect after [Animatable] has already stopped reporting isRunning.
+ */
+internal fun floatingTabSelectionIsInterrupted(
+    visualPosition: Float,
+    previousTarget: Int,
+    nextTarget: Int,
+    velocityTabsPerSecond: Float,
+): Boolean =
+    previousTarget != nextTarget &&
+        (abs(visualPosition - previousTarget) > 0.02f ||
+            abs(velocityTabsPerSecond) > 0.02f)
+
 internal class FloatingTabSelectionSync {
     private var pendingCommittedIndex: Int? = null
 
@@ -92,6 +108,7 @@ internal class FloatingTabMotionState(
 ) {
     val position = Animatable(initialIndex.toFloat(), visibilityThreshold = 0.001f)
     private var directPosition: Float? by mutableStateOf(null)
+    private var targetIndex = initialIndex
 
     val visualPosition: Float
         get() = directPosition ?: position.value
@@ -125,6 +142,7 @@ internal class FloatingTabMotionState(
     }
 
     fun finishGesture(targetIndex: Int) {
+        this.targetIndex = targetIndex
         selectionSync.markCommitted(targetIndex)
         isPressed = false
         isDragging = false
@@ -139,30 +157,56 @@ internal class FloatingTabMotionState(
     }
 
     suspend fun settleTo(index: Int) {
+        settleTo(index, interrupted = false)
+    }
+
+    private suspend fun settleTo(index: Int, interrupted: Boolean) {
         directPosition?.let { draggedPosition ->
             position.snapTo(draggedPosition)
             directPosition = null
         }
-        animateTo(index)
+        animateTo(index, interrupted)
     }
 
-    private suspend fun animateTo(index: Int) {
+    private suspend fun animateTo(index: Int, interrupted: Boolean) {
+        val initialVelocity = if (interrupted) {
+            position.velocity.coerceIn(-MAXIMUM_INTERRUPT_VELOCITY_TABS_PER_SECOND,
+                MAXIMUM_INTERRUPT_VELOCITY_TABS_PER_SECOND)
+        } else {
+            0f
+        }
         position.animateTo(
             targetValue = index.toFloat(),
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioLowBouncy,
-                stiffness = Spring.StiffnessMediumLow,
-            ),
+            animationSpec = if (interrupted) {
+                spring(dampingRatio = 0.82f, stiffness = 700f)
+            } else {
+                spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                )
+            },
+            initialVelocity = initialVelocity,
         )
     }
 
     suspend fun syncExternalSelection(index: Int) {
         if (isDragging) return
+        val interrupted = floatingTabSelectionIsInterrupted(
+            visualPosition = position.value,
+            previousTarget = targetIndex,
+            nextTarget = index,
+            velocityTabsPerSecond = position.velocity,
+        )
+        targetIndex = index
         if (!selectionSync.shouldAnimateExternalSelection(index)) {
             return
         }
         if (abs(position.value - index) > 0.001f) {
-            settleTo(index)
+            settleTo(index, interrupted)
         }
+    }
+
+    private companion object {
+        const val MAXIMUM_INTERRUPT_VELOCITY_TABS_PER_SECOND = 24f
     }
 }

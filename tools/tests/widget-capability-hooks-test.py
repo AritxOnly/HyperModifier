@@ -15,7 +15,7 @@ source = source[:source.index("bool matchingSchema(")]
 source = "\n".join(line for line in source.splitlines() if not line.startswith("#include"))
 
 platform = r'''
-#include "widget_policy.h"
+#include "fold_widget_rules.h"
 #include <atomic>
 #include <cassert>
 #include <cstdio>

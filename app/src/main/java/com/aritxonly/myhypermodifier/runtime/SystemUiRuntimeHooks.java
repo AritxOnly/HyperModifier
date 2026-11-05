@@ -1,11 +1,11 @@
 package com.aritxonly.myhypermodifier;
 
 import android.content.Context;
+import android.app.Application;
 import android.content.ContextWrapper;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.app.Activity;
-import android.app.Application;
 import android.graphics.Color;
 import android.graphics.Outline;
 import android.content.res.ColorStateList;
@@ -165,9 +165,11 @@ final class SystemUiRuntimeHooks {
             Collections.synchronizedMap(new WeakHashMap<>());
 
     private final XposedModule module;
+    private final Application application;
 
-    SystemUiRuntimeHooks(XposedModule module) {
+    SystemUiRuntimeHooks(XposedModule module, Application application) {
         this.module = module;
+        this.application = application;
     }
 
     void installSystemUiHooks(ClassLoader classLoader) throws Throwable {
@@ -176,6 +178,9 @@ final class SystemUiRuntimeHooks {
         }
         // Each target is independent. One OS-specific missing class must not suppress the
         // remaining hooks; the class-load observer can still install it when it appears later.
+        if (android.os.Build.DEVICE.equals("lhasa") && !disableMediaIslandHooks) {
+            tryInstallSystemUiPart("折叠屏超级岛状态栏避让", () -> FoldIslandIconHooks.install(module, classLoader));
+        }
         if (LOCKSCREEN_PASSWORD_BACKGROUND_EXPERIMENT_ENABLED) {
             tryInstallSystemUiPart("锁屏密码背景模糊", () ->
                     new LockscreenHooks(module).installLockscreenBouncerBlurCompatHook(classLoader));
@@ -201,7 +206,8 @@ final class SystemUiRuntimeHooks {
         tryInstallSystemUiPart("状态栏信号隐藏", () -> StatusBarNetworkVisibilityHooks.install(module, classLoader));
         tryInstallSystemUiPart("圆润信号和 WLAN 图标", () -> RoundedNetworkIconHooks.install(module, classLoader));
         tryInstallSystemUiPart("状态栏信号及网速边距", () -> StatusBarNetworkMarginsHooks.install(module, classLoader));
-        tryInstallSystemUiPart("桌面状态栏取色", () -> DesktopStatusBarHooks.install(module, classLoader));
+        tryInstallSystemUiPart("桌面状态栏取色", () ->
+                DesktopStatusBarHooks.install(module, classLoader, application));
         tryInstallSystemUiPart("状态栏显秒", () -> StatusBarClockSecondsHooks.install(module, classLoader));
         tryInstallSystemUiPart("无数字电池实心框", () -> StatusBarBatteryFrameHooks.install(module, classLoader));
         tryInstallSystemUiPart("控制中心外显电量", () -> ControlCenterBatteryPercentHooks.install(module, classLoader));

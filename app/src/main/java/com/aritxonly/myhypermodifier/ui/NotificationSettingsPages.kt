@@ -816,15 +816,74 @@ internal fun DouyinSettingsPage(
     settings: ModifierSettings,
     update: (ModifierSettings) -> Unit,
     onScroll: (Float) -> Unit,
+    lite: Boolean = false,
 ) = SettingsScrollPage(padding, onScroll) {
-    SettingsSection(topLabel = "抖音") {
-        SettingsSwitchItem(
+    SettingsSection(topLabel = if (lite) "抖音极速版" else "抖音") {
+        if (!lite) SettingsSwitchItem(
             "柔光玻璃悬浮底栏", "系统风格图标与独立发布按钮",
             settings.douyinFloatingNavigationEnabled,
             { update(settings.copy(douyinFloatingNavigationEnabled = it)) },
         )
+        if (lite) SettingsSwitchItem(
+            "抖音极速版柔光玻璃悬浮底栏",
+            "复用抖音底栏渲染与切换动画",
+            settings.douyinLiteFloatingNavigationEnabled,
+            { update(settings.copy(douyinLiteFloatingNavigationEnabled = it)) },
+        )
     }
     SettingsSection(topLabel = "兼容性") {
-        SettingItem("当前适配版本", "40.7.0")
+        SettingItem("当前适配版本", "抖音 40.7.0 / 极速版 40.4.0")
+    }
+}
+
+@Composable
+internal fun NioSettingsPage(
+    padding: PaddingValues,
+    settings: ModifierSettings,
+    update: (ModifierSettings) -> Unit,
+    onScroll: (Float) -> Unit,
+) = SettingsScrollPage(padding, onScroll) {
+    val enabled = settings.nioFloatingNavigationEnabled
+    val visibleCount = listOf(
+        settings.nioDiscoverTabVisible, settings.nioFriendsTabVisible, settings.nioCarTabVisible,
+        settings.nioMallTabVisible, settings.nioMineTabVisible,
+    ).count { it }
+    SettingsSection(topLabel = "蔚来汽车") {
+        SettingsSwitchItem(
+            "柔光玻璃悬浮底栏", "使用 APP 自带的选中与未选中图标",
+            settings.nioFloatingNavigationEnabled,
+            { update(settings.copy(nioFloatingNavigationEnabled = it)) },
+        )
+    }
+    SettingsSection(topLabel = "底栏页面") {
+        SettingItem("入口显隐", "即时生效，至少保留一个入口。")
+        SettingsSwitchItem(
+            "发现", "", settings.nioDiscoverTabVisible,
+            { update(settings.copy(nioDiscoverTabVisible = it)) },
+            enabled = enabled && (!settings.nioDiscoverTabVisible || visibleCount > 1),
+        )
+        SettingsSwitchItem(
+            "朋友", "", settings.nioFriendsTabVisible,
+            { update(settings.copy(nioFriendsTabVisible = it)) },
+            enabled = enabled && (!settings.nioFriendsTabVisible || visibleCount > 1),
+        )
+        SettingsSwitchItem(
+            "爱车", "", settings.nioCarTabVisible,
+            { update(settings.copy(nioCarTabVisible = it)) },
+            enabled = enabled && (!settings.nioCarTabVisible || visibleCount > 1),
+        )
+        SettingsSwitchItem(
+            "惊喜", "", settings.nioMallTabVisible,
+            { update(settings.copy(nioMallTabVisible = it)) },
+            enabled = enabled && (!settings.nioMallTabVisible || visibleCount > 1),
+        )
+        SettingsSwitchItem(
+            "我的", "", settings.nioMineTabVisible,
+            { update(settings.copy(nioMineTabVisible = it)) },
+            enabled = enabled && (!settings.nioMineTabVisible || visibleCount > 1),
+        )
+    }
+    SettingsSection(topLabel = "兼容性") {
+        SettingItem("当前适配版本", "6.9.6（待实机验证）")
     }
 }

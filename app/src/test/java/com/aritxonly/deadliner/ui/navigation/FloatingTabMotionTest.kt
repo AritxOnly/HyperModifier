@@ -6,6 +6,28 @@ import org.junit.Test
 
 class FloatingTabMotionTest {
     @Test
+    fun releaseAndCancellationResetPressDuringDrag() {
+        val motion = FloatingTabMotionState(0)
+        motion.press()
+        motion.startDrag()
+        motion.dragTo(0.6f, 3, 400f)
+        assertTrue(motion.isPressed)
+        assertTrue(motion.isDragging)
+        motion.finishGesture(1)
+        assertEquals(false, motion.isPressed)
+        assertEquals(false, motion.isDragging)
+        assertEquals(0f, motion.velocityPxPerSecond, 0f)
+
+        motion.press()
+        motion.startDrag()
+        motion.dragTo(0.3f, 3, -200f)
+        motion.cancelGesture()
+        assertEquals(false, motion.isPressed)
+        assertEquals(false, motion.isDragging)
+        assertEquals(0f, motion.velocityPxPerSecond, 0f)
+    }
+
+    @Test
     fun targetRoundsContinuousIndicatorPosition() {
         assertEquals(
             2,
@@ -66,6 +88,35 @@ class FloatingTabMotionTest {
         assertEquals(-0.5f, floatingTabPanelDragFraction(-200f, 400f), 0.0001f)
         assertEquals(1f, floatingTabPanelDragFraction(800f, 400f), 0.0001f)
         assertEquals(0f, floatingTabPanelDragFraction(100f, 0f), 0.0001f)
+    }
+
+    @Test
+    fun rapidSelectionKeepsMomentumOnlyWhilePreviousTransitionIsInFlight() {
+        assertTrue(
+            floatingTabSelectionIsInterrupted(
+                visualPosition = 1.4f,
+                previousTarget = 3,
+                nextTarget = 0,
+                velocityTabsPerSecond = 7f,
+            ),
+        )
+        assertTrue(
+            floatingTabSelectionIsInterrupted(
+                visualPosition = 2.1f,
+                previousTarget = 2,
+                nextTarget = 3,
+                velocityTabsPerSecond = 4f,
+            ),
+        )
+        assertEquals(
+            false,
+            floatingTabSelectionIsInterrupted(
+                visualPosition = 2f,
+                previousTarget = 2,
+                nextTarget = 1,
+                velocityTabsPerSecond = 0f,
+            ),
+        )
     }
 
 }

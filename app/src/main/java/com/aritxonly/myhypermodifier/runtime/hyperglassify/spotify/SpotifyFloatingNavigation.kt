@@ -3,6 +3,8 @@ package com.aritxonly.myhypermodifier
 import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
@@ -13,10 +15,12 @@ import android.view.ViewTreeObserver
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -30,8 +34,10 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.platform.createLifecycleAwareWindowRecomposer
 import androidx.compose.ui.unit.dp
@@ -41,6 +47,7 @@ import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBar
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarDefaults
+import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarGeometry
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabItem
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabLayout
 import com.aritxonly.deadliner.ui.theme.AdvancedMaterialSpec
@@ -111,6 +118,11 @@ internal object SpotifyFloatingNavigation {
         activity.window.decorView.post(retry)
     }
 
+    fun reattach(activity: Activity) {
+        dispose(activity)
+        attach(activity)
+    }
+
     @JvmStatic fun refresh(activity: Activity) = hosts[activity]?.get()?.refresh()
     @JvmStatic fun setForeground(activity: Activity, foreground: Boolean) {
         if (!foreground) {
@@ -145,6 +157,7 @@ private data class SpotifyNavigationState(
     val tabs: List<SpotifyTabState> = emptyList(),
     val selectedIndex: Int = 0,
     val visible: Boolean = false,
+    val navigationInsetPx: Int = 0,
 )
 
 private data class SpotifyAccessibilityTab(
@@ -158,29 +171,57 @@ private class SpotifyNavigationHost private constructor(
     private val overlayParent: ViewGroup,
     private val nativeNavigationBar: View,
     private val navigationInsetSpace: View?,
+    private val stackedDock: Boolean,
     samplingView: View,
 ) {
     private var state by mutableStateOf(SpotifyNavigationState())
     private val owner = InjectedViewTreeOwner()
     private val windowImmersion = InjectedBottomNavigationImmersion(activity)
     private val originalNavigationAlpha = nativeNavigationBar.alpha
-    private val originalNavigationAccessibility = nativeNavigationBar.importantForAccessibility
-    private val originalNavigationLayoutHeight = nativeNavigationBar.layoutParams.height
+    private var originalNavigationLayoutHeight = nativeNavigationBar.layoutParams.height
+    private var appliedNavigationHeight: Int? = null
     private val originalInsetVisibility = navigationInsetSpace?.visibility
     private val bottomGradients = listOf("bottom_gradient", "bottom_gradient_black_fade",
         "bottom_gradient_window_insets").mapNotNull(activity::findSpotifyView).associateWith { it.alpha }
     private val composeView = ComposeView(activity)
     private val visibility = FloatingNavigationVisibility(composeView)
     private val gpuBackdrop = NativeGpuBackdrop.create(samplingView, composeView)
+    private val overlayAnchor = NativeTabOverlayAnchor(overlayParent, composeView)
+    private val overlayPosition = IntArray(2)
+    private var tabTopInOverlay = 0
+    private val nativePosition = IntArray(2)
+    private val playerPosition = IntArray(2)
+    private val playerId = activity.resources.getIdentifier("now_playing_bar_layout", "id", activity.packageName)
+    private val miniContainer = activity.findSpotifyView("now_playing_mini_container")
+    private val playerContainer = activity.findSpotifyView("now_playing_view_container")
+    private val playerRoot = miniContainer ?: playerContainer ?: overlayParent
+    private val containerBackground = if (!stackedDock && playerContainer != null &&
+        activity.findSpotifyView("now_playing_view_region_collapsed") != null
+    ) SpotifyPlayerContainerBackground.create(playerContainer) else null
+    private val guideId = activity.resources.getIdentifier("guideline_start", "id", activity.packageName)
+    private val playPauseId = activity.resources.getIdentifier("play_pause_button", "id", activity.packageName)
+    private var player: View? = null
+    private var playerLookupPending = true
+    private val layoutListener = ViewTreeObserver.OnGlobalLayoutListener { playerLookupPending = true }
+    private val originalOrientation = activity.resources.configuration.orientation
+    private val originalNavigationParent = nativeNavigationBar.parent
     private val tabIcons = SpotifyIconLoader(activity)
-    private val playback = SpotifyPlaybackCapsule(activity)
+    private val refreshPolicy = NavigationRefreshPolicy(100L)
+    private val stableNavigationInset = StableNavigationBarInset()
+    private val playback = SpotifyPlaybackCapsule(activity, splitPaneColor = if (stackedDock) null else
+        (samplingView.background as? ColorDrawable)?.color?.takeIf { Color.alpha(it) == 255 }
+            ?: Color.rgb(18, 18, 18))
     private var foreground = true
+    private var sampledTab: ViewBackdropBounds? = null
+    private var sampledPlayerBounds: ViewBackdropBounds? = null
     private var navigationBounds: ViewBackdropBounds? = null
     private var lastKnownIndex = 0
     private var cachedAccessibilityTabs: List<SpotifyAccessibilityTab> = emptyList()
     private var lastAccessibilityScanAt = Long.MIN_VALUE
-    private val composeLayoutListener = View.OnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
-        if (state.visible) reserveDockHeight()
+    private var reattachPosted = false
+    private val reattach = Runnable {
+        reattachPosted = false
+        if (foreground && needsReattach()) SpotifyFloatingNavigation.reattach(activity)
     }
     private val preDrawListener = ViewTreeObserver.OnPreDrawListener {
         syncNativeState()
@@ -188,7 +229,6 @@ private class SpotifyNavigationHost private constructor(
     }
 
     init {
-        windowImmersion.apply()
         composeView.apply {
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             setViewTreeLifecycleOwner(owner)
@@ -202,11 +242,12 @@ private class SpotifyNavigationHost private constructor(
             setContent {
                 SpotifyNavigationContent(
                     state = state,
+                    stackedDock = stackedDock,
                     gpuBackdrop = gpuBackdrop,
-                    onBackdropBoundsChanged = { bounds ->
+                    onBackdropBoundsChanged = { bounds, localTop ->
+                        tabTopInOverlay = localTop
                         navigationBounds = bounds
                         updateSamplingBounds()
-                        reserveDockHeight()
                     },
                     onDestinationSelected = ::selectDestination,
                 )
@@ -220,19 +261,19 @@ private class SpotifyNavigationHost private constructor(
                 Gravity.BOTTOM,
             ),
         )
-        composeView.addOnLayoutChangeListener(composeLayoutListener)
+        overlayParent.viewTreeObserver.addOnGlobalLayoutListener(layoutListener)
         overlayParent.viewTreeObserver.addOnPreDrawListener(preDrawListener)
         syncNativeState()
     }
 
     fun refresh() {
-        syncNativeState()
+        syncNativeState(force = true)
     }
 
 
     fun setForeground(value: Boolean) {
         foreground = value
-        if (value) syncNativeState() else {
+        if (value) syncNativeState(force = true) else {
             gpuBackdrop?.setActive(false)
         }
     }
@@ -240,28 +281,50 @@ private class SpotifyNavigationHost private constructor(
     fun dispose() {
         visibility.dispose()
         gpuBackdrop?.dispose()
-        playback.dispose()
-        composeView.removeOnLayoutChangeListener(composeLayoutListener)
+        overlayAnchor.dispose()
+        overlayParent.removeCallbacks(reattach)
         if (overlayParent.viewTreeObserver.isAlive) {
+            overlayParent.viewTreeObserver.removeOnGlobalLayoutListener(layoutListener)
             overlayParent.viewTreeObserver.removeOnPreDrawListener(preDrawListener)
         }
         (composeView.parent as? ViewGroup)?.removeView(composeView)
-        nativeNavigationBar.alpha = originalNavigationAlpha
-        nativeNavigationBar.importantForAccessibility = originalNavigationAccessibility
-        restoreNavigationHeight()
-        originalInsetVisibility?.let { navigationInsetSpace?.visibility = it }
-        bottomGradients.forEach { (view, alpha) -> view.alpha = alpha }
-        windowImmersion.dispose()
+        if (state.visible) {
+            nativeNavigationBar.alpha = originalNavigationAlpha
+            if (stackedDock) restoreStackedDock()
+        }
+        containerBackground?.restore()
+        playback.dispose()
+        player = null
         cachedAccessibilityTabs = emptyList()
         owner.dispose()
     }
 
-    private fun syncNativeState() {
+    private fun needsReattach(): Boolean = !nativeNavigationBar.isAttachedToWindow ||
+        nativeNavigationBar.parent !== originalNavigationParent ||
+        activity.resources.configuration.orientation != originalOrientation
+
+    private fun syncNativeState(force: Boolean = false) {
         if (!foreground) return
-        val navigationAvailable = foreground && ModuleSettings.moduleHooksEnabled &&
+        // Spotify can reinflate MainLayout in place on rotation or fold/unfold.
+        if (needsReattach()) {
+            hideNavigation()
+            if (!reattachPosted) {
+                reattachPosted = true
+                overlayParent.post(reattach)
+            }
+            return
+        }
+        if (!refreshPolicy.shouldRefresh(SystemClock.uptimeMillis(), force || state.tabs.isEmpty())) return
+        val navigationAvailable = ModuleSettings.moduleHooksEnabled &&
             ModuleSettings.spotifyFloatingNavigationEnabled &&
             nativeNavigationBar.visibility == View.VISIBLE &&
-            nativeNavigationBar.height > 0 && nativeNavigationBar.isShown
+            nativeNavigationBar.height > 0 && nativeNavigationBar.width > nativeNavigationBar.height &&
+            nativeNavigationBar.isShown
+        if (!navigationAvailable) {
+            hideNavigation()
+            return
+        }
+        overlayAnchor.align(nativeNavigationBar, matchNativeHeight = !stackedDock)
         val accessibilityTabs = readAccessibilityTabs()
         val definitions = if (accessibilityTabs.size >= 3) {
             accessibilityTabs.map { it.key to it.label }
@@ -273,28 +336,34 @@ private class SpotifyNavigationHost private constructor(
             SpotifyTabState(key, label, icons.first, icons.second)
         }
         // Keep the native navigation usable when a version lacks required icon resources.
-        val navigationVisible = navigationAvailable && tabs.size >= 3
-        gpuBackdrop?.setActive(navigationVisible)
-        playback.sync(navigationVisible, navigationBounds)
-        updateSamplingBounds()
-        if (navigationVisible) {
-            windowImmersion.apply()
-            windowImmersion.ensureApplied()
-            if (nativeNavigationBar.alpha != 0f) nativeNavigationBar.alpha = 0f
-            // Keep Spotify's invisible Compose semantics alive; our visual copy is not exposed to
-            // accessibility, so TalkBack still invokes Spotify's own navigation actions.
-            nativeNavigationBar.importantForAccessibility = originalNavigationAccessibility
-            if (navigationInsetSpace?.visibility != View.GONE) navigationInsetSpace?.visibility = View.GONE
-            bottomGradients.keys.forEach { it.alpha = 0f }
-            reserveDockHeight()
-        } else {
-            nativeNavigationBar.alpha = originalNavigationAlpha
-            nativeNavigationBar.importantForAccessibility = originalNavigationAccessibility
-            originalInsetVisibility?.let { navigationInsetSpace?.visibility = it }
-            bottomGradients.forEach { (view, alpha) -> view.alpha = alpha }
-            restoreNavigationHeight()
-            windowImmersion.dispose()
+        if (tabs.size < 3) {
+            hideNavigation()
+            return
         }
+        gpuBackdrop?.setActive(true)
+        // Only vertical_main stacks playback above navigation_bar_bottom_barrier.
+        // horizontal_main and large_main own independent player and tab regions.
+        if (stackedDock) {
+            windowImmersion.apply(composeView)
+            windowImmersion.ensureApplied()
+            if (navigationInsetSpace?.visibility != View.GONE) navigationInsetSpace?.visibility = View.GONE
+            bottomGradients.keys.forEach { if (it.alpha != 0f) it.alpha = 0f }
+        }
+        val layoutChanged = playerLookupPending
+        if (layoutChanged) {
+            // The horizontal mini container also hosts Spotify's legacy nowplayingmini_* rows.
+            player = findMiniPlayer()
+            containerBackground?.bind(player)
+            playerLookupPending = false
+        }
+        val tab = navigationBounds
+        if (tab != null) {
+            playback.sync(player, tab, stackedDock)
+            if (stackedDock) reserveDockHeight(player)
+        }
+        containerBackground?.sync(playback.backdropBounds != null, layoutChanged)
+        if (nativeNavigationBar.alpha != 0f) nativeNavigationBar.alpha = 0f
+        updateSamplingBounds()
 
         val selected = accessibilityTabs.indexOfFirst { it.selected }
             .takeIf { it >= 0 } ?: lastKnownIndex
@@ -302,17 +371,58 @@ private class SpotifyNavigationHost private constructor(
         val next = SpotifyNavigationState(
             tabs = tabs,
             selectedIndex = lastKnownIndex,
-            visible = navigationVisible,
+            visible = true,
+            navigationInsetPx = stableNavigationInset.bottomPx(
+                composeView,
+                activity.window.decorView,
+            ),
         )
         state = next
         visibility.setVisible(next.visible)
     }
 
+    private fun findMiniPlayer(): View? {
+        if (playerId != 0) {
+            playerRoot.findViewById<View>(playerId)?.let { return it }
+            overlayParent.findViewById<View>(playerId)?.let { return it }
+        }
+        if (guideId == 0 || playPauseId == 0) return null
+        val controls = miniContainer?.findViewById<View>(guideId)?.parent as? ViewGroup
+        return controls?.takeIf { it.findViewById<View>(playPauseId) != null }
+    }
+
+    private fun hideNavigation() {
+        if (state.visible) {
+            state = state.copy(visible = false)
+            nativeNavigationBar.alpha = originalNavigationAlpha
+            if (stackedDock) restoreStackedDock()
+            containerBackground?.restore()
+            playback.dispose()
+            navigationBounds = null
+            gpuBackdrop?.setActive(false)
+        }
+        visibility.setVisible(false)
+    }
+
+    private fun restoreStackedDock() {
+        restoreNavigationHeight()
+        originalInsetVisibility?.let { navigationInsetSpace?.visibility = it }
+        bottomGradients.forEach { (view, alpha) -> view.alpha = alpha }
+        windowImmersion.dispose()
+    }
+
     private fun updateSamplingBounds() {
         val tab = navigationBounds ?: return
-        val region = SpotifyDockBackdrop.union(tab, playback.backdropBounds)
-        gpuBackdrop?.setBounds(region)
-        playback.updateGpuBackdrop(gpuBackdrop, playback.backdropBounds)
+        val bounds = playback.backdropBounds
+        val shareCrop = bounds != null && (stackedDock ||
+            (bounds.top < tab.top + tab.height && tab.top < bounds.top + bounds.height))
+        val sampledPlayer = if (shareCrop) bounds else null
+        if (tab !== sampledTab || sampledPlayer !== sampledPlayerBounds) {
+            sampledTab = tab
+            sampledPlayerBounds = sampledPlayer
+            gpuBackdrop?.setBounds(SpotifyDockBackdrop.union(tab, sampledPlayer))
+        }
+        playback.updateGpuBackdrop(if (shareCrop) gpuBackdrop else null, sampledPlayer)
     }
 
     private fun selectDestination(index: Int) {
@@ -440,35 +550,37 @@ private class SpotifyNavigationHost private constructor(
     }
 
     private fun reserveNavigationHeight(height: Int) {
-        if (height <= 0 || nativeNavigationBar.layoutParams.height == height) return
+        val currentHeight = nativeNavigationBar.layoutParams.height
+        if (currentHeight != appliedNavigationHeight) originalNavigationLayoutHeight = currentHeight
+        if (currentHeight == height) return
+        appliedNavigationHeight = height
         nativeNavigationBar.layoutParams = nativeNavigationBar.layoutParams.apply {
             this.height = height
         }
-        nativeNavigationBar.requestLayout()
     }
 
-    private fun reserveDockHeight() {
-        val bounds = navigationBounds ?: return
-        val rootPosition = IntArray(2)
-        overlayParent.getLocationInWindow(rootPosition)
-        val nativePosition = IntArray(2)
+    private fun reserveDockHeight(currentPlayer: View?) {
+        if (composeView.isLayoutRequested || nativeNavigationBar.isLayoutRequested) return
+        composeView.getLocationInWindow(overlayPosition)
         nativeNavigationBar.getLocationInWindow(nativePosition)
-        val player = activity.findSpotifyView("now_playing_bar_layout")?.takeIf { it.isShown && it.height > 0 }
-        val playerPosition = IntArray(2)
+        val player = currentPlayer?.takeIf { it.isShown && it.height > 0 }
         player?.getLocationInWindow(playerPosition)
-        reserveNavigationHeight(SpotifyDockLayout.reserveHeight(
-            rootPosition[1] + overlayParent.height, bounds.top, nativePosition[1],
+        val height = SpotifyDockLayout.reserveHeight(
+            nativePosition[1], nativeNavigationBar.height, overlayPosition[1] + tabTopInOverlay, composeView.height,
             player?.let { playerPosition[1] + it.height },
             (6f * activity.resources.displayMetrics.density).roundToInt(),
-        ))
+        ) ?: return
+        reserveNavigationHeight(height)
     }
 
     private fun restoreNavigationHeight() {
-        if (nativeNavigationBar.layoutParams.height == originalNavigationLayoutHeight) return
-        nativeNavigationBar.layoutParams = nativeNavigationBar.layoutParams.apply {
-            height = originalNavigationLayoutHeight
+        if (nativeNavigationBar.layoutParams.height == appliedNavigationHeight &&
+            nativeNavigationBar.layoutParams.height != originalNavigationLayoutHeight) {
+            nativeNavigationBar.layoutParams = nativeNavigationBar.layoutParams.apply {
+                height = originalNavigationLayoutHeight
+            }
         }
-        nativeNavigationBar.requestLayout()
+        appliedNavigationHeight = null
     }
 
     companion object {
@@ -500,7 +612,10 @@ private class SpotifyNavigationHost private constructor(
                 overlayParent = overlay,
                 nativeNavigationBar = navigation,
                 navigationInsetSpace = activity.findSpotifyView("navigation_bar_window_insets_space"),
-                samplingView = content,
+                stackedDock = SpotifyDockLayout.hasStackedPlayer(
+                    navigation, activity.findSpotifyView("navigation_bar_bottom_barrier"),
+                ),
+                samplingView = activity.findSpotifyView("side_panel_background") ?: content,
             )
         }.onFailure {
             Log.e("MyHyperModifier", "Could not attach Spotify HyperGlassify overlay", it)
@@ -544,12 +659,13 @@ private class SpotifyIconLoader(private val activity: Activity) {
 @Composable
 private fun SpotifyNavigationContent(
     state: SpotifyNavigationState,
+    stackedDock: Boolean,
     gpuBackdrop: NativeGpuBackdrop?,
-    onBackdropBoundsChanged: (ViewBackdropBounds) -> Unit,
+    onBackdropBoundsChanged: (ViewBackdropBounds, Int) -> Unit,
     onDestinationSelected: (Int) -> Unit,
 ) {
     if (!state.visible || state.tabs.isEmpty()) return
-    // Spotify's content remains dark even when Android uses a light theme.
+    // Spotify's dock stays dark regardless of the system/Activity night mode.
     val dark = true
     val materialColors = remember(dark) { MhmPresetColors.material(dark) }
     val miuixColors = remember(dark, materialColors) { MhmPresetColors.miuix(materialColors, dark) }
@@ -557,22 +673,30 @@ private fun SpotifyNavigationContent(
     var nativeBackdropBounds by remember { mutableStateOf<ViewBackdropBounds?>(null) }
     val opticalBackdrop = if (gpuBackdrop?.geometry != null) backdrop else null
     val hiddenNavigationLift = hyperGlassifyHiddenNavigationLift()
+    val navigationPadding = if (state.navigationInsetPx > 0) {
+        Modifier.padding(bottom = with(LocalDensity.current) {
+            state.navigationInsetPx.toDp()
+        })
+    } else {
+        Modifier.navigationBarsPadding()
+    }
 
     MaterialTheme(colorScheme = materialColors) {
         MiuixTheme(colors = miuixColors) {
             CompositionLocalProvider(LocalAdvancedMaterialSpec provides navigationGlassMaterial()) {
                 Box(
-                    modifier = Modifier
+                    modifier = if (stackedDock) Modifier
                         .fillMaxWidth()
                         .navigationEdgeMask()
-                        .navigationBarsPadding()
+                        .then(navigationPadding)
                         .padding(
                             start = 20.dp,
                             top = INJECTED_NAVIGATION_SHADOW_TOP_PADDING,
                             end = 20.dp,
                             bottom = 4.dp + hiddenNavigationLift,
                         )
-                        .height(MiuixFloatingTabBarDefaults.Height),
+                        .height(MiuixFloatingTabBarGeometry.resolve("Spotify").heightDp?.dp ?: MiuixFloatingTabBarDefaults.Height)
+                    else Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (gpuBackdrop != null) NativeGpuBackdropLayer(gpuBackdrop, backdrop, nativeBackdropBounds)
@@ -588,20 +712,22 @@ private fun SpotifyNavigationContent(
                         },
                         selectedKey = state.selectedIndex.toString(),
                         onItemSelected = { onDestinationSelected(it.key.toInt()) },
-                        modifier = Modifier.onGloballyPositioned { coordinates ->
-                            val position = coordinates.positionInWindow()
-                            val bounds = ViewBackdropBounds(
+                        modifier = Modifier.widthIn(max = MiuixFloatingTabBarDefaults.MaximumWidth)
+                            .onGloballyPositioned { coordinates ->
+                                val position = coordinates.positionInWindow()
+                                val bounds = ViewBackdropBounds(
                                     position.x.roundToInt(),
                                     position.y.roundToInt(),
                                     coordinates.size.width,
                                     coordinates.size.height,
                                 )
-                            nativeBackdropBounds = bounds
-                            onBackdropBoundsChanged(bounds)
-                        },
+                                nativeBackdropBounds = bounds
+                                onBackdropBoundsChanged(bounds, coordinates.positionInRoot().y.roundToInt())
+                            },
                         layout = MiuixFloatingTabLayout.Stacked,
                         fillAvailableWidth = true,
                         backdrop = opticalBackdrop,
+                        geometryKey = "Spotify",
                     )
                 }
             }

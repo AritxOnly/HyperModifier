@@ -20,6 +20,7 @@ final class AlipayHooks {
         try {
             Class<?> fragment = Class.forName("com.alipay.android.launcher.TabLauncherFragment", false, loader);
             Method getActivity = fragment.getMethod("getActivity");
+            InjectedNavigationContext.initialize(module.getModuleApplicationInfo().sourceDir);
             AlipayFloatingNavigation.initialize(loader);
             hook(module, fragment.getDeclaredMethod("onViewCreated", View.class, Bundle.class), "created", chain -> {
                 Object result = chain.proceed();

@@ -19,6 +19,7 @@ import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.RelativeLayout
 import android.widget.TextView
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,10 +35,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.ComposeView
@@ -50,6 +54,7 @@ import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBar
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarDefaults
+import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarGeometry
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabItem
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabLayout
 import com.aritxonly.deadliner.ui.theme.AdvancedMaterialSpec
@@ -248,6 +253,7 @@ private class MiHomeNavigationHost private constructor(
     private val windowManager = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val composeView = ComposeView(activity)
     private val visibility = FloatingNavigationVisibility(composeView, windowManager)
+    private val overlayAnchor = NativeTabOverlayAnchor(overlayParent, composeView, windowManager)
     private val stableNavigationInset = StableNavigationBarInset()
     private var composeWindowAttached = false
     private var lastNavigationDiagnostic: String? = null
@@ -267,6 +273,7 @@ private class MiHomeNavigationHost private constructor(
     ) { backdropSnapshot = it }
     private val contentBottomPadding = InjectedScrollableContentBottomPadding(contentView)
     private val iconSnapshotter = MiHomeTabIconSnapshotter(activity)
+    private val refreshPolicy = NavigationRefreshPolicy(100L)
     private val startupCaptureRunnables = STARTUP_CAPTURE_DELAYS_MS.map {
         Runnable {
             if (composeWindowAttached && state.visible) sampler.requestCapture()
@@ -298,7 +305,7 @@ private class MiHomeNavigationHost private constructor(
         val visible = overlayParent.hasVisibleContextualActionBar(contextualViewIds)
         if (contextualActionBarVisible != visible) {
             contextualActionBarVisible = visible
-            syncNativeState()
+            syncNativeState(force = true)
         }
     }
 
@@ -324,7 +331,6 @@ private class MiHomeNavigationHost private constructor(
                 WindowManager.LayoutParams.TYPE_APPLICATION_PANEL,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT,
             ).apply {
@@ -340,7 +346,7 @@ private class MiHomeNavigationHost private constructor(
         visibility.onAttached()
         ModuleSettings.onLoaded {
             composeView.post {
-                if (composeWindowAttached) syncNativeState()
+                if (composeWindowAttached) syncNativeState(force = true)
             }
         }
         composeView.post(settingsRefreshRunnable)
@@ -358,12 +364,12 @@ private class MiHomeNavigationHost private constructor(
 
     fun onActionModeStarted(mode: Any) {
         activeActionModes[mode] = true
-        syncNativeState()
+        syncNativeState(force = true)
     }
 
     fun onActionModeFinished(mode: Any) {
         activeActionModes.remove(mode)
-        syncNativeState()
+        syncNativeState(force = true)
     }
 
     fun setForeground(value: Boolean) {
@@ -374,6 +380,7 @@ private class MiHomeNavigationHost private constructor(
 
     fun dispose() {
         activeActionModes.clear()
+        overlayAnchor.dispose()
         visibility.dispose()
         sampler.dispose()
         composeView.removeCallbacks(settingsRefreshRunnable)
@@ -399,7 +406,7 @@ private class MiHomeNavigationHost private constructor(
         if (enabled) {
             if (!replacingNativeChrome) {
                 replacingNativeChrome = true
-                windowImmersion.apply()
+                windowImmersion.apply(composeView)
             }
             windowImmersion.ensureApplied()
             removeContentReservation()
@@ -461,8 +468,12 @@ private class MiHomeNavigationHost private constructor(
         }
     }
 
-    private fun syncNativeState() {
+    private fun syncNativeState(force: Boolean = false) {
+        if (!refreshPolicy.shouldRefresh(SystemClock.uptimeMillis(), force || state.tabs.isEmpty())) {
+            return
+        }
         val tabs = nativeTabViews()
+        overlayAnchor.align(nativeTabLayout, tabs)
         val selected = runCatching {
             nativeTabLayout.javaClass.getMethod("getSelectedTabIndex")
                 .invoke(nativeTabLayout) as Int
@@ -565,7 +576,7 @@ private class MiHomeNavigationHost private constructor(
         if (index != state.selectedIndex) sampler.invalidateSamplingContext()
         state = state.copy(selectedIndex = index)
         tab.performClick()
-        tab.post(::syncNativeState)
+        tab.post { syncNativeState(force = true) }
         sampler.requestCaptureBurst()
     }
 
@@ -701,7 +712,10 @@ private fun MiHomeNavigationContent(
         // Marketplace uses the original static ImageView directly. This avoids re-rasterizing
         // its drawable, which is what made that OEM icon disappear in the Compose copy.
         val originalMarketplaceIcon = tab.staticIcon?.takeIf { tab.isMarketplace() }
-        val nativeIcons = tab.icons?.takeUnless { useMiuixIcons || originalMarketplaceIcon != null }
+        // Keep the rasterized native icon available even when a live Marketplace source exists.
+        // It is rendered underneath the live view so a late/blank OEM drawable cannot hide the
+        // whole tab icon.
+        val nativeIcons = tab.icons?.takeUnless { useMiuixIcons }
         val nativeLottie = tab.lottie?.takeUnless { useMiuixIcons }
         val monochrome = (nativeIcons != null || nativeLottie != null) && monochromeEnabled
         val selectedPainter = nativeIcons?.let {
@@ -714,7 +728,15 @@ private fun MiHomeNavigationContent(
         } ?: rememberVectorPainter(miHomeIcon(tab, index))
         val liveIconContent: (@Composable (Boolean, Color) -> Unit)? =
             originalMarketplaceIcon?.let { spec ->
-                { _, tint -> MiHomeStaticIcon(spec, tint) }
+                { selected, tint ->
+                    MiHomeStaticIcon(
+                        spec = spec,
+                        selected = selected,
+                        tint = tint,
+                        selectedFallback = selectedPainter,
+                        unselectedFallback = unselectedPainter,
+                    )
+                }
             } ?: nativeLottie?.let { spec ->
                 { selected, tint ->
                     MiHomeLottieIcon(
@@ -752,7 +774,10 @@ private fun MiHomeNavigationContent(
                             end = 16.dp,
                             bottom = 4.dp + hiddenNavigationLift,
                         )
-                        .height(MiuixFloatingTabBarDefaults.Height),
+                        .height(
+                            MiuixFloatingTabBarGeometry.resolve("MiHome").heightDp?.dp
+                                ?: MiuixFloatingTabBarDefaults.Height,
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     ViewBackdropLayer(backdropSnapshot, backdrop)
@@ -773,6 +798,7 @@ private fun MiHomeNavigationContent(
                         },
                         layout = MiuixFloatingTabLayout.Stacked,
                         backdrop = backdropSnapshot?.let { backdrop },
+                        geometryKey = "MiHome",
                     )
                 }
             }
@@ -824,12 +850,16 @@ private fun View.findDescendantByClassName(className: String): View? {
 
 private fun View.hasVisibleContextualActionBar(contextualViewIds: Set<Int>): Boolean {
     val name = javaClass.name
-    if ((id in contextualViewIds ||
+    val visible = isShown && alpha > 0f && width > 0 && height > 0
+    if (visible && (
+            id in contextualViewIds ||
             name == MI_HOME_EDIT_MASK_CLASS ||
             name == MI_HOME_MICO_ACTION_BAR_CLASS ||
             name == MI_HOME_MICO_ACTION_MENU_CLASS ||
-            name.endsWith("ActionBarContextView") || name.endsWith("ActionModeView")) &&
-        isShown && alpha > 0f && width > 0 && height > 0
+            name.endsWith("ActionBarContextView") ||
+            name.endsWith("ActionModeView") ||
+            (this is TextView && MiHomeNavigationPolicy.isSelectionHeader(text))
+        )
     ) return true
     if (this is ViewGroup) {
         repeat(childCount) { index ->
@@ -974,45 +1004,78 @@ private fun ImageView.toMiHomeDrawableIconSpec(): MiHomeDrawableIconSpec? {
 }
 
 @Composable
-private fun MiHomeStaticIcon(spec: MiHomeDrawableIconSpec, tint: Color) {
-    AndroidView(
-        factory = { context ->
-            ImageView(context).apply {
-                scaleType = ImageView.ScaleType.FIT_CENTER
-            }
-        },
+private fun MiHomeStaticIcon(
+    spec: MiHomeDrawableIconSpec,
+    selected: Boolean,
+    tint: Color,
+    selectedFallback: Painter,
+    unselectedFallback: Painter,
+) {
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(MiuixFloatingTabBarDefaults.TabIconSize),
-        update = { imageView ->
-            val copy = spec.constantState.newDrawable(imageView.resources, imageView.context.theme)
-                .mutate()
-                .apply {
-                    state = spec.state
-                    level = spec.level
+        contentAlignment = Alignment.Center,
+    ) {
+        // Mi Home's Marketplace ImageView can be captured before its drawable finishes loading.
+        // Keep the same-state native/raster fallback underneath so a blank static copy cannot
+        // remove the whole icon.
+        Image(
+            painter = if (selected) selectedFallback else unselectedFallback,
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(MiuixFloatingTabBarDefaults.TabIconSize),
+            contentScale = ContentScale.Fit,
+            colorFilter = tint.takeUnless { it == Color.Unspecified }?.let(ColorFilter::tint),
+        )
+        AndroidView(
+            factory = { context ->
+                ImageView(context).apply {
+                    scaleType = ImageView.ScaleType.FIT_CENTER
                 }
-            // The original Drawable supplies the correct shape and state, while the glass bar
-            // owns its foreground color. Applying the live tint to both drawable routes keeps
-            // Marketplace in sync whether Mi Home placed the icon in src or background.
-            val colorFilter = PorterDuffColorFilter(tint.toArgb(), PorterDuff.Mode.SRC_IN)
-            copy.colorFilter = colorFilter
-            imageView.imageTintList = android.content.res.ColorStateList.valueOf(tint.toArgb())
-            imageView.imageTintMode = PorterDuff.Mode.SRC_IN
-            imageView.colorFilter = colorFilter
-            imageView.imageAlpha = spec.imageAlpha
-            imageView.alpha = spec.viewAlpha
-            imageView.scaleType = spec.scaleType
-            imageView.backgroundTintList = android.content.res.ColorStateList.valueOf(tint.toArgb())
-            imageView.backgroundTintMode = PorterDuff.Mode.SRC_IN
-            if (spec.usesBackground) {
-                imageView.setImageDrawable(null)
-                imageView.background = copy
-            } else {
-                imageView.background = null
-                imageView.setImageDrawable(copy)
-            }
-        },
-    )
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(MiuixFloatingTabBarDefaults.TabIconSize),
+            update = { imageView ->
+                runCatching {
+                    val copy = spec.constantState
+                        .newDrawable(imageView.resources, imageView.context.theme)
+                        .mutate()
+                        .apply {
+                            state = spec.state
+                            level = spec.level
+                        }
+                    // The original Drawable supplies the correct shape and state, while the glass
+                    // bar owns its foreground color.
+                    val colorFilter = PorterDuffColorFilter(tint.toArgb(), PorterDuff.Mode.SRC_IN)
+                    copy.colorFilter = colorFilter
+                    imageView.imageTintList =
+                        android.content.res.ColorStateList.valueOf(tint.toArgb())
+                    imageView.imageTintMode = PorterDuff.Mode.SRC_IN
+                    imageView.colorFilter = colorFilter
+                    imageView.imageAlpha = spec.imageAlpha
+                    imageView.alpha = spec.viewAlpha
+                    imageView.scaleType = spec.scaleType
+                    imageView.backgroundTintList =
+                        android.content.res.ColorStateList.valueOf(tint.toArgb())
+                    imageView.backgroundTintMode = PorterDuff.Mode.SRC_IN
+                    if (spec.usesBackground) {
+                        imageView.setImageDrawable(null)
+                        imageView.background = copy
+                    } else {
+                        imageView.background = null
+                        imageView.setImageDrawable(copy)
+                    }
+                }.onFailure {
+                    imageView.setImageDrawable(null)
+                    imageView.background = null
+                    imageView.alpha = 1f
+                }
+            },
+        )
+    }
 }
 
 private fun Any.invokeNoArg(name: String): Any? {

@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 /** Sends rare startup failures to the companion app without doing IPC inside a Hook callback. */
 final class HookDiagnostics {
     private static final String TAG = "MyHyperModifier";
-    private static final String MODULE_PACKAGE = "com.aritxonly.myhypermodifier";
+    private static final String MODULE_PACKAGE = BuildConfig.APPLICATION_ID;
     private static final String ACTION = MODULE_PACKAGE + ".HOOK_DIAGNOSTIC";
     private static final int MAX_PENDING = 128;
     private static final ArrayDeque<Event> PENDING = new ArrayDeque<>();

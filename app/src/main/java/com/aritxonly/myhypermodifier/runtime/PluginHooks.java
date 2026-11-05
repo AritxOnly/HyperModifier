@@ -35,6 +35,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.xmlpull.v1.XmlPullParser;
@@ -66,8 +69,6 @@ final class PluginHooks {
 
     private static final int XML_MEDIA_ISLAND_NORMAL = 0x7f180018;
     private static final int XML_MEDIA_NORMAL = 0x7f180019;
-    private static final String PLAYER_ISLAND_CONSTRAINT_LAYOUT =
-            "com.android.systemui.statusbar.notification.mediaisland.PlayerIslandConstraintLayout";
     private static final String HEADS_UP_GLASS_EFFECT =
             "com.android.systemui.statusbar.notification.style.vieweffect."
                     + "HeadsUpNotificationGlassEffect";
@@ -110,8 +111,8 @@ final class PluginHooks {
     private static final AtomicBoolean RESOURCE_HOOKS_INSTALLED = new AtomicBoolean();
     private static final AtomicBoolean SYSTEM_UI_HOOKS_INSTALLED = new AtomicBoolean();
     private static final AtomicBoolean PLUGIN_DRAWABLE_HOOKS_INSTALLED = new AtomicBoolean();
-    private static final AtomicBoolean PLUGIN_CLASS_LOADER_RESOLVER_INSTALLED = new AtomicBoolean();
     private static final AtomicBoolean PLUGIN_FACTORY_HOOK_INSTALLED = new AtomicBoolean();
+    private static final AtomicBoolean PLUGIN_CORNER_HOOKS_SCHEDULED = new AtomicBoolean();
     private static final AtomicBoolean MILINK_FUSION_CARD_HOOKS_INSTALLED = new AtomicBoolean();
     private static final AtomicBoolean SETTINGS_HOOK_INSTALLED = new AtomicBoolean();
     private static final AtomicBoolean APPLICATION_SETTINGS_HOOK_INSTALLED = new AtomicBoolean();
@@ -137,8 +138,14 @@ final class PluginHooks {
             ConcurrentHashMap.newKeySet();
     private static final Set<Method> INSTALLED_PLUGIN_METHOD_HOOKS =
             ConcurrentHashMap.newKeySet();
-    private static final ThreadLocal<Boolean> INSTALLING_LOADED_CLASS_HOOK = new ThreadLocal<>();
     private static final ThreadLocal<ControlCenterSurface> INFLATING_PLUGIN_DRAWABLE = new ThreadLocal<>();
+    private static final ScheduledExecutorService PLUGIN_HOOK_WORKER =
+            Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "MyHyperModifier-plugin-hooks");
+                thread.setDaemon(true);
+                return thread;
+            });
+    private static final long PLUGIN_HOOK_SETTLE_DELAY_MS = 2_000L;
 
     static boolean preservingMediaDrawable() {
         return disableMediaIslandHooks && INFLATING_PLUGIN_DRAWABLE.get() == ControlCenterSurface.MEDIA;
@@ -161,60 +168,9 @@ final class PluginHooks {
     }
 
     /**
-     * MIUISystemUIPlugin normally runs inside the SystemUI host process but is loaded by its own
-     * PathClassLoader.  Consequently PackageReady only gives us SystemUI's class loader on many
-     * HyperOS builds; trying to hook plugin classes from it silently misses every slider class.
-     * Resolve the actual loader when one of the Control Center view classes is first loaded.
-     */
-    void installSystemUiPluginClassLoaderResolver() throws NoSuchMethodException {
-        if (!PLUGIN_CLASS_LOADER_RESOLVER_INSTALLED.compareAndSet(false, true)) {
-            return;
-        }
-        Method loadClass = ClassLoader.class.getDeclaredMethod(
-                "loadClass", String.class, boolean.class);
-        module.hook(loadClass)
-                .setId("systemui-plugin-class-loader")
-                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-                .intercept(chain -> {
-                    Object result = chain.proceed();
-                    Object requestedName = chain.getArg(0);
-                    if (requestedName instanceof String && result instanceof Class<?>
-                            && !Boolean.TRUE.equals(INSTALLING_LOADED_CLASS_HOOK.get())) {
-                        String className = (String) requestedName;
-                        boolean systemUiTarget = isSystemUiLateHookClass(className);
-                        boolean pluginTarget = isPluginCornerClass(className);
-                        if (!systemUiTarget && !pluginTarget) {
-                            return result;
-                        }
-                        Class<?> loadedClass = (Class<?>) result;
-                        INSTALLING_LOADED_CLASS_HOOK.set(true);
-                        try {
-                            // Never resolve a second plugin class while ClassLoader's monitor is
-                            // held. This is the difference from the old working-but-unstable
-                            // approach that could repeatedly restart SystemUI during boot.
-                            if (systemUiTarget) {
-                                new SystemUiRuntimeHooks(module).installSystemUiHookForLoadedClass(className, loadedClass);
-                            }
-                            if (pluginTarget) {
-                                installPluginCornerHookForLoadedClass(className, loadedClass);
-                                // The fallback targets framework resource/drawable methods only;
-                                // it never resolves another plugin class under loadClass's lock.
-                                installPluginDrawableHooks();
-                            }
-                        } catch (Throwable throwable) {
-                            Log.w(TAG, "Loaded-class hook unavailable: " + className, throwable);
-                        } finally {
-                            INSTALLING_LOADED_CLASS_HOOK.remove();
-                        }
-                    }
-                    return result;
-                });
-    }
-
-    /**
      * HyperOS creates the embedded MIUISystemUIPlugin loader through PluginFactory before it
      * loads the plugin entry component. Hooking this factory gives us the real PathClassLoader
-     * without doing any installation inside ClassLoader.loadClass.
+     * without joining the ClassLoader.loadClass hook chain shared by other LSPosed modules.
      */
     void installSystemUiPluginLoaderFactoryHook(ClassLoader classLoader) {
         if (!PLUGIN_FACTORY_HOOK_INSTALLED.compareAndSet(false, true)) return;
@@ -232,7 +188,7 @@ final class PluginHooks {
                         Object applicationInfo = fieldValue(chain.getThisObject(), "pluginAppInfo");
                         Object packageName = fieldValue(applicationInfo, "packageName");
                         if (SYSTEM_UI_PLUGIN.equals(packageName)) {
-                            installSystemUiPluginCornerHooks((ClassLoader) result);
+                            scheduleSystemUiPluginCornerHooks((ClassLoader) result);
                         }
                         return result;
                     });
@@ -243,13 +199,20 @@ final class PluginHooks {
         }
     }
 
-    private static boolean isSystemUiLateHookClass(String className) {
-        return "androidx.constraintlayout.widget.ConstraintSet".equals(className)
-                || PLAYER_ISLAND_CONSTRAINT_LAYOUT.equals(className)
-                || "com.android.systemui.statusbar.notification.mediaisland."
-                .concat("MiuiIslandMediaViewBinderImpl").equals(className)
-                || "com.android.systemui.statusbar.notification.mediacontrol."
-                .concat("MiuiMediaViewControllerImpl").equals(className);
+    void scheduleSystemUiPluginCornerHooks(ClassLoader classLoader) {
+        if (classLoader == null || !PLUGIN_CORNER_HOOKS_SCHEDULED.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            PLUGIN_HOOK_WORKER.schedule(() -> {
+                if (!ModuleSettings.moduleHooksEnabled) return;
+                installSystemUiPluginCornerHooks(classLoader);
+            }, PLUGIN_HOOK_SETTLE_DELAY_MS, TimeUnit.MILLISECONDS);
+        } catch (Throwable throwable) {
+            PLUGIN_CORNER_HOOKS_SCHEDULED.set(false);
+            Log.w(TAG, "Could not schedule SystemUI plugin hooks", throwable);
+            HookDiagnostics.failure(SYSTEM_UI, "插件 Hook 调度", throwable);
+        }
     }
 
     /**
@@ -296,6 +259,7 @@ final class PluginHooks {
                 || "miui.systemui.controlcenter.panel.secondary.SecondaryPanelControllerBase".equals(className)
                 || "miui.systemui.controlcenter.panel.secondary.brightness.BrightnessPanelSliderDelegate"
                 .equals(className)
+                || FoldVolumeColumns.isTarget(className)
                 || "com.android.systemui.miui.volume.VolumeColumnRes".equals(className)
                 || "miui.systemui.controlcenter.panel.main.media.MediaPlayerController$MediaPlayerViewHolder"
                 .equals(className);
@@ -307,6 +271,9 @@ final class PluginHooks {
      * is why a dimension-only hook could previously miss parts of the control centre.
      */
     void installSystemUiPluginCornerHooks(ClassLoader classLoader) {
+        if (android.os.Build.DEVICE.equals("lhasa") && !disableMediaIslandHooks) {
+            FoldIslandLayoutHooks.install(module, classLoader);
+        }
         if (!disableMediaIslandHooks) {
             DynamicIslandGlassHooks.install(module, classLoader);
             MediaIslandHostHooks.install(module, classLoader);
@@ -335,6 +302,7 @@ final class PluginHooks {
                 "miui.systemui.controlcenter.panel.secondary.brightness.BrightnessPanelSliderDelegate",
                 "setOutlineRadius", ControlCenterSurface.DETAIL_SLIDER);
         hookSecondaryVolumeRadiusResolver(classLoader);
+        FoldVolumeColumns.install(module, classLoader);
         installPluginDrawableHooks();
     }
 
@@ -363,6 +331,8 @@ final class PluginHooks {
                 .equals(className)) {
             hookPluginCornerSetter(loadedClass, "setOutlineRadius",
                     ControlCenterSurface.DETAIL_SLIDER, false);
+        } else if (FoldVolumeColumns.isTarget(className)) {
+            FoldVolumeColumns.install(module, loadedClass);
         } else if ("com.android.systemui.miui.volume.VolumeColumnRes".equals(className)) {
             hookSecondaryVolumeRadiusResolver(loadedClass);
         }
@@ -403,7 +373,7 @@ final class PluginHooks {
                         if (!(showDialog instanceof Boolean)) return result;
                         Context context = (Context) chain.getArg(0);
                         if ((Boolean) showDialog) {
-                            if (volumePanelRadius <= 0f) return result;
+                            if (!moduleHooksEnabled || systemUiCompatibilityMode || volumePanelRadius <= 0f) return result;
                             return Math.round(volumePanelRadius
                                     * context.getResources().getDisplayMetrics().density);
                         }

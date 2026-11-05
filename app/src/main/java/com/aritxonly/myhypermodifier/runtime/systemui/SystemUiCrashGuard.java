@@ -67,6 +67,10 @@ final class SystemUiCrashGuard {
                     now, previous.windowStartElapsed, previous.unstableStarts);
             automaticCompatibility = shouldUseCompatibility(
                     previous.automaticCompatibility, retry, attempts);
+            Log.i(TAG, "SystemUI startup guard: retry=" + retry
+                    + ", sameBoot=" + sameBoot
+                    + ", attempts=" + attempts
+                    + ", compatibility=" + automaticCompatibility);
             if (automaticCompatibility) {
                 compatibilityDetail = previous.automaticCompatibility && !retry
                         ? "此前触发的自动保护仍在生效；可在兼容与恢复中手动重试"

@@ -13,18 +13,17 @@ import java.util.WeakHashMap;
 import io.github.libxposed.api.XposedInterface;
 import io.github.libxposed.api.XposedModule;
 
-/** Main-process-only lifecycle and app-owned tab input hooks for the supplied 40.7.0 APK. */
+/** Main-process-only lifecycle and app-owned tab input hooks for Douyin and Douyin Lite. */
 final class DouyinHooks {
     private static final AtomicBoolean INSTALLED = new AtomicBoolean();
     // Main-thread lifecycle/touch state only; never retain an Activity through a static value.
     private static final Set<Activity> CREATED = Collections.newSetFromMap(new WeakHashMap<>());
     private DouyinHooks() {}
 
-    static void install(XposedModule module, ClassLoader loader) {
+    static void install(XposedModule module, ClassLoader loader, String packageName) {
         if (!INSTALLED.compareAndSet(false, true)) return;
+        DouyinTargetPolicy.configure(packageName);
         try {
-            DouyinWindowGuard.install(module);
-            DouyinPlayerTextureHooks.install(module, loader);
             Class<?> main = Class.forName("com.ss.android.ugc.aweme.main.MainActivity", false, loader);
             installChatVisibility(module, loader, main);
             installCollectionClearance(module, loader);
@@ -65,6 +64,11 @@ final class DouyinHooks {
                 if (CREATED.contains(activity)) DouyinFloatingNavigation.focus(activity, (boolean) chain.getArg(0));
                 return result;
             });
+            // Optional media/immersion adapters must never prevent the core dock lifecycle.
+            try { DouyinWindowGuard.install(module); }
+            catch (Throwable error) { module.log(Log.WARN, "MyHyperModifier", "Douyin window guard unavailable", error); }
+            try { DouyinPlayerTextureHooks.install(module, loader); }
+            catch (Throwable error) { module.log(Log.WARN, "MyHyperModifier", "Douyin player texture unavailable", error); }
             Class<?> space = Class.forName("com.ss.android.ugc.aweme.feed.ui.bottom.BottomSpace", false, loader);
             for (java.lang.reflect.Constructor<?> constructor : space.getDeclaredConstructors()) {
                 module.hook(constructor).setId("douyin-feed-space-" + constructor.getParameterCount())
@@ -92,7 +96,7 @@ final class DouyinHooks {
                     module.hook(constructor).setId("douyin-feed-controls-" + viewClass + constructor.getParameterCount())
                             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain -> {
                                 Object result = chain.proceed();
-                                if (ModuleSettings.moduleHooksEnabled && ModuleSettings.douyinFloatingNavigationEnabled)
+                                if (DouyinTargetPolicy.enabled())
                                     DouyinFloatingNavigation.onFeedPageCreated((View) chain.getThisObject());
                                 return result;
                             });
@@ -106,7 +110,7 @@ final class DouyinHooks {
             });
         } catch (Throwable error) {
             module.log(Log.ERROR, "MyHyperModifier", "Could not install Douyin navigation", error);
-            HookDiagnostics.failure("com.ss.android.ugc.aweme", "抖音柔光底栏", error);
+            HookDiagnostics.failure(packageName, "抖音柔光底栏", error);
         }
     }
 

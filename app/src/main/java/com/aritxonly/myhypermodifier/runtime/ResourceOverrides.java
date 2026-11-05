@@ -20,6 +20,13 @@ final class ResourceOverrides {
         }
         float dp;
         switch (name) {
+            // The volume popup's expanded outline and blur background resolve this
+            // separately from VolumeColumnRes.getRadius on the 18 Fold.
+            case "o3_miui_volume_bg_radius":
+                if (!"lhasa".equals(android.os.Build.DEVICE) || !ModuleSettings.moduleHooksEnabled
+                        || ModuleSettings.systemUiCompatibilityMode || ModuleSettings.volumePanelRadius <= 0f) return null;
+                dp = ModuleSettings.volumePanelRadius;
+                break;
             case "notification_item_bg_radius":
                 if (!ModuleSettings.notificationsEnabled) return null;
                 dp = ModuleSettings.notificationRadius;

@@ -29,12 +29,17 @@ import java.lang.ref.WeakReference
 import java.util.WeakHashMap
 
 /** Decorates the actual player, without moving it out of Spotify's AndroidView holder. */
-internal class SpotifyPlaybackCapsule(private val activity: Activity) {
+internal class SpotifyPlaybackCapsule(
+    private val activity: Activity,
+    private val splitPaneColor: Int?,
+) {
     private var player: View? = null
     private var nativeBackground: Drawable? = null
     private var nativeOutline: ViewOutlineProvider? = null
     private var nativeClip = false
     private var nativeHeight = 0
+    private var appliedHeight: Int? = null
+    private val coverId = activity.resources.getIdentifier("cover_image", "id", activity.packageName)
     private var nativeForeground: Drawable? = null
     private var nativePadding = intArrayOf(0, 0, 0, 0)
     private var insetLeft = 0
@@ -51,14 +56,13 @@ internal class SpotifyPlaybackCapsule(private val activity: Activity) {
         }
     }
 
-    fun sync(dockVisible: Boolean, tabBounds: ViewBackdropBounds?) {
-        val current = activity.findSpotifyView("now_playing_bar_layout")
+    fun sync(current: View?, tabBounds: ViewBackdropBounds, stackedDock: Boolean) {
         if (!ModuleSettings.moduleHooksEnabled || !ModuleSettings.spotifyFloatingNavigationEnabled) {
             dispose()
             return
         }
-        if (!dockVisible || current == null || !current.isShown || current.alpha == 0f) {
-            backdropBounds = null
+        if (current == null || !current.isShown || current.alpha == 0f) {
+            if (player != null) dispose()
             return
         }
         if (current !== player) {
@@ -73,7 +77,7 @@ internal class SpotifyPlaybackCapsule(private val activity: Activity) {
             nativePadding = intArrayOf(current.paddingLeft, current.paddingTop,
                 current.paddingRight, current.paddingBottom)
             current.foreground = null
-            val drawable = SpotifyCapsuleDrawable(current.resources.displayMetrics.density)
+            val drawable = SpotifyCapsuleDrawable(current.resources.displayMetrics.density, splitPaneColor)
             glass = drawable
             synchronized(activePlayers) { activePlayers[current] = WeakReference(this) }
             android.util.Log.i("MyHyperModifier", "Spotify native playback capsule attached")
@@ -86,16 +90,25 @@ internal class SpotifyPlaybackCapsule(private val activity: Activity) {
         }
         if (current.outlineProvider !== capsuleOutline) current.outlineProvider = capsuleOutline
         if (!current.clipToOutline) current.clipToOutline = true
-        val height = if (activity.resources.configuration.fontScale <= 1.15f) {
-            (50f * current.resources.displayMetrics.density).roundToInt()
-        } else nativeHeight
-        if (height > 0 && current.layoutParams.height != height) {
+        val layoutHeight = current.layoutParams.height
+        // Spotify can request a new stock height during rotation or a font-scale change.
+        if (appliedHeight != layoutHeight) nativeHeight = layoutHeight
+        val height = when {
+            !stackedDock -> tabBounds.height
+            activity.resources.configuration.fontScale <= 1.15f ->
+                (50f * current.resources.displayMetrics.density).roundToInt()
+            else -> nativeHeight
+        }
+        if (layoutHeight != height) {
+            appliedHeight = height
             current.layoutParams = current.layoutParams.apply { this.height = height }
         }
         current.getLocationInWindow(location)
-        if (tabBounds != null && current.width > 0) {
-            val left = (tabBounds.left - location[0]).coerceIn(0, current.width - 1)
-            val right = (current.width - left - tabBounds.width).coerceAtLeast(0)
+        if (current.width > 0) {
+            // A side-by-side player keeps its own horizontal viewport in the playback pane.
+            val left = if (stackedDock) (tabBounds.left - location[0]).coerceIn(0, current.width - 1) else 0
+            val right = if (stackedDock) (location[0] + current.width - tabBounds.left - tabBounds.width)
+                .coerceIn(0, current.width - left - 1) else 0
             if (left != insetLeft || right != insetRight) {
                 insetLeft = left
                 insetRight = right
@@ -105,12 +118,11 @@ internal class SpotifyPlaybackCapsule(private val activity: Activity) {
                 current.invalidateOutline()
             }
         }
-        if (current.width > 0 && current.height > 0) {
-            backdropBounds = ViewBackdropBounds(
-                location[0], location[1], current.width, current.height,
-            )
+        val previous = backdropBounds
+        if (previous == null || previous.left != location[0] || previous.top != location[1] ||
+            previous.width != current.width || previous.height != current.height) {
+            backdropBounds = ViewBackdropBounds(location[0], location[1], current.width, current.height)
         }
-        val coverId = current.resources.getIdentifier("cover_image", "id", activity.packageName)
         val currentCover = if (coverId != 0) current.findViewById<View>(coverId) else null
         // The image fills a clipped MotionLayout. Move its whole cover region,
         // otherwise translating the image alone cuts off its right edge.
@@ -146,11 +158,12 @@ internal class SpotifyPlaybackCapsule(private val activity: Activity) {
             view.clipToOutline = nativeClip
             view.foreground = nativeForeground
             view.setPadding(nativePadding[0], nativePadding[1], nativePadding[2], nativePadding[3])
-            if (view.layoutParams.height != nativeHeight) {
+            if (view.layoutParams.height == appliedHeight && view.layoutParams.height != nativeHeight) {
                 view.layoutParams = view.layoutParams.apply { height = nativeHeight }
             }
         }
         player = null
+        appliedHeight = null
         glass?.close()
         glass = null
         nativeBackground = null
@@ -176,7 +189,10 @@ internal class SpotifyPlaybackCapsule(private val activity: Activity) {
 }
 
 /** Native View counterpart to the shared floating-navigation frost and capsule geometry. */
-private class SpotifyCapsuleDrawable(private val density: Float) : Drawable(), NavigationGlassObserver {
+private class SpotifyCapsuleDrawable(
+    private val density: Float,
+    private val splitPaneColor: Int?,
+) : Drawable(), NavigationGlassObserver {
     private var material = NavigationGlassRuntime.material
     private var tuning = material.fineTuning
     private var recipe = DeadlinerGlassRecipes.floatingNavigation(tuning)
@@ -264,9 +280,35 @@ private class SpotifyCapsuleDrawable(private val density: Float) : Drawable(), N
     private var insetLeft = 0
     private var insetRight = 0
 
+    private val rect = RectF()
+    private val edge = RectF()
+    private val clip = Path()
+
+    private fun updateShape() {
+        rect.set(bounds)
+        rect.left += insetLeft
+        rect.right -= insetRight
+        edge.set(rect)
+        edge.inset(edgePaint.strokeWidth / 2f, edgePaint.strokeWidth / 2f)
+        clip.rewind()
+        if (rect.isEmpty) return
+        val radius = rect.height() / 2f
+        clip.addRoundRect(rect, radius, radius, Path.Direction.CW)
+        val edgeAlpha = (if (Build.VERSION.SDK_INT >= 33 && recipe.refraction.enabled) {
+            recipe.edgeOptics.highlightAlpha * recipe.edgeOptics.darkHighlightMultiplier
+        } else recipe.edgeOptics.fallbackDarkAlpha * 0.45f).coerceIn(0f, 1f)
+        val gray = (recipe.edgeOptics.highlightGray * 255).roundToInt()
+        edgePaint.shader = LinearGradient(0f, rect.top, 0f, rect.bottom,
+            intArrayOf(Color.argb((edgeAlpha * 255).roundToInt(), gray, gray, gray),
+                Color.argb((edgeAlpha * 0.72f * 255).roundToInt(), gray, gray, gray),
+                Color.argb((edgeAlpha * 0.46f * 255).roundToInt(), gray, gray, gray)),
+            floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+    }
+
     fun setHorizontalInsets(left: Int, right: Int) {
         insetLeft = left
         insetRight = right
+        updateShape()
         dirty = true
         invalidateSelf()
     }
@@ -277,24 +319,30 @@ private class SpotifyCapsuleDrawable(private val density: Float) : Drawable(), N
         invalidateSelf()
     }
 
-    override fun onBoundsChange(bounds: android.graphics.Rect) { dirty = true }
+    override fun onBoundsChange(bounds: android.graphics.Rect) {
+        updateShape()
+        dirty = true
+    }
 
     override fun draw(canvas: Canvas) {
-        if (bounds.isEmpty) return
-        val rect = RectF(bounds).apply { left += insetLeft; right -= insetRight }
+        if (rect.isEmpty) return
         val radius = rect.height() / 2f
         val save = canvas.save()
-        canvas.clipPath(Path().apply { addRoundRect(rect, radius, radius, Path.Direction.CW) })
+        canvas.clipPath(clip)
         val sample = snapshot
         val region = gpuRegion
         val target = gpuTarget
         val scene = gpuScene
-        if ((sample != null || (scene != null && region != null && target != null)) && canvas.isHardwareAccelerated) {
+        if ((splitPaneColor != null || sample != null || (scene != null && region != null && target != null)) &&
+            canvas.isHardwareAccelerated) {
             if (dirty) {
                 updateOpticalEffect()
                 node.setPosition(bounds.left, bounds.top, bounds.right, bounds.bottom)
                 val recording = node.beginRecording(bounds.width(), bounds.height())
                 try {
+                    // Spotify's side pane can lie entirely outside the sampled fragment. Run the
+                    // same capsule optics on its solid substrate without capturing the whole window.
+                    splitPaneColor?.let(recording::drawColor)
                     if (scene != null && region != null && target != null) {
                         recording.translate((region.left - target.left).toFloat(), (region.top - target.top).toFloat())
                         recording.drawRenderNode(scene.node)
@@ -311,16 +359,6 @@ private class SpotifyCapsuleDrawable(private val density: Float) : Drawable(), N
         }
         // Readable neutral fallback while the first backdrop is being captured.
         canvas.drawRoundRect(rect, radius, radius, tintPaint)
-        val edgeAlpha = (if (Build.VERSION.SDK_INT >= 33 && recipe.refraction.enabled) {
-            recipe.edgeOptics.highlightAlpha * recipe.edgeOptics.darkHighlightMultiplier
-        } else recipe.edgeOptics.fallbackDarkAlpha * 0.45f).coerceIn(0f, 1f)
-        val gray = (recipe.edgeOptics.highlightGray * 255).roundToInt()
-        edgePaint.shader = LinearGradient(0f, rect.top, 0f, rect.bottom,
-            intArrayOf(Color.argb((edgeAlpha * 255).roundToInt(), gray, gray, gray),
-                Color.argb((edgeAlpha * 0.72f * 255).roundToInt(), gray, gray, gray),
-                Color.argb((edgeAlpha * 0.46f * 255).roundToInt(), gray, gray, gray)),
-            floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
-        val edge = RectF(rect).apply { inset(edgePaint.strokeWidth / 2f, edgePaint.strokeWidth / 2f) }
         canvas.drawRoundRect(edge, radius, radius, edgePaint)
         canvas.restoreToCount(save)
     }
@@ -334,6 +372,7 @@ private class SpotifyCapsuleDrawable(private val density: Float) : Drawable(), N
         tintPaint.color = Color.argb((255 * (tuning.navigationTintAlpha * tuning.glassTintAlphaMultiplier).coerceIn(0f, 1f)).roundToInt(), gray, gray, gray)
         edgePaint.strokeWidth = tuning.fallbackEdgeWidthDp * 0.75f * density
         effectWidth = -1
+        updateShape()
         dirty = true
         updateGpu(gpuScene, gpuTarget)
         invalidateSelf()

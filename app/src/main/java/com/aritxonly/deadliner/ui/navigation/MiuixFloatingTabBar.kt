@@ -16,6 +16,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -35,7 +36,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -61,15 +61,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import com.aritxonly.deadliner.ui.material.glass.DeadlinerGlassRecipes
-import com.aritxonly.deadliner.ui.material.glass.GlassMaterialInteraction
 import com.aritxonly.deadliner.ui.material.glass.GlassMaterialRecipe
 import com.aritxonly.deadliner.ui.material.glass.SoftGlassSurface
 import com.aritxonly.deadliner.ui.theme.LocalAdvancedMaterialBackdrop
@@ -90,6 +89,8 @@ data class MiuixFloatingTabItem(
     val unselectedIcon: Painter,
     val enabled: Boolean = true,
     val iconScale: Float = 1f,
+    /** Vertical correction for stacked icon-and-label docks. */
+    val labelOffsetY: Dp = 0.dp,
     /** Keep bitmap/vector source colors instead of applying the bar's animated content tint. */
     val preserveOriginalIconColors: Boolean = false,
     /** Null hides the badge; an empty label draws the red-dot variant. */
@@ -145,6 +146,12 @@ fun MiuixFloatingTabBar(
     tint: Color? = null,
     /** Use the full parent width instead of compact panel/item width caps. */
     fillAvailableWidth: Boolean = false,
+    shadowVisible: Boolean = true,
+    /** Optional compact cap for hosts that otherwise inherit a wide native pane. */
+    maximumWidth: Dp? = null,
+    height: Dp = MiuixFloatingTabBarDefaults.Height,
+    /** Stable target key used by per-bottom-bar geometry overrides. */
+    geometryKey: String? = null,
 ) {
     if (items.isEmpty()) return
 
@@ -158,11 +165,28 @@ fun MiuixFloatingTabBar(
     var directPanelDragOffset: Float? by remember { mutableStateOf(null) }
     val motionScope = rememberCoroutineScope()
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
+    val geometry = MiuixFloatingTabBarGeometry.resolve(geometryKey)
+    val geometryLeftMargin = geometry.leftMarginDp.dp
+    val resolvedHeight = geometry.heightDp?.dp ?: height
+    val resolvedMaximumWidth =
+        geometry.maximumWidthDp?.dp
+            ?: maximumWidth
+            ?: MiuixFloatingTabBarDefaults.maximumWidth(items.size, layout)
+    val effectiveFillAvailableWidth =
+        fillAvailableWidth && geometry.maximumWidthDp == null
 
     LaunchedEffect(selectedIndex) {
         motion.syncExternalSelection(selectedIndex)
     }
 
+    val indicatorPressScale by animateFloatAsState(
+        targetValue = if (motion.isPressed) FloatingTabMotionDefaults.PressedScale else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "floating_tab_indicator_press_scale",
+    )
     val selectionAlpha by animateFloatAsState(
         targetValue = if (selectionVisible) 1f else 0f,
         animationSpec = spring(
@@ -174,11 +198,13 @@ fun MiuixFloatingTabBar(
 
     BoxWithConstraints(
         modifier = modifier
-            .then(if (fillAvailableWidth) Modifier else Modifier.wrapContentWidth().widthIn(
-                max = MiuixFloatingTabBarDefaults.maximumWidth(items.size, layout),
+            .padding(start = geometryLeftMargin)
+            .then(if (effectiveFillAvailableWidth) Modifier
+                else Modifier.wrapContentWidth().widthIn(
+                max = resolvedMaximumWidth,
             ))
             .fillMaxWidth()
-            .height(MiuixFloatingTabBarDefaults.Height),
+            .height(resolvedHeight),
     ) {
         val density = LocalDensity.current
         val panelDragFraction = floatingTabPanelDragFraction(
@@ -199,14 +225,19 @@ fun MiuixFloatingTabBar(
             ),
             label = "floating_tab_indicator_velocity_stretch",
         )
+        val shadowModifier = if (shadowVisible) {
+            Modifier.floatingNavigationShadow(
+                shape = MiuixFloatingTabBarDefaults.ContainerShape,
+                isDark = isDark,
+            )
+        } else {
+            Modifier
+        }
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .offset { IntOffset(panelOffsetPx.roundToInt(), 0) }
-                .floatingNavigationShadow(
-                    shape = MiuixFloatingTabBarDefaults.ContainerShape,
-                    isDark = isDark,
-                ),
+                .then(shadowModifier),
         ) {
             SoftGlassSurface(
                 modifier = Modifier.fillMaxSize(),
@@ -249,8 +280,8 @@ fun MiuixFloatingTabBar(
                             .fillMaxHeight()
                             .graphicsLayer {
                                 alpha = selectionAlpha
-                                scaleX = 1f + stretch
-                                scaleY = 1f
+                                scaleX = indicatorPressScale * (1f + stretch)
+                                scaleY = indicatorPressScale
                                 transformOrigin = TransformOrigin(transformOriginX, 0.5f)
                             }
                             .clip(MiuixFloatingTabBarDefaults.IndicatorShape)
@@ -382,12 +413,14 @@ private fun FloatingTabItemContent(
     val interactionSource = remember { MutableInteractionSource() }
     val itemModifier = modifier
         .clip(MiuixFloatingTabBarDefaults.IndicatorShape)
-        .selectable(
-            selected = selected,
+        // Injected Compose runs against the host app's resource table. `selectable` emits
+        // module-owned resolution strings and can crash third-party apps when accessibility
+        // traverses the bar. Keep selection visual and expose only the host-safe click action.
+        .clickable(
             enabled = item.enabled,
-            role = Role.Tab,
             interactionSource = interactionSource,
-            indication = DefaultClickFeedback,
+            // The selected capsule owns its press animation; avoid a second Sink transform.
+            indication = if (selected) null else DefaultClickFeedback,
             onClick = onClick,
         )
     val icon: @Composable () -> Unit = {
@@ -440,6 +473,11 @@ private fun FloatingTabItemContent(
     val label: @Composable () -> Unit = {
         Text(
             text = item.label,
+            modifier = if (layout == MiuixFloatingTabLayout.Stacked) {
+                Modifier.offset(y = item.labelOffsetY)
+            } else {
+                Modifier
+            },
             color = animatedContentColor,
             style = when (layout) {
                 MiuixFloatingTabLayout.Horizontal -> MaterialTheme.typography.labelMedium

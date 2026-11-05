@@ -106,7 +106,7 @@ internal fun DesktopWidgetCompatibilitySetting(enabled: Boolean) {
     }
 }
 
-private suspend fun requestDesktopWidgetCompatibility(context: Context): DesktopWidgetCompatibilityStatus = withTimeout(5000) {
+internal suspend fun requestDesktopWidgetCompatibility(context: Context): DesktopWidgetCompatibilityStatus = withTimeout(5000) {
     suspendCancellableCoroutine { continuation ->
         val reply = object : ResultReceiver(Handler(Looper.getMainLooper())) {
             override fun onReceiveResult(code: Int, data: Bundle?) {

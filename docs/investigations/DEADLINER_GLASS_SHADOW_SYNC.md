@@ -55,3 +55,32 @@ outer 10dp / alpha 0.06490625，edge 2dp / alpha 0.0094375。
 本次验证：381 项 JVM 测试全部通过，Release/R8 构建和 APK v2 签名验证通过。
 Lint 报告仍有 17 项已有错误、205 项警告，未声称全量 Lint 通过。
 `git diff --check` 通过，构建日志 `/private/tmp/hmc-material-sync-edge-mask.log`。
+
+
+## 2026-10-25 恢复底栏按压反馈
+
+读取源 HEAD `9119af22827e15d4b5b3bea7d938f865800ee1da` 的当前本地工作树。
+新改动尚未提交，故同时记录源文件 SHA-256：
+
+| 文件 | SHA-256 |
+| --- | --- |
+| FloatingTabMotion.kt | 0218c71268599b1cad185b116ab19314a9599d82f98e71cb28a2efca6d835bf3 |
+| MiuixFloatingTabBar.kt | 820bcca809b12c61642cee0c16bb9829e1e218b52138b76b7b2bd69c840f02a5 |
+
+同步完整 FloatingTabMotion 实现及底栏的新增按压逻辑：选中胶囊按下缩放至 `52/56`，
+使用 MediumBouncy / Medium 的 spring 释放回弹；横向缩放继续叠加既有速度拉伸。
+选中项关闭自身的 DefaultClickFeedback，避免胶囊和条目发生两次 Sink 下压；
+未选中项保留 MIUIX 点击反馈。主 APP 及复用该 Compose 底栏的应用自动生效。
+
+保留本地原色图标、角标、Lottie、宽度和自定义配方接口。材质/Shader/阴影源码已核对；
+这次实际改变位于导航交互层，不额外迁入源应用未使用的业务按钮和编辑器界面。
+支付宝已有未提交适配工作保持原样。
+
+性能审查：每个底栏增加一个有限弹簧动画，沿既有 graphicsLayer 更新变换，不新增
+模糊、采样、离屏 recorder、全局 Hook、IPC 或轮询。手势沿原状态机，释放/取消会清除
+isPressed、isDragging 和速度；回归覆盖这两条复位路径。未截图、未进行真机帧耗时或
+耗电测量，不声称性能已改善。
+
+本次反馈同步验证：430 项 JVM 测试全部通过，Release/R8 构建和 APK v2 签名校验通过。
+Lint 报告仍有 17 项已有错误、219 项警告；`git diff --check` 通过。
+构建日志 `/private/tmp/hmc-glass-press-sync.log`。

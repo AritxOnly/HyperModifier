@@ -26,8 +26,8 @@ final class ShadeBackgroundScaleHooks {
     static void install(XposedModule module, ClassLoader loader) throws ReflectiveOperationException {
         if (!INSTALLED.compareAndSet(false, true)) return;
         try {
-            Class<?> provider = Class.forName(
-                    "com.miui.systemui.shade.blur.ShadeBlendBlurControllerImpl$BlurProvider", false, loader);
+            Class<?> controller = ShadeBlurControllers.blend(loader);
+            Class<?> provider = Class.forName(controller.getName() + "$BlurProvider", false, loader);
             Field view = provider.getDeclaredField("view");
             Field enabled = provider.getDeclaredField("enableScale");
             Field ratio = provider.getDeclaredField("blurRatio");
@@ -75,10 +75,9 @@ final class ShadeBackgroundScaleHooks {
                         return result;
                     });
             BackgroundDimHooks.deoptimizeCallers(module, loader,
-                    "com.miui.systemui.shade.blur.ShadeBlendBlurControllerImpl",
-                    "com.miui.systemui.shade.blur.ShadeBlendBlurControllerImpl$BlurProvider",
-                    "com.miui.systemui.shade.blur.ShadeBlendBlurControllerImpl$start$2$1");
+                    controller.getName(), provider.getName(), controller.getName() + "$start$2$1");
             Log.i("MyHyperModifier", "Independent shade background scale hooks installed");
+            HookDiagnostics.available("com.android.systemui", "背景缩放");
         } catch (ReflectiveOperationException | RuntimeException exception) {
             INSTALLED.set(false);
             throw exception;

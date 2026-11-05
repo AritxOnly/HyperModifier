@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.findViewTreeLifecycleOwner
@@ -42,6 +43,7 @@ import androidx.savedstate.findViewTreeSavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBar
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarDefaults
+import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarGeometry
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabItem
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabLayout
 import com.aritxonly.deadliner.ui.theme.AdvancedMaterialSpec
@@ -152,6 +154,7 @@ private data class MarketNavigationState(
     val tabs: List<MarketTabState> = emptyList(),
     val selectedIndex: Int = 0,
     val visible: Boolean = false,
+    val navigationInsetPx: Int = 0,
 )
 
 private class MarketNavigationHost private constructor(
@@ -173,6 +176,8 @@ private class MarketNavigationHost private constructor(
     private val windowImmersion = InjectedBottomNavigationImmersion(activity)
     private val sampler = ViewBackdropSampler(samplingView) { backdropSnapshot = it }
     private val iconSnapshotter = NativeTabIconSnapshotter(activity.resources, activity.theme)
+    private val refreshPolicy = NavigationRefreshPolicy(100L)
+    private val stableNavigationInset = StableNavigationBarInset()
     private val originalBottomAlpha = originalBottomContainer.alpha
     private val originalBottomAccessibility = originalBottomContainer.importantForAccessibility
     private val originalContentBottomMargin =
@@ -181,6 +186,7 @@ private class MarketNavigationHost private constructor(
     private var replacingNativeChrome = false
     private val composeView = ComposeView(activity)
     private val visibility = FloatingNavigationVisibility(composeView)
+    private val overlayAnchor = NativeTabOverlayAnchor(overlayParent, composeView)
     private val preDrawListener = ViewTreeObserver.OnPreDrawListener {
         syncNativeState()
         sampler.onFrame()
@@ -220,6 +226,7 @@ private class MarketNavigationHost private constructor(
     fun onTouchEvent(event: MotionEvent) = sampler.onTouchEvent(event)
 
     fun dispose() {
+        overlayAnchor.dispose()
         visibility.dispose()
         sampler.dispose()
         if (overlayParent.viewTreeObserver.isAlive) {
@@ -246,7 +253,7 @@ private class MarketNavigationHost private constructor(
         if (enabled) {
             if (!replacingNativeChrome) {
                 replacingNativeChrome = true
-                windowImmersion.apply()
+                windowImmersion.apply(composeView)
             }
             windowImmersion.ensureApplied()
             if (originalBottomContainer.alpha != 0f) originalBottomContainer.alpha = 0f
@@ -286,8 +293,12 @@ private class MarketNavigationHost private constructor(
         }
     }
 
-    private fun syncNativeState() {
+    private fun syncNativeState(force: Boolean = false) {
+        if (!refreshPolicy.shouldRefresh(SystemClock.uptimeMillis(), force || state.tabs.isEmpty())) {
+            return
+        }
         val nativeTabs = nativeTabViews()
+        overlayAnchor.align(nativeTabLayout, nativeTabs)
         val selected = runCatching {
             nativeTabLayout.javaClass.getMethod("getSelectedIndex").invoke(nativeTabLayout) as Int
         }.getOrDefault(state.selectedIndex).coerceIn(0, (nativeTabs.size - 1).coerceAtLeast(0))
@@ -300,6 +311,10 @@ private class MarketNavigationHost private constructor(
             visible = originalBottomContainer.visibility == View.VISIBLE &&
                 nativeTabLayout.visibility == View.VISIBLE &&
                 basicModeContainer?.visibility != View.VISIBLE && tabs.size > 1,
+            navigationInsetPx = stableNavigationInset.bottomPx(
+                composeView,
+                activity.window.decorView,
+            ),
         )
         val selectionChanged = next.selectedIndex != state.selectedIndex
         val becameVisible = next.visible && !state.visible
@@ -349,7 +364,7 @@ private class MarketNavigationHost private constructor(
         val tab = nativeTabViews().getOrNull(index) ?: return
         state = state.copy(selectedIndex = index)
         tab.performClick()
-        tab.post(::syncNativeState)
+        tab.post { syncNativeState(force = true) }
         sampler.requestCaptureBurst()
     }
 
@@ -401,6 +416,13 @@ private fun MarketNavigationContent(
     val miuixColors = remember(dark, materialColors) { MhmPresetColors.miuix(materialColors, dark) }
     val backdrop = rememberLayerBackdrop()
     val hiddenNavigationLift = hyperGlassifyHiddenNavigationLift()
+    val navigationPadding = if (state.navigationInsetPx > 0) {
+        Modifier.padding(bottom = with(LocalDensity.current) {
+            state.navigationInsetPx.toDp()
+        })
+    } else {
+        Modifier.navigationBarsPadding()
+    }
     val items = state.tabs.mapIndexed { index, tab ->
         val nativeIcons = tab.icons?.takeUnless { ModuleSettings.marketMiuixIconsEnabled }
         val monochrome = nativeIcons != null && ModuleSettings.marketMonochromeIconsEnabled
@@ -431,14 +453,17 @@ private fun MarketNavigationContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationEdgeMask()
-                        .navigationBarsPadding()
+                        .then(navigationPadding)
                         .padding(
                             start = 16.dp,
                             top = INJECTED_NAVIGATION_SHADOW_TOP_PADDING,
                             end = 16.dp,
                             bottom = 4.dp + hiddenNavigationLift,
                         )
-                        .height(MiuixFloatingTabBarDefaults.Height),
+                        .height(
+                            MiuixFloatingTabBarGeometry.resolve("Market").heightDp?.dp
+                                ?: MiuixFloatingTabBarDefaults.Height,
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     ViewBackdropLayer(backdropSnapshot, backdrop)
@@ -461,6 +486,7 @@ private fun MarketNavigationContent(
                         },
                         layout = MiuixFloatingTabLayout.Stacked,
                         backdrop = backdropSnapshot?.let { backdrop },
+                        geometryKey = "Market",
                     )
                 }
             }

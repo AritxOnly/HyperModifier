@@ -36,8 +36,8 @@ public:
             if (client < 0) break;
             ucred peer{}; socklen_t length = sizeof(peer);
             if (!getsockopt(client, SOL_SOCKET, SO_PEERCRED, &peer, &length)
-                    && peer.uid == 1000) {
-                char response[768]; size_t size = widget_status::snapshot(response, sizeof(response));
+                    && peer.uid == widget_status::readerUid.load(std::memory_order_acquire)) {
+                char response[1024]; size_t size = widget_status::snapshot(response, sizeof(response));
                 if (size < sizeof(response)) (void)send(client, response, size, MSG_DONTWAIT | MSG_NOSIGNAL);
             }
             close(client);

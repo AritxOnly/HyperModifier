@@ -17,7 +17,7 @@ import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.TextButton
 
 @Composable
-internal fun ModuleSettingsSection(containerAlpha: Float, onSettingsRestored: () -> Unit) {
+internal fun ModuleSettingsSection(containerAlpha: Float, onSettingsRestored: () -> Unit, deviceModeContent: @Composable () -> Unit = {}) {
     val context = LocalContext.current
     val appContext = context.applicationContext
     val scope = rememberCoroutineScope()
@@ -65,6 +65,7 @@ internal fun ModuleSettingsSection(containerAlpha: Float, onSettingsRestored: ()
         }
     }
     SettingsSection(topLabel = "模块设置", containerAlpha = containerAlpha) {
+        deviceModeContent()
         SettingsSwitchItem("隐藏桌面图标", "可从 LSPosed 或拨号 *#*#${ModuleLauncher.CODE}#*#* 打开", hidden, { checked ->
             if (checked) confirmHide = true else runOperation("桌面图标已显示") {
                 ModuleLauncher.setHidden(appContext, false)

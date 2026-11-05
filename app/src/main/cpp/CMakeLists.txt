@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(mhm_desktop_clock LANGUAGES CXX ASM)
-add_library(mhm_desktop_clock SHARED desktop_clock.cpp calendar_entry.S widget_hooks.cpp widget_picker_entry.S desktop_search.cpp desktop_search_entry.S clock_glass.cpp)
+add_library(mhm_desktop_clock SHARED desktop_clock.cpp calendar_entry.S widget_hooks.cpp widget_cold_guard.cpp widget_picker_entry.S fold_widget_material.cpp fold_widget_material.S desktop_search.cpp desktop_search_entry.S clock_glass.cpp fold_icons.cpp fold_icon_entry.S fold_dual_page.cpp fold_dual_page_entry.S)
 target_compile_features(mhm_desktop_clock PRIVATE cxx_std_17)
 target_compile_options(mhm_desktop_clock PRIVATE -Wall -Wextra -Werror -fvisibility=hidden)
 target_link_options(mhm_desktop_clock PRIVATE -Wl,-z,max-page-size=16384)
