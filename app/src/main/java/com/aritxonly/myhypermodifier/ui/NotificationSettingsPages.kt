@@ -823,8 +823,14 @@ internal fun DouyinSettingsPage(
             settings.douyinFloatingNavigationEnabled,
             { update(settings.copy(douyinFloatingNavigationEnabled = it)) },
         )
+        SettingsSwitchItem(
+            "抖音极速版柔光玻璃悬浮底栏",
+            "复用抖音底栏渲染与切换动画",
+            settings.douyinLiteFloatingNavigationEnabled,
+            { update(settings.copy(douyinLiteFloatingNavigationEnabled = it)) },
+        )
     }
     SettingsSection(topLabel = "兼容性") {
-        SettingItem("当前适配版本", "40.7.0")
+        SettingItem("当前适配版本", "抖音 40.7.0 / 极速版 40.4.0")
     }
 }

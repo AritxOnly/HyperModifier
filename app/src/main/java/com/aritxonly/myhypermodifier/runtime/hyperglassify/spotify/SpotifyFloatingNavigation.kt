@@ -42,6 +42,7 @@ import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBar
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarDefaults
+import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabBarGeometry
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabItem
 import com.aritxonly.deadliner.ui.navigation.MiuixFloatingTabLayout
 import com.aritxonly.deadliner.ui.theme.AdvancedMaterialSpec
@@ -147,6 +148,7 @@ private data class SpotifyNavigationState(
     val selectedIndex: Int = 0,
     val visible: Boolean = false,
     val navigationInsetPx: Int = 0,
+    val darkTheme: Boolean = false,
 )
 
 private data class SpotifyAccessibilityTab(
@@ -314,6 +316,7 @@ private class SpotifyNavigationHost private constructor(
                 composeView,
                 activity.window.decorView,
             ),
+            darkTheme = HostThemeResolver.resolve(activity),
         )
         state = next
         visibility.setVisible(next.visible)
@@ -560,8 +563,7 @@ private fun SpotifyNavigationContent(
     onDestinationSelected: (Int) -> Unit,
 ) {
     if (!state.visible || state.tabs.isEmpty()) return
-    // Spotify's content remains dark even when Android uses a light theme.
-    val dark = true
+    val dark = state.darkTheme
     val materialColors = remember(dark) { MhmPresetColors.material(dark) }
     val miuixColors = remember(dark, materialColors) { MhmPresetColors.miuix(materialColors, dark) }
     val backdrop = rememberLayerBackdrop()
@@ -590,7 +592,10 @@ private fun SpotifyNavigationContent(
                             end = 20.dp,
                             bottom = 4.dp + hiddenNavigationLift,
                         )
-                        .height(MiuixFloatingTabBarDefaults.Height),
+                        .height(
+                            MiuixFloatingTabBarGeometry.resolve("Spotify").heightDp?.dp
+                                ?: MiuixFloatingTabBarDefaults.Height,
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (gpuBackdrop != null) NativeGpuBackdropLayer(gpuBackdrop, backdrop, nativeBackdropBounds)
@@ -620,6 +625,7 @@ private fun SpotifyNavigationContent(
                         layout = MiuixFloatingTabLayout.Stacked,
                         fillAvailableWidth = true,
                         backdrop = opticalBackdrop,
+                        geometryKey = "Spotify",
                     )
                 }
             }

@@ -64,6 +64,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
@@ -89,6 +90,8 @@ data class MiuixFloatingTabItem(
     val unselectedIcon: Painter,
     val enabled: Boolean = true,
     val iconScale: Float = 1f,
+    /** Vertical correction for stacked icon-and-label docks. */
+    val labelOffsetY: Dp = 0.dp,
     /** Keep bitmap/vector source colors instead of applying the bar's animated content tint. */
     val preserveOriginalIconColors: Boolean = false,
     /** Null hides the badge; an empty label draws the red-dot variant. */
@@ -144,6 +147,12 @@ fun MiuixFloatingTabBar(
     tint: Color? = null,
     /** Use the full parent width instead of compact panel/item width caps. */
     fillAvailableWidth: Boolean = false,
+    shadowVisible: Boolean = true,
+    /** Optional compact cap for hosts that otherwise inherit a wide native pane. */
+    maximumWidth: Dp? = null,
+    height: Dp = MiuixFloatingTabBarDefaults.Height,
+    /** Stable target key used by per-bottom-bar geometry overrides. */
+    geometryKey: String? = null,
 ) {
     if (items.isEmpty()) return
 
@@ -157,6 +166,15 @@ fun MiuixFloatingTabBar(
     var directPanelDragOffset: Float? by remember { mutableStateOf(null) }
     val motionScope = rememberCoroutineScope()
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
+    val geometry = MiuixFloatingTabBarGeometry.resolve(geometryKey)
+    val geometryLeftMargin = geometry.leftMarginDp.dp
+    val resolvedHeight = geometry.heightDp?.dp ?: height
+    val resolvedMaximumWidth =
+        geometry.maximumWidthDp?.dp
+            ?: maximumWidth
+            ?: MiuixFloatingTabBarDefaults.maximumWidth(items.size, layout)
+    val effectiveFillAvailableWidth =
+        fillAvailableWidth && geometry.maximumWidthDp == null
 
     LaunchedEffect(selectedIndex) {
         motion.syncExternalSelection(selectedIndex)
@@ -173,11 +191,13 @@ fun MiuixFloatingTabBar(
 
     BoxWithConstraints(
         modifier = modifier
-            .then(if (fillAvailableWidth) Modifier else Modifier.wrapContentWidth().widthIn(
-                max = MiuixFloatingTabBarDefaults.maximumWidth(items.size, layout),
+            .padding(start = geometryLeftMargin)
+            .then(if (effectiveFillAvailableWidth) Modifier
+                else Modifier.wrapContentWidth().widthIn(
+                max = resolvedMaximumWidth,
             ))
             .fillMaxWidth()
-            .height(MiuixFloatingTabBarDefaults.Height),
+            .height(resolvedHeight),
     ) {
         val density = LocalDensity.current
         val panelDragFraction = floatingTabPanelDragFraction(
@@ -198,14 +218,19 @@ fun MiuixFloatingTabBar(
             ),
             label = "floating_tab_indicator_velocity_stretch",
         )
+        val shadowModifier = if (shadowVisible) {
+            Modifier.floatingNavigationShadow(
+                shape = MiuixFloatingTabBarDefaults.ContainerShape,
+                isDark = isDark,
+            )
+        } else {
+            Modifier
+        }
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .offset { IntOffset(panelOffsetPx.roundToInt(), 0) }
-                .floatingNavigationShadow(
-                    shape = MiuixFloatingTabBarDefaults.ContainerShape,
-                    isDark = isDark,
-                ),
+                .then(shadowModifier),
         ) {
             SoftGlassSurface(
                 modifier = Modifier.fillMaxSize(),
@@ -440,6 +465,11 @@ private fun FloatingTabItemContent(
     val label: @Composable () -> Unit = {
         Text(
             text = item.label,
+            modifier = if (layout == MiuixFloatingTabLayout.Stacked) {
+                Modifier.offset(y = item.labelOffsetY)
+            } else {
+                Modifier
+            },
             color = animatedContentColor,
             style = when (layout) {
                 MiuixFloatingTabLayout.Horizontal -> MaterialTheme.typography.labelMedium

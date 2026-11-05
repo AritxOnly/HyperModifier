@@ -148,3 +148,21 @@
 - 菜鸟主题现在直接调用该宿主单例方法，并缓存其稳定的类加载器、字段和方法访问；
   获取失败时才回退到原生背景与窗口证据。运行中切换会随 160 ms 状态刷新同步。
 - 版本号提升至 `1.5.3.7`（versionCode 48）。
+
+## 2026-10-29 应用有效主题统一
+
+QQ、微信、拼多多、淘宝、京东、闲鱼、抖音商城、菜鸟、支付宝、PiliPlus、
+Spotify，以及直接读取配置的高德地图、米家、小米应用商店、小米社区、
+小米运动健康，现在统一以 Activity 当前 `resources.configuration.uiMode` 作为
+底栏深浅来源。该值是应用内“浅色”“深色”或“跟随系统”设置解析后的有效结果；
+页面背景、原生底栏背景、以及固定/选中态文字与图标颜色不再参与主题判定。
+
+共享 `HostThemeResolver` 不再遍历窗口背景或计算颜色投票。应用有明确内部
+主题设置入口时优先使用该值，例如菜鸟继续调用
+`DarkModeHelper.duI.isDarkMode(context)`；PiliPlus 从自身 Hive
+`setting.hive` 读取 `themeMode`，其中 0/1 分别表示应用内浅色/深色，
+其他值回落到“跟随系统”的有效配置。Hive 目录使用单一 FileObserver
+在写入时标记刷新，不在 250 ms 导航同步或逐帧回调中重复读取磁盘；
+宿主销毁时停止监听。支付宝只表示当前 TabBar 外观的
+`isTabBarDarkMode` 读取已移除。Native View 宿主仍按原有刷新间隔更新，
+Compose 导航通过现有状态同步或 `LocalConfiguration` 响应主题变化。

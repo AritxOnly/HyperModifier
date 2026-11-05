@@ -4,76 +4,114 @@ import android.view.View
 import android.widget.AbsSeekBar
 import java.lang.ref.WeakReference
 import java.util.WeakHashMap
+import kotlin.math.abs
 
 /** Lift the independent progress overlay by its visible track, preserving native sizing. */
 internal class DouyinProgressClearance {
     private val entries = WeakHashMap<View, Entry>()
     private var active = false
     private var bounds: ViewBackdropBounds? = null
+
     fun update(enabled: Boolean, dock: ViewBackdropBounds?) {
         active = enabled
         bounds = dock
         entries.values.forEach { it.apply() }
     }
+
     fun add(view: View) {
         if (entries.containsKey(view)) return
-        val track = if (view.javaClass.simpleName == "DProSeekBar") {
-            val id = view.resources.getIdentifier("wb4", "id", view.context.packageName)
-            view.findViewById<View>(id) ?: return
-        } else view
-        val entry = Entry(view, track)
+        val entry = Entry(view)
         entries[view] = entry
         view.addOnLayoutChangeListener(entry)
-        if (view !== track) track.addOnLayoutChangeListener(entry)
         entry.apply()
     }
+
     fun dispose() {
         active = false
         entries.values.forEach { it.dispose() }
         entries.clear()
     }
-    private inner class Entry(view: View, track: View) : View.OnLayoutChangeListener, Runnable {
-        private val view = WeakReference(view)
-        private val track = WeakReference(track)
+
+    private inner class Entry(private val target: View) : View.OnLayoutChangeListener {
+        private val targetRef = WeakReference(target)
+        private var track = WeakReference<View>(null)
+        private var trackId = View.NO_ID
         private var original: Float? = null
         private var applied: Float? = null
         private val location = IntArray(2)
-        private var queued = false
-        override fun onLayoutChange(v: View, l: Int, t: Int, r: Int, b: Int, ol: Int, ot: Int, or: Int, ob: Int) {
-            if (!active || queued) return
-            queued = true
-            v.post(this)
+
+        private fun resolveTrack(): View? {
+            val owner = targetRef.get() ?: return null
+            val previous = track.get()
+            if (previous != null && previous.parent != null) return previous
+            if (owner.javaClass.simpleName != "DProSeekBar") {
+                track = WeakReference(owner)
+                return owner
+            }
+            if (trackId == View.NO_ID) {
+                trackId = owner.resources.getIdentifier("wb4", "id", owner.context.packageName)
+            }
+            val next = if (trackId != View.NO_ID) owner.findViewById<View>(trackId) else null
+            if (previous !== next) {
+                previous?.removeOnLayoutChangeListener(this)
+                track = WeakReference(next)
+                next?.addOnLayoutChangeListener(this)
+            }
+            return next
         }
-        override fun run() { queued = false; apply() }
+
+        override fun onLayoutChange(v: View, l: Int, t: Int, r: Int, b: Int,
+                                    oldL: Int, oldT: Int, oldR: Int, oldB: Int) {
+            apply()
+        }
+
         fun apply() {
-            val target = view.get() ?: return
+            val view = targetRef.get() ?: return
             if (!active) {
-                original?.let { if (target.translationY == applied) target.translationY = it }
-                original = null; applied = null
+                restore(view)
                 return
             }
             val dock = bounds ?: return
-            val line = track.get() ?: return
-            if (!line.isAttachedToWindow || line.height == 0) return
-            if (original == null || target.translationY != applied) original = target.translationY
+            val line = resolveTrack() ?: return
+            if (!line.isAttachedToWindow || !line.isShown || line.height == 0) return
+            val current = view.translationY
+            if (original == null || (applied != null && abs(current - applied!!) > 0.5f)) {
+                original = current
+            }
             line.getLocationOnScreen(location)
             // ProSeekBarView draws the progress drawable after translating by paddingTop.
             // Its 18dp touch box includes 10dp bottom padding, which is not painted track.
             val drawable = (line as? AbsSeekBar)?.progressDrawable?.bounds
             val paintedBottom = if (drawable != null && !drawable.isEmpty) {
                 (line.paddingTop + drawable.bottom).toFloat()
-            } else (line.height - line.paddingBottom).toFloat()
+            } else {
+                (line.height - line.paddingBottom).toFloat()
+            }
             val value = DouyinNavigationPolicy.progressTranslation(
-                original ?: 0f, target.translationY, location[1].toFloat(), paintedBottom,
-                dock.top, target.resources.displayMetrics.density * 2f,
+                original ?: 0f,
+                current,
+                location[1].toFloat(),
+                paintedBottom,
+                dock.top,
+                view.resources.displayMetrics.density * 2f,
             )
-            if (target.translationY != value) target.translationY = value
+            if (abs(current - value) > 0.5f) view.translationY = value
             applied = value
         }
+
+        private fun restore(view: View) {
+            val saved = original
+            val last = applied
+            if (saved != null && last != null && abs(view.translationY - last) <= 0.5f) {
+                view.translationY = saved
+            }
+            original = null
+            applied = null
+        }
+
         fun dispose() {
-            view.get()?.let { it.removeCallbacks(this); it.removeOnLayoutChangeListener(this) }
-            track.get()?.let { it.removeCallbacks(this); it.removeOnLayoutChangeListener(this) }
-            queued = false
+            targetRef.get()?.removeOnLayoutChangeListener(this)
+            track.get()?.removeOnLayoutChangeListener(this)
             apply()
         }
     }

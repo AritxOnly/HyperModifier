@@ -152,11 +152,13 @@ final class EcommerceHooks {
     ) {
         if (activity.isFinishing() || activity.isDestroyed() ||
                 !spec.getPackageName().equals(activity.getPackageName())) return;
+        boolean primary = isPrimaryActivity(activity, spec);
+        if (!primary && !spec.getAllowSecondaryActivities()) return;
         // A framework-level fallback may run before the app's navigation View is inflated.
         // Keep a delayed attachment for the actual home Activity instead of requiring the bar
         // to be discoverable in this exact callback. Other Activities stay scan-free.
         if (delegate.hasHost(activity) || delegate.hasNavigationTarget(activity) ||
-                isPrimaryActivity(activity, spec)) {
+                primary) {
             delegate.attach(activity);
             delegate.setForeground(activity, true);
         }

@@ -68,4 +68,33 @@ class FloatingTabMotionTest {
         assertEquals(0f, floatingTabPanelDragFraction(100f, 0f), 0.0001f)
     }
 
+    @Test
+    fun rapidSelectionKeepsMomentumOnlyWhilePreviousTransitionIsInFlight() {
+        assertTrue(
+            floatingTabSelectionIsInterrupted(
+                visualPosition = 1.4f,
+                previousTarget = 3,
+                nextTarget = 0,
+                velocityTabsPerSecond = 7f,
+            ),
+        )
+        assertTrue(
+            floatingTabSelectionIsInterrupted(
+                visualPosition = 2.1f,
+                previousTarget = 2,
+                nextTarget = 3,
+                velocityTabsPerSecond = 4f,
+            ),
+        )
+        assertEquals(
+            false,
+            floatingTabSelectionIsInterrupted(
+                visualPosition = 2f,
+                previousTarget = 2,
+                nextTarget = 1,
+                velocityTabsPerSecond = 0f,
+            ),
+        )
+    }
+
 }

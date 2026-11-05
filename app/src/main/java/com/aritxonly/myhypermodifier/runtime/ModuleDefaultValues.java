@@ -25,6 +25,12 @@ public final class ModuleDefaultValues {
     public static final boolean XIAOMI_COMMUNITY_FLOATING_NAVIGATION_ENABLED = true;
     public static final boolean ALIPAY_FLOATING_NAVIGATION_ENABLED = true;
     public static final boolean DOUYIN_FLOATING_NAVIGATION_ENABLED = true;
+    public static final boolean DOUYIN_LITE_FLOATING_NAVIGATION_ENABLED = true;
+    public static final boolean KUAISHOU_FLOATING_NAVIGATION_ENABLED = true;
+    public static final boolean KUAISHOU_LITE_FLOATING_NAVIGATION_ENABLED = true;
+    public static final boolean WECHAT_FLOATING_NAVIGATION_ENABLED = true;
+    public static final boolean QQ_FLOATING_NAVIGATION_ENABLED = true;
+    public static final boolean QQ_MUSIC_FLOATING_NAVIGATION_ENABLED = true;
     public static final boolean BILIBILI_FLOATING_NAVIGATION_ENABLED = true;
     public static final boolean PILIPLUS_FLOATING_NAVIGATION_ENABLED = true;
     public static final boolean PINDUODUO_FLOATING_NAVIGATION_ENABLED = true;

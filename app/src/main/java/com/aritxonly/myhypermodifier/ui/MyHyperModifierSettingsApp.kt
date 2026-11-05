@@ -6,6 +6,7 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Handler
+import android.os.Build
 import android.os.Looper
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -106,6 +107,7 @@ import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.Contacts
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Settings
+import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.core.graphics.ColorUtils
 import androidx.lifecycle.Lifecycle
@@ -132,6 +134,9 @@ internal enum class SettingsDestination(val key: String, val label: String) {
     Amap("amap", "高德地图"),
     Alipay("alipay", "支付宝"),
     Douyin("douyin", "抖音"),
+    Kuaishou("kuaishou", "快手"),
+    Social("social", "微信 / QQ"),
+    QQMusic("qq-music", "QQ音乐"),
     XiaomiCommunity("xiaomi-community", "小米社区"),
     Bilibili("bilibili", "哔哩哔哩"),
     PiliPlus("piliplus", "PiliPlus"),
@@ -177,6 +182,9 @@ private data class RestartScopeDefaults(
     val piliPlus: Boolean = false,
     val alipay: Boolean = false,
     val douyin: Boolean = false,
+    val kuaishou: Boolean = false,
+    val socialApps: Boolean = false,
+    val qqMusic: Boolean = false,
     val ecommerceApps: Boolean = false,
     val spotify: Boolean = false,
     val systemSettings: Boolean = false,
@@ -186,7 +194,9 @@ private fun SettingsDestination.requiredRestartScopes(): RestartScopeDefaults = 
     SettingsDestination.Compatibility -> RestartScopeDefaults(
         systemUi = true, launcher = true, plugin = true, miLink = true, xiaomiHealth = true,
         market = true, miHome = true, amap = true, xiaomiCommunity = true,
-        bilibili = true, piliPlus = true, douyin = true, alipay = true, ecommerceApps = true,
+        bilibili = true, piliPlus = true, douyin = true, kuaishou = true,
+        alipay = true, socialApps = true, qqMusic = true,
+        ecommerceApps = true,
         spotify = true, systemSettings = true,
     )
     SettingsDestination.NotificationsControlCenter,
@@ -194,7 +204,12 @@ private fun SettingsDestination.requiredRestartScopes(): RestartScopeDefaults = 
     SettingsDestination.GlobalMaterialBlur -> RestartScopeDefaults(systemUi = true, plugin = true, miLink = true)
     SettingsDestination.ShadeCardGlass,
     SettingsDestination.ShadeCardGlassAdvanced -> RestartScopeDefaults(systemUi = true, plugin = true)
-    SettingsDestination.NavigationGlass -> RestartScopeDefaults(xiaomiHealth = true, market = true, miHome = true, amap = true, bilibili = true, piliPlus = true, spotify = true, douyin = true, alipay = true, xiaomiCommunity = true, ecommerceApps = true)
+    SettingsDestination.NavigationGlass -> RestartScopeDefaults(
+        xiaomiHealth = true, market = true, miHome = true, amap = true,
+        bilibili = true, piliPlus = true, spotify = true, douyin = true,
+        kuaishou = true, alipay = true, socialApps = true, qqMusic = true,
+        xiaomiCommunity = true, ecommerceApps = true,
+    )
     SettingsDestination.Ecommerce -> RestartScopeDefaults(ecommerceApps = true)
     SettingsDestination.XiaomiHealth -> RestartScopeDefaults(xiaomiHealth = true)
     SettingsDestination.Market -> RestartScopeDefaults(market = true)
@@ -203,6 +218,9 @@ private fun SettingsDestination.requiredRestartScopes(): RestartScopeDefaults = 
     SettingsDestination.XiaomiCommunity -> RestartScopeDefaults(xiaomiCommunity = true)
     SettingsDestination.Alipay -> RestartScopeDefaults(alipay = true)
     SettingsDestination.Douyin -> RestartScopeDefaults(douyin = true)
+    SettingsDestination.Kuaishou -> RestartScopeDefaults(kuaishou = true)
+    SettingsDestination.Social -> RestartScopeDefaults(socialApps = true)
+    SettingsDestination.QQMusic -> RestartScopeDefaults(qqMusic = true)
     SettingsDestination.Bilibili -> RestartScopeDefaults(bilibili = true)
     SettingsDestination.PiliPlus -> RestartScopeDefaults(piliPlus = true)
     SettingsDestination.HomeEntries,
@@ -287,6 +305,9 @@ fun MyHyperModifierSettingsApp() {
     var restartPiliPlus by remember { mutableStateOf(false) }
     var restartAlipay by remember { mutableStateOf(false) }
     var restartDouyin by remember { mutableStateOf(false) }
+    var restartKuaishou by remember { mutableStateOf(false) }
+    var restartSocialApps by remember { mutableStateOf(false) }
+    var restartQQMusic by remember { mutableStateOf(false) }
     var restartEcommerceApps by remember { mutableStateOf(false) }
     var restartSpotify by remember { mutableStateOf(false) }
     var restartSettings by remember { mutableStateOf(false) }
@@ -309,6 +330,7 @@ fun MyHyperModifierSettingsApp() {
             MaterialTheme(colorScheme = materialColors) {
             DeadlinerMiuixScaffold(
                 scrollProgress = activeScrollProgress,
+                deviceModeOverride = settings.deviceModeOverride,
                 topBar = when (destination) {
                     SettingsDestination.Home -> homeTopBarScrollBehavior?.let { scrollBehavior ->
                         {
@@ -383,6 +405,9 @@ fun MyHyperModifierSettingsApp() {
                             restartPiliPlus = restartPiliPlus,
                             restartAlipay = restartAlipay,
                             restartDouyin = restartDouyin,
+                            restartKuaishou = restartKuaishou,
+                            restartSocialApps = restartSocialApps,
+                            restartQQMusic = restartQQMusic,
                             restartEcommerceApps = restartEcommerceApps,
                             restartSpotify = restartSpotify,
                             restartSettings = restartSettings,
@@ -405,6 +430,9 @@ fun MyHyperModifierSettingsApp() {
                             onPiliPlusChange = { restartPiliPlus = it },
                             onAlipayChange = { restartAlipay = it },
                             onDouyinChange = { restartDouyin = it },
+                            onKuaishouChange = { restartKuaishou = it },
+                            onSocialAppsChange = { restartSocialApps = it },
+                            onQQMusicChange = { restartQQMusic = it },
                             onEcommerceAppsChange = { restartEcommerceApps = it },
                             onSpotifyChange = { restartSpotify = it },
                             onSettingsChange = { restartSettings = it },
@@ -424,6 +452,9 @@ fun MyHyperModifierSettingsApp() {
                                     restartPiliPlus = false
                                     restartAlipay = false
                                     restartDouyin = false
+                                    restartKuaishou = false
+                                    restartSocialApps = false
+                                    restartQQMusic = false
                                     restartEcommerceApps = false
                                     restartSpotify = false
                                     restartSettings = false
@@ -432,7 +463,13 @@ fun MyHyperModifierSettingsApp() {
                             onDismiss = { showRestartDialog = false },
                             onConfirm = {
                                 restartState = ScopeRestartState.Restarting
-                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem, restartSettings, launcher = restartLauncher, douyin = restartDouyin, alipay = restartAlipay, ecommerceApps = restartEcommerceApps, piliPlus = restartPiliPlus) {
+                                if (restartSystemUi || restartPlugin || restartSystem) {
+                                    update(settings.copy(
+                                        systemUiRetryGeneration =
+                                            settings.systemUiRetryGeneration + 1,
+                                    ))
+                                }
+                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem, restartSettings, launcher = restartLauncher, douyin = restartDouyin, kuaishou = restartKuaishou, alipay = restartAlipay, socialApps = restartSocialApps, qqMusic = restartQQMusic, ecommerceApps = restartEcommerceApps, piliPlus = restartPiliPlus) {
                                     restartState = if (it) ScopeRestartState.Succeeded else ScopeRestartState.Failed
                                 }
                             },
@@ -517,6 +554,9 @@ internal fun MyHyperModifierDetailSettingsApp(
     var restartPiliPlus by remember { mutableStateOf(defaultScopes.piliPlus) }
     var restartAlipay by remember { mutableStateOf(defaultScopes.alipay) }
     var restartDouyin by remember { mutableStateOf(defaultScopes.douyin) }
+    var restartKuaishou by remember { mutableStateOf(defaultScopes.kuaishou) }
+    var restartSocialApps by remember { mutableStateOf(defaultScopes.socialApps) }
+    var restartQQMusic by remember { mutableStateOf(defaultScopes.qqMusic) }
     var restartEcommerceApps by remember { mutableStateOf(defaultScopes.ecommerceApps) }
     var restartSpotify by remember { mutableStateOf(defaultScopes.spotify) }
     var restartSettings by remember { mutableStateOf(defaultScopes.systemSettings) }
@@ -540,6 +580,7 @@ internal fun MyHyperModifierDetailSettingsApp(
             MaterialTheme(colorScheme = materialColors) {
             DeadlinerMiuixScaffold(
                 scrollProgress = activeScrollProgress,
+                deviceModeOverride = settings.deviceModeOverride,
                 topBar = {
                     Column(Modifier.fillMaxWidth()) {
                         SmallTopAppBar(
@@ -563,6 +604,9 @@ internal fun MyHyperModifierDetailSettingsApp(
                                     restartPiliPlus = defaultScopes.piliPlus
                                     restartAlipay = defaultScopes.alipay
                                     restartDouyin = defaultScopes.douyin
+                                    restartKuaishou = defaultScopes.kuaishou
+                                    restartSocialApps = defaultScopes.socialApps
+                                    restartQQMusic = defaultScopes.qqMusic
                                     restartEcommerceApps = defaultScopes.ecommerceApps
                                     restartSpotify = defaultScopes.spotify
                                     restartSettings = defaultScopes.systemSettings
@@ -601,6 +645,9 @@ internal fun MyHyperModifierDetailSettingsApp(
                             restartPiliPlus = restartPiliPlus,
                             restartAlipay = restartAlipay,
                             restartDouyin = restartDouyin,
+                            restartKuaishou = restartKuaishou,
+                            restartSocialApps = restartSocialApps,
+                            restartQQMusic = restartQQMusic,
                             restartEcommerceApps = restartEcommerceApps,
                             restartSpotify = restartSpotify,
                             restartSettings = restartSettings,
@@ -621,6 +668,9 @@ internal fun MyHyperModifierDetailSettingsApp(
                             onPiliPlusChange = { restartPiliPlus = it },
                             onAlipayChange = { restartAlipay = it },
                             onDouyinChange = { restartDouyin = it },
+                            onKuaishouChange = { restartKuaishou = it },
+                            onSocialAppsChange = { restartSocialApps = it },
+                            onQQMusicChange = { restartQQMusic = it },
                             onEcommerceAppsChange = { restartEcommerceApps = it },
                             onSpotifyChange = { restartSpotify = it },
                             onSettingsChange = { restartSettings = it },
@@ -640,6 +690,9 @@ internal fun MyHyperModifierDetailSettingsApp(
                                     restartPiliPlus = false
                                     restartAlipay = false
                                     restartDouyin = false
+                                    restartKuaishou = false
+                                    restartSocialApps = false
+                                    restartQQMusic = false
                                     restartEcommerceApps = false
                                     restartSpotify = false
                                     restartSettings = false
@@ -648,7 +701,13 @@ internal fun MyHyperModifierDetailSettingsApp(
                             onDismiss = { showRestartDialog = false },
                             onConfirm = {
                                 restartState = ScopeRestartState.Restarting
-                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem, restartSettings, launcher = restartLauncher, douyin = restartDouyin, alipay = restartAlipay, ecommerceApps = restartEcommerceApps, piliPlus = restartPiliPlus) {
+                                if (restartSystemUi || restartPlugin || restartSystem) {
+                                    update(settings.copy(
+                                        systemUiRetryGeneration =
+                                            settings.systemUiRetryGeneration + 1,
+                                    ))
+                                }
+                                restartSelectedScope(restartSystemUi, restartPlugin, restartMiLink, restartXiaomiHealth, restartMarket, restartMiHome, restartAmap, restartXiaomiCommunity, restartBilibili, restartSpotify, restartSystem, restartSettings, launcher = restartLauncher, douyin = restartDouyin, kuaishou = restartKuaishou, alipay = restartAlipay, socialApps = restartSocialApps, qqMusic = restartQQMusic, ecommerceApps = restartEcommerceApps, piliPlus = restartPiliPlus) {
                                     restartState = if (it) ScopeRestartState.Succeeded else ScopeRestartState.Failed
                                 }
                             },
@@ -733,6 +792,9 @@ internal fun MyHyperModifierDetailSettingsApp(
                     SettingsDestination.Ecommerce -> EcommerceSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Alipay -> AlipaySettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Douyin -> DouyinSettingsPage(padding, settings, ::update) { scrollProgress = it }
+                    SettingsDestination.Kuaishou -> KuaishouSettingsPage(padding, settings, ::update) { scrollProgress = it }
+                    SettingsDestination.Social -> SocialNavigationSettingsPage(padding, settings, ::update) { scrollProgress = it }
+                    SettingsDestination.QQMusic -> QQMusicSettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.XiaomiCommunity -> XiaomiCommunitySettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Spotify -> SpotifySettingsPage(padding, settings, ::update) { scrollProgress = it }
                     SettingsDestination.Media -> MediaSettingsPage(
@@ -1040,6 +1102,42 @@ private fun scopeStatuses(
         isActive = framework.isActive(ModuleScopePackage.DOUYIN),
     ),
     ScopeStatus(
+        appName = "抖音极速版",
+        packageName = ModuleScopePackage.DOUYIN_LITE,
+        hasModification = settings.douyinLiteFloatingNavigationEnabled,
+        isActive = framework.isActive(ModuleScopePackage.DOUYIN_LITE),
+    ),
+    ScopeStatus(
+        appName = "微信",
+        packageName = ModuleScopePackage.WECHAT,
+        hasModification = settings.wechatFloatingNavigationEnabled,
+        isActive = framework.isActive(ModuleScopePackage.WECHAT),
+    ),
+    ScopeStatus(
+        appName = "QQ",
+        packageName = ModuleScopePackage.QQ,
+        hasModification = settings.qqFloatingNavigationEnabled,
+        isActive = framework.isActive(ModuleScopePackage.QQ),
+    ),
+    ScopeStatus(
+        appName = "快手",
+        packageName = ModuleScopePackage.KUAISHOU,
+        hasModification = settings.kuaishouFloatingNavigationEnabled,
+        isActive = framework.isActive(ModuleScopePackage.KUAISHOU),
+    ),
+    ScopeStatus(
+        appName = "快手极速版",
+        packageName = ModuleScopePackage.KUAISHOU_LITE,
+        hasModification = settings.kuaishouLiteFloatingNavigationEnabled,
+        isActive = framework.isActive(ModuleScopePackage.KUAISHOU_LITE),
+    ),
+    ScopeStatus(
+        appName = "QQ音乐",
+        packageName = ModuleScopePackage.QQ_MUSIC,
+        hasModification = false,
+        isActive = framework.isActive(ModuleScopePackage.QQ_MUSIC),
+    ),
+    ScopeStatus(
         appName = "哔哩哔哩",
         packageName = ModuleScopePackage.BILIBILI,
         hasModification = settings.bilibiliFloatingNavigationEnabled,
@@ -1060,7 +1158,12 @@ private fun scopeStatuses(
         settings.globalGlassBlurEnabled && !settings.disableShadeGlassHooks &&
             scope.packageName != ModuleScopePackage.SYSTEM_FRAMEWORK &&
             scope.packageName != ModuleScopePackage.DOUYIN &&
-            scope.packageName != ModuleScopePackage.ALIPAY -> scope.copy(hasModification = true)
+            scope.packageName != ModuleScopePackage.DOUYIN_LITE &&
+            scope.packageName != ModuleScopePackage.KUAISHOU &&
+            scope.packageName != ModuleScopePackage.KUAISHOU_LITE &&
+            scope.packageName != ModuleScopePackage.ALIPAY &&
+            scope.packageName != ModuleScopePackage.WECHAT &&
+            scope.packageName != ModuleScopePackage.QQ -> scope.copy(hasModification = true)
         else -> scope
     }
 }
@@ -1091,6 +1194,7 @@ private fun HomeDashboardPage(
     }
 
     ModuleStatusHero(health) { onNavigate(SettingsDestination.Compatibility) }
+    DeviceModeStatusCard(settings, update)
     SettingsSection {
         NavigationSettingItem(
             "作用域状态",
@@ -1123,7 +1227,11 @@ private fun HomeDashboardPage(
             NavigationSettingItem("哔哩哔哩", "", onClick = { onNavigate(SettingsDestination.Bilibili) }, leadingContent = { HomeAppIcon(ModuleScopePackage.BILIBILI) })
             NavigationSettingItem("PiliPlus", "Flutter 首页悬浮导航", onClick = { onNavigate(SettingsDestination.PiliPlus) }, leadingContent = { HomeAppIcon(ModuleScopePackage.PILIPLUS) })
             NavigationSettingItem("支付宝", "经典模式 · 原生静态图标", onClick = { onNavigate(SettingsDestination.Alipay) }, leadingContent = { HomeAppIcon(ModuleScopePackage.ALIPAY) })
-            NavigationSettingItem("抖音", "", onClick = { onNavigate(SettingsDestination.Douyin) }, leadingContent = { HomeAppIcon(ModuleScopePackage.DOUYIN) })
+            NavigationSettingItem("抖音 / 极速版", "", onClick = { onNavigate(SettingsDestination.Douyin) }, leadingContent = { HomeAppIcon(ModuleScopePackage.DOUYIN) })
+            NavigationSettingItem("快手 / 极速版", "原生视频底栏", onClick = { onNavigate(SettingsDestination.Kuaishou) }, leadingContent = { HomeAppIcon(ModuleScopePackage.KUAISHOU) })
+            NavigationSettingItem("微信", "", onClick = { onNavigate(SettingsDestination.Social) }, leadingContent = { HomeAppIcon(ModuleScopePackage.WECHAT) })
+            NavigationSettingItem("QQ", "", onClick = { onNavigate(SettingsDestination.Social) }, leadingContent = { HomeAppIcon(ModuleScopePackage.QQ) })
+            NavigationSettingItem("QQ音乐", "已加入适配清单", onClick = { onNavigate(SettingsDestination.QQMusic) }, leadingContent = { HomeAppIcon(ModuleScopePackage.QQ_MUSIC) })
             NavigationSettingItem("电商应用", "拼多多、淘宝、京东、闲鱼、抖音商城、菜鸟", onClick = { onNavigate(SettingsDestination.Ecommerce) })
             NavigationSettingItem("小米社区", "", onClick = { onNavigate(SettingsDestination.XiaomiCommunity) }, leadingContent = { HomeAppIcon(ModuleScopePackage.XIAOMI_COMMUNITY) })
             NavigationSettingItem("应用商店", "已有官方底栏方案 · 默认关闭", onClick = { onNavigate(SettingsDestination.Market) }, leadingContent = { HomeAppIcon(ModuleScopePackage.MARKET) })
@@ -1153,6 +1261,77 @@ private fun HomeDashboardPage(
             NavigationSettingItem("音量面板", "", onClick = { onNavigate(SettingsDestination.Volume) }, leadingContent = { HomeSystemIcon(R.drawable.ic_home_volume_up, Color(0xFFC52C79)) })
         }
     }
+}
+
+@Composable
+private fun DeviceModeStatusCard(
+    settings: ModifierSettings,
+    update: (ModifierSettings) -> Unit,
+) {
+    val override = LargeScreenDevicePolicy.normalizeOverride(settings.deviceModeOverride)
+    val detected = LargeScreenDevicePolicy.detectedMode()
+    val effective = LargeScreenDevicePolicy.effectiveMode(override)
+    val automatic = override == LargeScreenDevicePolicy.AUTO
+    val largeScreen = LargeScreenDevicePolicy.usesLargeScreenLayout(override)
+    val badgeContainer = if (largeScreen) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+    val badgeContent = if (largeScreen) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val deviceIdentity = listOf(Build.DEVICE, Build.MODEL)
+        .filter { it.isNotBlank() }
+        .distinct()
+        .joinToString(" / ")
+    val source = if (automatic) {
+        "自动识别"
+    } else {
+        "手动覆盖 · 自动识别为${workModeLabel(detected)}模式"
+    }
+
+    SettingsSection(topLabel = "设备工作模式") {
+        SettingItem(
+            headlineText = "当前：${workModeLabel(effective)}模式",
+            supportingText = listOf(source, deviceIdentity)
+                .filter { it.isNotBlank() }
+                .joinToString(" · "),
+            trailingContent = {
+                Box(
+                    modifier = Modifier
+                        .clip(Capsule())
+                        .background(badgeContainer)
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                ) {
+                    Text(
+                        text = if (automatic) "自动" else "手动",
+                        color = badgeContent,
+                        style = MiuixTheme.textStyles.footnote1,
+                    )
+                }
+            },
+        )
+        WindowDropdownPreference(
+            title = "模式切换",
+            summary = "识别不准时可手动覆盖；重启系统界面和相关应用，系统框架适配需重启手机",
+            items = listOf("自动识别", "手机模式", "折叠屏模式", "平板模式"),
+            selectedIndex = override,
+            onSelectedIndexChange = {
+                update(settings.copy(
+                    deviceModeOverride = LargeScreenDevicePolicy.normalizeOverride(it),
+                ))
+            },
+        )
+    }
+}
+
+private fun workModeLabel(mode: Int): String = when (mode) {
+    LargeScreenDevicePolicy.FOLDABLE -> "折叠屏"
+    LargeScreenDevicePolicy.TABLET -> "平板"
+    else -> "手机"
 }
 
 @Composable

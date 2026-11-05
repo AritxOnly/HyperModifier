@@ -56,7 +56,7 @@ final class HyperMusicCoverExtensions {
         sceneHook(module, loader, "com.android.keyguard.editor.KeyguardEditorHelper", "setEditorState", args -> {
             if (args.length > 0) editor = !"IDEL".equals(String.valueOf(args[0]));
         });
-        sceneHook(module, loader, "com.android.keyguard.injector.KeyguardViewMediatorInjector", "keyguardGoingAway", args -> { if (font != null) font.beginUnlock(); goingAway = true; });
+        sceneHook(module, loader, "com.android.keyguard.injector.KeyguardViewMediatorInjector", "keyguardGoingAway", args -> goingAway = true);
         sceneHook(module, loader, "com.android.systemui.statusbar.policy.KeyguardStateControllerImpl", "notifyKeyguardState", args -> {
             if (args.length > 0 && Boolean.TRUE.equals(args[0])) { goingAway = false; if (font != null) font.finishUnlock(); }
         });
@@ -166,7 +166,7 @@ final class HyperMusicCoverExtensions {
                 else replayFrames();
                 if (notifications != null) notifications.refresh();
             }
-            if (font != null) { font.observeTargets(adapter); font.syncSession(fontSessionHeld()); }
+            if (font != null) font.syncSession(fontSessionHeld());
             float progress = currentFontProgress();
             if (progress != lastFontProgress || ModuleSettings.hmcClockFontHeight != lastFontHeight
                     || ModuleSettings.hmcClockFontRatio != lastFontRatio
@@ -187,7 +187,7 @@ final class HyperMusicCoverExtensions {
     static boolean fontLeaving() { return goingAway; }
     static boolean fontSessionHeld() {
         if (adapter == null || !ModuleSettings.hmcClockFontHeightEnabled) return false;
-        try { return (goingAway && font != null && font.retainingExit()) || adapter.bool(adapter.clockHeld) || adapter.holdY.get(null) != null; }
+        try { return adapter.bool(adapter.clockHeld) || adapter.holdY.get(null) != null; }
         catch (ReflectiveOperationException | RuntimeException error) { return false; }
     }
     private static Float activeFontProgress() throws ReflectiveOperationException {
@@ -203,7 +203,6 @@ final class HyperMusicCoverExtensions {
     /** Null means OEM owns this glyph; zero still belongs to the entering HMC scene. */
     static Float fontProgress(View tv) {
         if (adapter == null) return null;
-        if (goingAway && font != null) return font.exitProgress(tv);
         try {
             Float progress = activeFontProgress();
             if (progress == null) return null;

@@ -137,6 +137,7 @@ internal class ViewBackdropSampler(
     private val allowSoftwareFallback: Boolean = true,
     private val matchDisplayRefreshRate: Boolean = false,
     private val sampleOnSourceFrame: Boolean = false,
+    private val continuousSampling: Boolean = false,
     private val captureAfterDraw: Boolean = false,
     private val pixelCopyRetryDelayMs: Long = PIXEL_COPY_RETRY_DELAY_MS,
     private val onSnapshotChanged: (ViewBackdropSnapshot?) -> Unit,
@@ -563,7 +564,7 @@ internal class ViewBackdropSampler(
             lastPublishedBitmap?.sameAs(bitmap) == true
         if (unchanged) {
             bitmap.recycle() // Never handed to Compose.
-            if (now < keepCapturingUntil) requestCapture()
+            if (continuousSampling || now < keepCapturingUntil) requestCapture()
             return
         }
         if (generation == 0L) {
@@ -587,7 +588,7 @@ internal class ViewBackdropSampler(
                 generation = generation,
             ),
         )
-        if (now < keepCapturingUntil) requestCapture()
+        if (continuousSampling || now < keepCapturingUntil) requestCapture()
     }
 
     private fun retryInitialCapture() {

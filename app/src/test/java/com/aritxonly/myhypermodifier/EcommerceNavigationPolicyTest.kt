@@ -74,6 +74,7 @@ class EcommerceNavigationPolicyTest {
                     left = 20 + index * 210,
                     top = 2180,
                     bottom = 2300,
+                    selected = index == 0,
                 )
             },
             screenWidthPx = 1080,
@@ -93,6 +94,24 @@ class EcommerceNavigationPolicyTest {
                 candidates = (0 until 4).map { index ->
                     geometryTab(left = 20 + index * 260, top = 1050, bottom = 1260)
                 },
+                screenWidthPx = 1080,
+                screenHeightPx = 2400,
+                density = 3f,
+                minimumTabs = 3,
+            ),
+        )
+    }
+
+    @Test
+    fun geometryRejectsUnselectedProductDetailActionRow() {
+        assertNull(
+            EcommerceNavigationPolicy.resolveGeometry(
+                candidates = listOf(
+                    geometryTab(left = 20, top = 2210, bottom = 2350, label = "现在下单 承诺"),
+                    geometryTab(left = 280, top = 2210, bottom = 2350, label = "店铺"),
+                    geometryTab(left = 540, top = 2210, bottom = 2350, label = "限时补贴44元"),
+                    geometryTab(left = 800, top = 2210, bottom = 2350, label = "商品评价"),
+                ),
                 screenWidthPx = 1080,
                 screenHeightPx = 2400,
                 density = 3f,
@@ -171,13 +190,15 @@ class EcommerceNavigationPolicyTest {
         left: Int,
         top: Int,
         bottom: Int,
+        selected: Boolean = false,
+        label: String = "tab-$left",
     ) = EcommerceTabCandidate(
-        label = "tab-$left",
+        label = label,
         left = left,
         top = top,
         right = left + 200,
         bottom = bottom,
         clickable = true,
-        selected = false,
+        selected = selected,
     )
 }

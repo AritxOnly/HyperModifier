@@ -908,6 +908,9 @@ internal fun RestartScopeDialogContent(
     restartPiliPlus: Boolean,
     restartAlipay: Boolean,
     restartDouyin: Boolean,
+    restartKuaishou: Boolean,
+    restartSocialApps: Boolean,
+    restartQQMusic: Boolean,
     restartEcommerceApps: Boolean,
     restartSpotify: Boolean,
     restartSettings: Boolean,
@@ -925,6 +928,9 @@ internal fun RestartScopeDialogContent(
     onPiliPlusChange: (Boolean) -> Unit,
     onAlipayChange: (Boolean) -> Unit,
     onDouyinChange: (Boolean) -> Unit,
+    onKuaishouChange: (Boolean) -> Unit,
+    onSocialAppsChange: (Boolean) -> Unit,
+    onQQMusicChange: (Boolean) -> Unit,
     onEcommerceAppsChange: (Boolean) -> Unit,
     onSpotifyChange: (Boolean) -> Unit,
     onSettingsChange: (Boolean) -> Unit,
@@ -958,6 +964,9 @@ internal fun RestartScopeDialogContent(
                 restartPiliPlus = restartPiliPlus,
                 restartAlipay = restartAlipay,
                 restartDouyin = restartDouyin,
+                restartKuaishou = restartKuaishou,
+                restartSocialApps = restartSocialApps,
+                restartQQMusic = restartQQMusic,
                 restartEcommerceApps = restartEcommerceApps,
                 restartSpotify = restartSpotify,
                 restartSettings = restartSettings,
@@ -975,6 +984,9 @@ internal fun RestartScopeDialogContent(
                 onPiliPlusChange = onPiliPlusChange,
                 onAlipayChange = onAlipayChange,
                 onDouyinChange = onDouyinChange,
+                onKuaishouChange = onKuaishouChange,
+                onSocialAppsChange = onSocialAppsChange,
+                onQQMusicChange = onQQMusicChange,
                 onEcommerceAppsChange = onEcommerceAppsChange,
                 onSpotifyChange = onSpotifyChange,
                 onSettingsChange = onSettingsChange,
@@ -1000,6 +1012,9 @@ internal fun RestartScopeDialogContent(
     restartPiliPlus: Boolean,
     restartAlipay: Boolean,
     restartDouyin: Boolean,
+    restartKuaishou: Boolean,
+    restartSocialApps: Boolean,
+    restartQQMusic: Boolean,
     restartEcommerceApps: Boolean,
     restartSpotify: Boolean,
     restartSettings: Boolean,
@@ -1017,6 +1032,9 @@ internal fun RestartScopeDialogContent(
     onPiliPlusChange: (Boolean) -> Unit,
     onAlipayChange: (Boolean) -> Unit,
     onDouyinChange: (Boolean) -> Unit,
+    onKuaishouChange: (Boolean) -> Unit,
+    onSocialAppsChange: (Boolean) -> Unit,
+    onQQMusicChange: (Boolean) -> Unit,
     onEcommerceAppsChange: (Boolean) -> Unit,
     onSpotifyChange: (Boolean) -> Unit,
     onSettingsChange: (Boolean) -> Unit,
@@ -1117,6 +1135,31 @@ internal fun RestartScopeDialogContent(
         trailingContent = { DeadlinerCheckbox(restartDouyin, onDouyinChange, enabled = editable && !restartSystem) },
     )
     SettingItem(
+        "快手", "",
+        enabled = editable && !restartSystem,
+        trailingContent = { DeadlinerCheckbox(restartKuaishou, onKuaishouChange, enabled = editable && !restartSystem) },
+    )
+    SettingItem(
+        "微信 / QQ",
+        "",
+        enabled = editable && !restartSystem,
+        onClick = {
+            if (editable && !restartSystem) onSocialAppsChange(!restartSocialApps)
+        },
+        trailingContent = {
+            DeadlinerCheckbox(
+                restartSocialApps,
+                onSocialAppsChange,
+                enabled = editable && !restartSystem,
+            )
+        },
+    )
+    SettingItem(
+        "QQ音乐", "",
+        enabled = editable && !restartSystem,
+        trailingContent = { DeadlinerCheckbox(restartQQMusic, onQQMusicChange, enabled = editable && !restartSystem) },
+    )
+    SettingItem(
         "电商应用",
         "拼多多、淘宝、京东、闲鱼、抖音商城、菜鸟",
         enabled = editable && !restartSystem,
@@ -1200,6 +1243,9 @@ internal fun restartSelectedScope(
     launcher: Boolean = false,
     alipay: Boolean = false,
     douyin: Boolean = false,
+    kuaishou: Boolean = false,
+    socialApps: Boolean = false,
+    qqMusic: Boolean = false,
     ecommerceApps: Boolean = false,
     piliPlus: Boolean = false,
     onCompleted: (Boolean) -> Unit,
@@ -1211,7 +1257,8 @@ internal fun restartSelectedScope(
         val command = when {
             system -> "reboot"
             systemUi || plugin || miLink || xiaomiHealth || market || miHome || amap ||
-                xiaomiCommunity || bilibili || piliPlus || spotify || douyin || alipay || ecommerceApps ||
+                xiaomiCommunity || bilibili || piliPlus || spotify || douyin || kuaishou ||
+                alipay || socialApps || qqMusic || ecommerceApps ||
                 systemSettings || launcher -> buildList {
                 if (systemUi || plugin) add("killall com.android.systemui")
                 if (launcher) add("killall com.miui.home")
@@ -1223,6 +1270,16 @@ internal fun restartSelectedScope(
                 if (xiaomiCommunity) add("am force-stop com.xiaomi.vipaccount")
                 if (alipay) add("am force-stop com.eg.android.AlipayGphone")
                 if (douyin) add("am force-stop com.ss.android.ugc.aweme")
+                if (douyin) add("am force-stop com.ss.android.ugc.aweme.lite")
+                if (kuaishou) {
+                    add("am force-stop com.smile.gifmaker")
+                    add("am force-stop com.kuaishou.nebula")
+                }
+                if (socialApps) {
+                    add("am force-stop com.tencent.mm")
+                    add("am force-stop com.tencent.mobileqq")
+                }
+                if (qqMusic) add("am force-stop com.tencent.qqmusic")
                 if (ecommerceApps) {
                     add("am force-stop com.xunmeng.pinduoduo")
                     add("am force-stop com.taobao.taobao")

@@ -22,6 +22,7 @@ data class ModifierSettings(
     val volumeUpPowerAction: String = KeyShortcutActions.STOCK,
     val doublePowerAction: String = KeyShortcutActions.STOCK,
     val moduleHooksEnabled: Boolean = true,
+    val deviceModeOverride: Int = LargeScreenDevicePolicy.AUTO,
     val systemUiCompatibilityMode: Boolean = false,
     val systemUiRetryGeneration: Int = 0,
     val gestureHandleEnabled: Boolean = false,
@@ -147,6 +148,7 @@ data class ModifierSettings(
     val statusBarNetworkTypeBold: Boolean = true,
     val statusBarNetworkTypeOffset: Float = 0f,
     val navigationGlassParameters: String = "",
+    val navigationBarGeometry: String = "",
     val hyperGlassifyHiddenNavigationLift: Float = ModuleDefaultValues.HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT,
     val xiaomiHealthFloatingNavigationEnabled: Boolean = ModuleDefaultValues.XIAOMI_HEALTH_FLOATING_NAVIGATION_ENABLED,
     val xiaomiHealthMiuixIconsEnabled: Boolean = false,
@@ -168,6 +170,19 @@ data class ModifierSettings(
     val amapHideLongPressVoiceTabEnabled: Boolean = ModuleDefaultValues.AMAP_HIDE_LONG_PRESS_VOICE_TAB_ENABLED,
     val alipayFloatingNavigationEnabled: Boolean = ModuleDefaultValues.ALIPAY_FLOATING_NAVIGATION_ENABLED,
     val douyinFloatingNavigationEnabled: Boolean = ModuleDefaultValues.DOUYIN_FLOATING_NAVIGATION_ENABLED,
+    val douyinLiteFloatingNavigationEnabled: Boolean =
+        ModuleDefaultValues.DOUYIN_LITE_FLOATING_NAVIGATION_ENABLED,
+    val kuaishouFloatingNavigationEnabled: Boolean =
+        ModuleDefaultValues.KUAISHOU_FLOATING_NAVIGATION_ENABLED,
+    val kuaishouLiteFloatingNavigationEnabled: Boolean =
+        ModuleDefaultValues.KUAISHOU_LITE_FLOATING_NAVIGATION_ENABLED,
+    val wechatFloatingNavigationEnabled: Boolean =
+        ModuleDefaultValues.WECHAT_FLOATING_NAVIGATION_ENABLED,
+    val wechatNavigationBadgesEnabled: Boolean = true,
+    val qqFloatingNavigationEnabled: Boolean = ModuleDefaultValues.QQ_FLOATING_NAVIGATION_ENABLED,
+    val qqNavigationBadgesEnabled: Boolean = true,
+    val qqMusicFloatingNavigationEnabled: Boolean =
+        ModuleDefaultValues.QQ_MUSIC_FLOATING_NAVIGATION_ENABLED,
     val xiaomiCommunityFloatingNavigationEnabled: Boolean = ModuleDefaultValues.XIAOMI_COMMUNITY_FLOATING_NAVIGATION_ENABLED,
     val xiaomiCommunityMiuixIconsEnabled: Boolean = false,
     val xiaomiCommunityMonochromeIconsEnabled: Boolean = true,
@@ -357,6 +372,14 @@ object ModifierSettingsPresets {
         amapHideLongPressVoiceTabEnabled = false,
         alipayFloatingNavigationEnabled = false,
         douyinFloatingNavigationEnabled = false,
+        douyinLiteFloatingNavigationEnabled = false,
+        kuaishouFloatingNavigationEnabled = false,
+        kuaishouLiteFloatingNavigationEnabled = false,
+        wechatFloatingNavigationEnabled = false,
+        wechatNavigationBadgesEnabled = false,
+        qqFloatingNavigationEnabled = false,
+        qqNavigationBadgesEnabled = false,
+        qqMusicFloatingNavigationEnabled = false,
         xiaomiCommunityFloatingNavigationEnabled = false,
         xiaomiCommunityMiuixIconsEnabled = false,
         xiaomiCommunityMonochromeIconsEnabled = false,
@@ -395,6 +418,7 @@ object ModifierSettingsStore {
     const val PREFS = "modifier_settings"
     const val METHOD_GET = "get_settings"
     private const val KEY_MODULE_HOOKS_ENABLED = "module_hooks_enabled"
+    private const val KEY_DEVICE_MODE_OVERRIDE = "device_mode_override"
     private const val KEY_SYSTEM_UI_COMPATIBILITY_MODE = "systemui_compatibility_mode"
     private const val KEY_SYSTEM_UI_RETRY_GENERATION = "systemui_retry_generation"
     private const val KEY_DIAGNOSTIC_TOKEN = "diagnostic_token"
@@ -542,6 +566,7 @@ object ModifierSettingsStore {
     private const val KEY_STATUS_BAR_NETWORK_TYPE_BOLD = "status_bar_network_type_bold"
     private const val KEY_STATUS_BAR_NETWORK_TYPE_OFFSET = "status_bar_network_type_offset"
     private const val KEY_NAVIGATION_GLASS_PARAMETERS = "navigation_glass_parameters"
+    private const val KEY_NAVIGATION_BAR_GEOMETRY = "navigation_bar_geometry"
     private const val KEY_HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT =
         "hyper_glassify_hidden_navigation_lift"
     private const val KEY_XIAOMI_HEALTH_FLOATING_NAVIGATION =
@@ -567,6 +592,16 @@ object ModifierSettingsStore {
         "amap_hide_long_press_voice_tab_enabled"
     private const val KEY_ALIPAY_FLOATING_NAVIGATION = "alipay_floating_navigation_enabled"
     private const val KEY_DOUYIN_FLOATING_NAVIGATION = "douyin_floating_navigation_enabled"
+    private const val KEY_DOUYIN_LITE_FLOATING_NAVIGATION =
+        "douyin_lite_floating_navigation_enabled"
+    private const val KEY_KUAISHOU_FLOATING_NAVIGATION = "kuaishou_floating_navigation_enabled"
+    private const val KEY_KUAISHOU_LITE_FLOATING_NAVIGATION =
+        "kuaishou_lite_floating_navigation_enabled"
+    private const val KEY_WECHAT_FLOATING_NAVIGATION = "wechat_floating_navigation_enabled"
+    private const val KEY_WECHAT_NAVIGATION_BADGES = "wechat_navigation_badges_enabled"
+    private const val KEY_QQ_FLOATING_NAVIGATION = "qq_floating_navigation_enabled"
+    private const val KEY_QQ_NAVIGATION_BADGES = "qq_navigation_badges_enabled"
+    private const val KEY_QQ_MUSIC_FLOATING_NAVIGATION = "qq_music_floating_navigation_enabled"
     private const val KEY_XIAOMI_COMMUNITY_FLOATING_NAVIGATION =
         "xiaomi_community_floating_navigation_enabled"
     private const val KEY_XIAOMI_COMMUNITY_MIUIX_ICONS =
@@ -633,6 +668,9 @@ object ModifierSettingsStore {
             !prefs.contains(KEY_GESTURE_HANDLE_APP_MODES)
         return ModifierSettings(
             moduleHooksEnabled = prefs.getBoolean(KEY_MODULE_HOOKS_ENABLED, true),
+            deviceModeOverride = LargeScreenDevicePolicy.normalizeOverride(
+                prefs.getInt(KEY_DEVICE_MODE_OVERRIDE, LargeScreenDevicePolicy.AUTO),
+            ),
             systemUiCompatibilityMode = prefs.getBoolean(KEY_SYSTEM_UI_COMPATIBILITY_MODE, false),
             systemUiRetryGeneration = prefs.getInt(KEY_SYSTEM_UI_RETRY_GENERATION, 0),
             gestureHandleEnabled = prefs.getBoolean(KEY_GESTURE_HANDLE_ENABLED, false),
@@ -833,6 +871,7 @@ object ModifierSettingsStore {
             statusBarNetworkTypeBold = prefs.getBoolean(KEY_STATUS_BAR_NETWORK_TYPE_BOLD, true),
             statusBarNetworkTypeOffset = prefs.getFloat(KEY_STATUS_BAR_NETWORK_TYPE_OFFSET, 0f),
             navigationGlassParameters = prefs.getString(KEY_NAVIGATION_GLASS_PARAMETERS, "") ?: "",
+            navigationBarGeometry = prefs.getString(KEY_NAVIGATION_BAR_GEOMETRY, "") ?: "",
             hyperGlassifyHiddenNavigationLift = prefs.getFloat(
                 KEY_HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT,
                 ModuleDefaultValues.HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT,
@@ -865,6 +904,32 @@ object ModifierSettingsStore {
             ),
             alipayFloatingNavigationEnabled = prefs.getBoolean(KEY_ALIPAY_FLOATING_NAVIGATION, ModuleDefaultValues.ALIPAY_FLOATING_NAVIGATION_ENABLED),
             douyinFloatingNavigationEnabled = prefs.getBoolean(KEY_DOUYIN_FLOATING_NAVIGATION, ModuleDefaultValues.DOUYIN_FLOATING_NAVIGATION_ENABLED),
+            douyinLiteFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_DOUYIN_LITE_FLOATING_NAVIGATION,
+                ModuleDefaultValues.DOUYIN_LITE_FLOATING_NAVIGATION_ENABLED,
+            ),
+            kuaishouFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_KUAISHOU_FLOATING_NAVIGATION,
+                ModuleDefaultValues.KUAISHOU_FLOATING_NAVIGATION_ENABLED,
+            ),
+            kuaishouLiteFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_KUAISHOU_LITE_FLOATING_NAVIGATION,
+                ModuleDefaultValues.KUAISHOU_LITE_FLOATING_NAVIGATION_ENABLED,
+            ),
+            wechatFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_WECHAT_FLOATING_NAVIGATION,
+                ModuleDefaultValues.WECHAT_FLOATING_NAVIGATION_ENABLED,
+            ),
+            wechatNavigationBadgesEnabled = prefs.getBoolean(KEY_WECHAT_NAVIGATION_BADGES, true),
+            qqFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_QQ_FLOATING_NAVIGATION,
+                ModuleDefaultValues.QQ_FLOATING_NAVIGATION_ENABLED,
+            ),
+            qqNavigationBadgesEnabled = prefs.getBoolean(KEY_QQ_NAVIGATION_BADGES, true),
+            qqMusicFloatingNavigationEnabled = prefs.getBoolean(
+                KEY_QQ_MUSIC_FLOATING_NAVIGATION,
+                ModuleDefaultValues.QQ_MUSIC_FLOATING_NAVIGATION_ENABLED,
+            ),
             xiaomiCommunityFloatingNavigationEnabled = prefs.getBoolean(
                 KEY_XIAOMI_COMMUNITY_FLOATING_NAVIGATION,
                 ModuleDefaultValues.XIAOMI_COMMUNITY_FLOATING_NAVIGATION_ENABLED,
@@ -954,6 +1019,8 @@ object ModifierSettingsStore {
         val editor = preferences.edit()
         editor
             .putBoolean(KEY_MODULE_HOOKS_ENABLED, value.moduleHooksEnabled)
+            .putInt(KEY_DEVICE_MODE_OVERRIDE,
+                LargeScreenDevicePolicy.normalizeOverride(value.deviceModeOverride))
             .putBoolean(KEY_SYSTEM_UI_COMPATIBILITY_MODE, value.systemUiCompatibilityMode)
             .putInt(KEY_SYSTEM_UI_RETRY_GENERATION, value.systemUiRetryGeneration)
             .putBoolean(KEY_GESTURE_HANDLE_ENABLED, value.gestureHandleEnabled)
@@ -1169,6 +1236,8 @@ object ModifierSettingsStore {
             .putBoolean(KEY_STATUS_BAR_NETWORK_TYPE_BOLD, value.statusBarNetworkTypeBold)
             .putFloat(KEY_STATUS_BAR_NETWORK_TYPE_OFFSET, value.statusBarNetworkTypeOffset)
             .putString(KEY_NAVIGATION_GLASS_PARAMETERS, value.navigationGlassParameters)
+            .putString(KEY_NAVIGATION_BAR_GEOMETRY,
+                NavigationBarGeometryParameters.decode(value.navigationBarGeometry).encode())
             .putFloat(
                 KEY_HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT,
                 value.hyperGlassifyHiddenNavigationLift.coerceIn(0f, 48f),
@@ -1245,6 +1314,20 @@ object ModifierSettingsStore {
             )
             .putBoolean(KEY_ALIPAY_FLOATING_NAVIGATION, value.alipayFloatingNavigationEnabled)
             .putBoolean(KEY_DOUYIN_FLOATING_NAVIGATION, value.douyinFloatingNavigationEnabled)
+            .putBoolean(
+                KEY_DOUYIN_LITE_FLOATING_NAVIGATION,
+                value.douyinLiteFloatingNavigationEnabled,
+            )
+            .putBoolean(KEY_KUAISHOU_FLOATING_NAVIGATION, value.kuaishouFloatingNavigationEnabled)
+            .putBoolean(
+                KEY_KUAISHOU_LITE_FLOATING_NAVIGATION,
+                value.kuaishouLiteFloatingNavigationEnabled,
+            )
+            .putBoolean(KEY_WECHAT_FLOATING_NAVIGATION, value.wechatFloatingNavigationEnabled)
+            .putBoolean(KEY_WECHAT_NAVIGATION_BADGES, value.wechatNavigationBadgesEnabled)
+            .putBoolean(KEY_QQ_FLOATING_NAVIGATION, value.qqFloatingNavigationEnabled)
+            .putBoolean(KEY_QQ_NAVIGATION_BADGES, value.qqNavigationBadgesEnabled)
+            .putBoolean(KEY_QQ_MUSIC_FLOATING_NAVIGATION, value.qqMusicFloatingNavigationEnabled)
             .putBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, value.spotifyFloatingNavigationEnabled)
             .putBoolean(KEY_SPOTIFY_FAVORITE_BUTTON, value.spotifyFavoriteButtonEnabled)
             .putBoolean(KEY_SPOTIFY_SHUFFLE_BUTTON, value.spotifyShuffleButtonEnabled)
@@ -1399,7 +1482,7 @@ object ModifierSettingsStore {
         }
     }
 
-    private val SETTINGS_URI = Uri.parse("content://com.aritxonly.myhypermodifier.settings")
+    private val SETTINGS_URI = Uri.parse("content://${BuildConfig.APPLICATION_ID}.settings")
     private val remoteSyncQueue = SettingsSyncQueue()
     @Volatile private var remoteService: XposedService? = null
 
@@ -1410,6 +1493,8 @@ object ModifierSettingsStore {
 
     fun toBundle(value: ModifierSettings) = Bundle().apply {
         putBoolean(KEY_MODULE_HOOKS_ENABLED, value.moduleHooksEnabled)
+        putInt(KEY_DEVICE_MODE_OVERRIDE,
+            LargeScreenDevicePolicy.normalizeOverride(value.deviceModeOverride))
         putBoolean(KEY_SYSTEM_UI_COMPATIBILITY_MODE, value.systemUiCompatibilityMode)
         putInt(KEY_SYSTEM_UI_RETRY_GENERATION, value.systemUiRetryGeneration)
         putBoolean(KEY_GESTURE_HANDLE_ENABLED, value.gestureHandleEnabled)
@@ -1595,6 +1680,7 @@ object ModifierSettingsStore {
         putBoolean(KEY_STATUS_BAR_NETWORK_TYPE_BOLD, value.statusBarNetworkTypeBold)
         putFloat(KEY_STATUS_BAR_NETWORK_TYPE_OFFSET, value.statusBarNetworkTypeOffset)
         putString(KEY_NAVIGATION_GLASS_PARAMETERS, value.navigationGlassParameters)
+        putString(KEY_NAVIGATION_BAR_GEOMETRY, value.navigationBarGeometry)
         putFloat(
             KEY_HYPER_GLASSIFY_HIDDEN_NAVIGATION_LIFT,
             value.hyperGlassifyHiddenNavigationLift.coerceIn(0f, 48f),
@@ -1670,6 +1756,20 @@ object ModifierSettingsStore {
         )
         putBoolean(KEY_ALIPAY_FLOATING_NAVIGATION, value.alipayFloatingNavigationEnabled)
         putBoolean(KEY_DOUYIN_FLOATING_NAVIGATION, value.douyinFloatingNavigationEnabled)
+        putBoolean(
+            KEY_DOUYIN_LITE_FLOATING_NAVIGATION,
+            value.douyinLiteFloatingNavigationEnabled,
+        )
+        putBoolean(KEY_KUAISHOU_FLOATING_NAVIGATION, value.kuaishouFloatingNavigationEnabled)
+        putBoolean(
+            KEY_KUAISHOU_LITE_FLOATING_NAVIGATION,
+            value.kuaishouLiteFloatingNavigationEnabled,
+        )
+        putBoolean(KEY_WECHAT_FLOATING_NAVIGATION, value.wechatFloatingNavigationEnabled)
+        putBoolean(KEY_WECHAT_NAVIGATION_BADGES, value.wechatNavigationBadgesEnabled)
+        putBoolean(KEY_QQ_FLOATING_NAVIGATION, value.qqFloatingNavigationEnabled)
+        putBoolean(KEY_QQ_NAVIGATION_BADGES, value.qqNavigationBadgesEnabled)
+        putBoolean(KEY_QQ_MUSIC_FLOATING_NAVIGATION, value.qqMusicFloatingNavigationEnabled)
         putBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, value.spotifyFloatingNavigationEnabled)
         putBoolean(KEY_SPOTIFY_FAVORITE_BUTTON, value.spotifyFavoriteButtonEnabled)
         putBoolean(KEY_SPOTIFY_SHUFFLE_BUTTON, value.spotifyShuffleButtonEnabled)

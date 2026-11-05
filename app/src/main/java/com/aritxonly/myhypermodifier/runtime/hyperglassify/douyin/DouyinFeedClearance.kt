@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import java.lang.ref.WeakReference
 import java.util.WeakHashMap
+import kotlin.math.abs
 
 /** 40.7.0: i6 controls and pn7 video are siblings, never resize the 1mw page shell. */
 internal class DouyinFeedClearance(activity: Activity) {
@@ -35,7 +36,6 @@ internal class DouyinFeedClearance(activity: Activity) {
             val view = stack.removeLast()
             if (view.javaClass.simpleName == "VideoViewHolderRootView") {
                 addPage(view)
-                continue
             }
             if (view.javaClass.simpleName == "DProSeekBar" || view.javaClass.simpleName == "CustomizedUISeekBar" ||
                 view.javaClass.simpleName == "LineProgressBar") progress.add(view)
@@ -74,14 +74,27 @@ internal class DouyinFeedClearance(activity: Activity) {
             if (child.javaClass.simpleName == "PenetrateTouchRelativeLayout") controls = child
         }
         val target = controls ?: return
-        if (target.layoutParams !is ViewGroup.MarginLayoutParams) return
-        val legacyId = root.resources.getIdentifier("u1k", "id", root.context.packageName)
-        root.findViewById<View>(legacyId)?.takeIf {
-            it.javaClass.name == "com.ss.android.ugc.aweme.feed.widget.LineProgressBar"
-        }?.let(progress::add)
         val footerId = target.resources.getIdentifier("ctk", "id", target.context.packageName)
         val footerContainerId = target.resources.getIdentifier("cne", "id", target.context.packageName)
-        val entry = Entry(page, parent, target, footerId, footerContainerId)
+        val descriptionContainerId = target.resources.getIdentifier(
+            "etb",
+            "id",
+            target.context.packageName,
+        )
+        val descriptionTextId = target.resources.getIdentifier(
+            "desc",
+            "id",
+            target.context.packageName,
+        )
+        val entry = Entry(
+            page,
+            parent,
+            target,
+            footerId,
+            footerContainerId,
+            descriptionContainerId,
+            descriptionTextId,
+        )
         entries[page] = entry
         page.addOnLayoutChangeListener(entry)
         parent.addOnLayoutChangeListener(entry)
@@ -96,22 +109,30 @@ internal class DouyinFeedClearance(activity: Activity) {
         entries.clear()
     }
 
-    private inner class Entry(page: View, parent: View, controls: View,
-                              private val footerId: Int, private val footerContainerId: Int) : View.OnLayoutChangeListener, Runnable {
+    private inner class Entry(
+        page: View,
+        parent: View,
+        controls: View,
+        private val footerId: Int,
+        private val footerContainerId: Int,
+        private val descriptionContainerId: Int,
+        private val descriptionTextId: Int,
+    ) : View.OnLayoutChangeListener {
         private val page = WeakReference(page)
         private val parent = WeakReference(parent)
         private val controls = WeakReference(controls)
         private var footer = WeakReference<View>(null)
         private var footerContainer = WeakReference<ViewGroup>(null)
         private var collection = WeakReference<View>(null)
-        private var original: Int? = null
-        private var applied: Int? = null
+        private var descriptionContainer = WeakReference<View>(null)
+        private var descriptionText = WeakReference<View>(null)
+        private var originalTranslation: Float? = null
+        private var appliedTranslation: Float? = null
         private val pageLocation = IntArray(2)
         private val parentLocation = IntArray(2)
         private val viewportLocation = IntArray(2)
         private val controlsLocation = IntArray(2)
         private val footerLocation = IntArray(2)
-        private var queued = false
 
         private fun resolveFooter(owner: View): View? {
             val container = footerContainer.get()?.takeIf { it.parent === owner }
@@ -127,7 +148,7 @@ internal class DouyinFeedClearance(activity: Activity) {
                     found
                 }
             val previous = footer.get()
-            if (previous != null && previous.parent === container && container != null) return previous
+            if (previous != null && previous.parent === container) return previous
             var next: View? = null
             if (container != null) {
                 for (index in 0 until container.childCount.coerceAtMost(16)) {
@@ -136,7 +157,6 @@ internal class DouyinFeedClearance(activity: Activity) {
                 }
             }
             if (previous !== next) {
-                previous?.removeCallbacks(this)
                 previous?.removeOnLayoutChangeListener(this)
                 footer = WeakReference(next)
                 next?.addOnLayoutChangeListener(this)
@@ -160,66 +180,116 @@ internal class DouyinFeedClearance(activity: Activity) {
             apply()
         }
 
+        private fun resolveDescriptionAnchor(owner: View): View? {
+            val previousContainer = descriptionContainer.get()
+            val container = if (previousContainer?.parent != null) {
+                previousContainer
+            } else {
+                owner.findViewById<View>(descriptionContainerId)?.also { next ->
+                    if (previousContainer !== next) {
+                        previousContainer?.removeOnLayoutChangeListener(this)
+                        descriptionContainer = WeakReference(next)
+                        descriptionText = WeakReference(null)
+                        next.addOnLayoutChangeListener(this)
+                    }
+                }
+            }
+            val previousText = descriptionText.get()
+            val text = if (previousText?.parent != null) {
+                previousText
+            } else {
+                (container ?: owner).findViewById<View>(descriptionTextId)?.also { next ->
+                    if (previousText !== next) {
+                        previousText?.removeOnLayoutChangeListener(this)
+                        descriptionText = WeakReference(next)
+                        next.addOnLayoutChangeListener(this)
+                    }
+                }
+            }
+            return text?.takeIf { it.isUsableAnchor() }
+                ?: container?.takeIf { it.isUsableAnchor() }
+        }
+
         override fun onLayoutChange(v: View, l: Int, t: Int, r: Int, b: Int,
                                     oldL: Int, oldT: Int, oldR: Int, oldB: Int) {
-            if (!active || queued) return
-            queued = true
-            v.post(this)
+            // translationY does not request another layout, so applying it synchronously avoids
+            // the old margin write -> relayout -> posted write feedback loop.
+            apply()
         }
-        override fun run() { queued = false; apply() }
 
         fun apply() {
             val view = controls.get() ?: return
-            val params = view.layoutParams as? ViewGroup.MarginLayoutParams ?: return
             if (!active) {
-                val saved = original
-                if (saved != null && params.bottomMargin == applied) {
-                    params.bottomMargin = saved
-                    view.layoutParams = params
-                }
-                original = null
-                applied = null
+                restoreTranslation(view)
                 return
             }
             val dock = bounds ?: return
             val root = page.get() ?: return
             val host = parent.get() ?: return
             val viewport = root.parent as? View ?: return
-            if (!root.isAttachedToWindow || host.height == 0 || viewport.height == 0) return
-            if (original == null || params.bottomMargin != applied) original = params.bottomMargin
+            if (!root.isAttachedToWindow || host.height == 0 || viewport.height == 0) {
+                restoreTranslation(view)
+                return
+            }
+            // ctk is the stable footer container. The collection card is only a fallback while
+            // ctk is absent, so normal feed animations cannot switch the inset back and forth.
+            val anchor = resolveFooter(view)?.takeIf { it.isUsableAnchor() }
+                ?: collection.get()?.takeIf { it.isUsableAnchor() }
+                ?: resolveDescriptionAnchor(view)
+            if (anchor == null) {
+                restoreTranslation(view)
+                return
+            }
             root.getLocationOnScreen(pageLocation)
             host.getLocationOnScreen(parentLocation)
             viewport.getLocationOnScreen(viewportLocation)
-            // ctk retains the native 47dp tab reservation inside i6. Account for that
-            // existing inset rather than adding a second reservation above the glass.
-            val currentFooter = resolveFooter(view)
-            val anchor = collection.get()?.takeIf { it.isShown && it.height > 0 }
-                ?: currentFooter?.takeIf { it.visibility != View.GONE }
-            val nativeInset = anchor?.let { bottom ->
-                view.getLocationOnScreen(controlsLocation)
-                bottom.getLocationOnScreen(footerLocation)
-                (view.height - (footerLocation[1] - controlsLocation[1] + bottom.height)).coerceIn(0, view.height)
-            } ?: 0
-            // Content -> 10dp -> visible progress line -> 2dp -> glass.
-            val clearance = (view.resources.displayMetrics.density * 12f).toInt()
-            // Subtract this page's swipe offset: every page carries a constant lift while swiping.
-            val margin = DouyinNavigationPolicy.controlsBottomMargin(
-                original ?: 0, viewportLocation[1], parentLocation[1], pageLocation[1], host.height, dock.top, clearance, nativeInset,
+            view.getLocationOnScreen(controlsLocation)
+            anchor.getLocationOnScreen(footerLocation)
+            val nativeInset = (
+                view.height - (footerLocation[1] - controlsLocation[1] + anchor.height)
+            ).coerceIn(0, view.height)
+            // Use the settled layout bottom, not the translated screen position. This keeps the
+            // result constant during page swipes and while the module translation is active.
+            val settledControlsBottom =
+                viewportLocation[1] + parentLocation[1] - pageLocation[1] + view.height
+            val untranslatedContentBottom = settledControlsBottom - nativeInset
+            val translation = DouyinNavigationPolicy.controlsTranslation(
+                untranslatedContentBottom.toFloat(),
+                dock.top,
             )
-            if (params.bottomMargin != margin) {
-                params.bottomMargin = margin
-                view.layoutParams = params
+            val current = view.translationY
+            val previousApplied = appliedTranslation
+            if (originalTranslation == null ||
+                (previousApplied != null && abs(current - previousApplied) > 0.5f)
+            ) {
+                originalTranslation = current
             }
-            applied = margin
+            val target = (originalTranslation ?: 0f) + translation
+            if (abs(current - target) > 0.5f) view.translationY = target
+            appliedTranslation = target
         }
 
+        private fun restoreTranslation(view: View) {
+            val original = originalTranslation
+            val applied = appliedTranslation
+            if (original != null && applied != null && abs(view.translationY - applied) <= 0.5f) {
+                view.translationY = original
+            }
+            originalTranslation = null
+            appliedTranslation = null
+        }
+
+        private fun View.isUsableAnchor(): Boolean =
+            isAttachedToWindow && isShown && height > 0
+
         fun dispose() {
-            page.get()?.let { it.removeCallbacks(this); it.removeOnLayoutChangeListener(this) }
-            parent.get()?.let { it.removeCallbacks(this); it.removeOnLayoutChangeListener(this) }
-            controls.get()?.let { it.removeCallbacks(this); it.removeOnLayoutChangeListener(this) }
-            footer.get()?.let { it.removeCallbacks(this); it.removeOnLayoutChangeListener(this) }
-            collection.get()?.let { it.removeCallbacks(this); it.removeOnLayoutChangeListener(this) }
-            queued = false
+            page.get()?.removeOnLayoutChangeListener(this)
+            parent.get()?.removeOnLayoutChangeListener(this)
+            controls.get()?.removeOnLayoutChangeListener(this)
+            footer.get()?.removeOnLayoutChangeListener(this)
+            collection.get()?.removeOnLayoutChangeListener(this)
+            descriptionContainer.get()?.removeOnLayoutChangeListener(this)
+            descriptionText.get()?.removeOnLayoutChangeListener(this)
             apply()
         }
     }
