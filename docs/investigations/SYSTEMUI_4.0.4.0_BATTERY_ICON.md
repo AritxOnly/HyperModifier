@@ -91,7 +91,7 @@ MiuiBatteryMeterView (LinearLayout)
 
 设置入口：状态栏 → 状态栏电池 → 无数字电池使用实心框，默认关闭。键为 `status_bar_solid_battery_frame`，已接入模型、预设复位、SharedPreferences、设置 Bundle、备份 schema 和 SystemUI 修改状态标识。
 
-仅 Hook `MiuiBatteryMeterIconView` 自己的 onDraw、onDarkChangeInternal、attach、detach（4 个方法）；不改变 `mBatteryStyle`，不操作外部充电 ImageView，也不影响原内部数字 View。这样无内部数字的 style 0/3 使用新框，style 3 的外部百分比仍由系统显示。旧式图集和竖向主题绘制保留系统实现。
+仅 Hook `MiuiBatteryMeterIconView` 自己的绘制、状态、资源刷新和 attach/detach 路径；不改变 `mBatteryStyle`，不操作外部充电 ImageView，也不影响原内部数字 View。这样无内部数字的 style 0/3 使用新框，style 3 的外部百分比仍由系统显示。启用时不再回退到主题的旧式图集或竖向图形，始终使用模块内置的 base SystemUI 系统电池几何。
 
 `BatteryFrameGeometry` 采用本地样本的内部数字电池轮廓；原系统普通充电、快充及双箭头性能标识经过缩放或位移完全放进电池主体，并从主体中镂空。性能与充电可以同时显示；快充标识优先于普通充电。电量层保持系统状态颜色优先顺序：充电/快充 → 省电 → 性能 → 低电量 → 普通；tint 与 MIUI 优化关闭分支另按系统语义处理。基色跟随资源及系统 tint，动态值在系统状态/取色回调后刷新。
 
@@ -99,7 +99,7 @@ MiuiBatteryMeterView (LinearLayout)
 
 性能边界：路径在首次启用时解析一次；主体及 6 种标识组合静态缓存；电量分区仅在电量、标识或增长方向变化时更新。绘制回调只有开关判断、弱引用表查询、缩放与两次 drawPath，没有反射、字符串/路径解析、模块主动对象分配、IPC、位图、saveLayer 或定时任务。状态回调缓存反射字段与 MethodHandle，取色调用使用 invokeExact，避免反射 varargs 数组。弱键的值仅持有绘图对象与资源 ID，不持有 View/Context。设置刷新合并队列并比较有效启用值，无关设置不遍历图标。
 
-系统原有状态与位图更新仍照常运行，未宣称消除其成本；关闭开关、停用模块或进入兼容模式时直接走原 onDraw 并刷新当前图标，无需回写或重建系统设置。冲突边界：其他模块若同时完全替换该 onDraw，最终行为仍受 Hook 顺序影响；本实现不修改其字段或挂全局 Canvas Hook。
+启用时系统原有的主题 drawable、位图和 tint 资源刷新会被短路，绘制直接使用缓存的系统电池路径；关闭开关、停用模块或进入兼容模式时重新执行系统资源刷新并直接走原 onDraw，无需回写或重建系统设置。冲突边界：其他模块若同时完全替换该 onDraw，最终行为仍受 Hook 顺序影响；本实现不修改其字段或挂全局 Canvas Hook。
 
 验证：390 项 Debug JVM 测试通过（0 失败/错误/跳过），包括新增的电量边界、双方向、主题兼容与性能/快充组合选择，默认设置关闭检查；Debug APK 构建通过。未进行真机 Hook 命中、实时启停、深浅色、系统主题、充电/性能切换、超级岛动画或功耗/帧率测试。
 
@@ -185,3 +185,33 @@ MiuiBatteryMeterView (LinearLayout)
 性能范围：新增的完整阶段与内容生命周期事件替代动画布尔事件，合计七个专用方法 Hook；没有逐帧 Hook、轮询、延时重试、IPC 或额外绘制层。只有显隐策略变化才遍历弱引用 View 表；系统原生显隐辅助方法在切换时有自身的短期对象分配，未宣称零分配或帧率/耗电改善。状态、样式、生命周期和原值恢复仍为缓存字段 / MethodHandle 与基本值，不强引用 View/Context 或插件对象。
 
 修复验证：402 项 JVM 测试通过（0 失败/错误/跳过），新增五项完整状态转换及与有效样式覆盖联动回归，覆盖动画结束持续显示、关闭动画不重现、开关动画取消、内容重建及两个旧布尔量反向场景。Release lintVital、R8、构建与 APK v2 签名验证、`git diff --check` 均通过。测试包 `app/build/outputs/apk/release/HyperModifier-v1.5.2-control-center-battery-state-fix.apk`。尚未进行修复后的真机回归。
+
+## 2026-11-05 实心框固定使用系统电池素材
+
+按用户要求，开启“无数字电池使用实心框”后不再调用主题电池图标素材，固定使用 base SystemUI 的系统电池几何。启用态在 inflate、资源刷新、`clearTint` 和 `onDarkChangeInternal` 入口短路主题 drawable/位图刷新，仅读取系统状态栏颜色、电量、充电/省电/性能/低电量字段及系统进度方向；因此主题的旧式图集、竖向电池图片和其它电池资源不再参与该开关的绘制。
+
+关闭开关、停用模块或进入兼容模式时，对已跟踪 View 重新执行原 `updateResources$10`，恢复系统主题资源、位图、布局尺寸和原始绘制链路。路径、标识、颜色与电量分区仍复用原有缓存，没有新增每帧反射、资源查找、位图、绘制层、轮询或 IPC；新增 Hook 只位于低频 inflate、状态和资源变化入口。
+
+验证：Debug Java/Kotlin 编译通过，`StatusBarBatteryFramePolicyTest` 2 项通过；`:app:assembleRelease --offline`、zipalign 和 APK v3 签名校验通过。Gradle 9.3.1 在当前含中文的工作区路径下运行 `testDebugUnitTest` 时仍对测试类报 `ClassNotFoundException`，因此策略测试改用同一 JUnit 4.13.2 与 Java 21 直接执行。尚未进行真机主题切换和外观回归。
+
+## 2026-11-05 控制中心电量内部/外部与垂直居中
+
+为实心电池框新增 `control_center_battery_percent_placement` 偏好，默认 `0` 表示电池框外，
+`1` 表示电池框内。设置只在“无数字电池使用实心框”和“控制中心展开时显示电量”同时开启时
+可选，已接入本地存储、远程设置 Bundle 和备份 schema。原“控制中心展开时外显电量”开关保留，
+用于控制电池百分比是否在控制中心展开期间出现。
+
+框内模式不让 `MiuiBatteryMeterView.mBatteryStyle` 临时切到 `3`，因此不会切换到外部
+TextView，也不会改用系统空心数字电池。实心框继续绘制系统电池主体和充电/性能标识，并在
+控制中心展开时用 CLEAR 合成在框体中央镂空电量数字，再叠加低透明度反差色；数字只在电量
+或展开/收起状态变化时重新生成字符串，字体度量和基线在首次启用时缓存。框外模式继续复用
+系统百分比 TextView、百分比符号、颜色和 Folme 显隐动画。
+
+框外百分比在 `MiuiBatteryMeterView.onLayout` 完成后，根据电池图标 View 与百分比容器的
+屏幕坐标计算 `translationY`，使容器布局中心与电池框图标中心重合，而不是停在底部对齐。
+仅当模块拥有外部样式覆盖时设置该位移；收起、关闭功能或销毁时恢复原 `translationY`。
+新增布局 Hook 只处理低频布局回调，没有轮询、逐帧测量、额外 Bitmap 或绘制层。
+
+回归覆盖：框内位置保持原生样式 `0`、位置值归一化、外部百分比中心偏移计算、默认位置、
+备份往返和原有面板状态转换。尚未进行真机控制中心展开、深浅色、充电阻抗和不同状态栏
+高度下的视觉回归。

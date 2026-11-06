@@ -43,4 +43,19 @@ class RoundedIconSettingsTest {
             }
         }
     }
+
+    @Test fun batteryPercentPlacementRoundTripsThroughBackup() {
+        val context = RuntimeEnvironment.getApplication()
+        val backup = mapOf(
+            "control_center_battery_percent_placement" to
+                ControlCenterBatteryPercentPolicy.PLACEMENT_INSIDE,
+        )
+        val schema = ModifierSettingsStore.backupSchema()
+        assertEquals(backup, SettingsBackupCodec.decode(SettingsBackupCodec.encode(backup), schema))
+        ModifierSettingsStore.restoreBackup(context, backup)
+        assertEquals(
+            ControlCenterBatteryPercentPolicy.PLACEMENT_INSIDE,
+            ModifierSettingsStore.load(context).controlCenterBatteryPercentPlacement,
+        )
+    }
 }
