@@ -4,7 +4,8 @@ import android.graphics.Matrix;
 import android.graphics.Path;
 import androidx.core.graphics.PathParser;
 
-/** 4.0.4.0 local sample geometry: digit-style body; original system marks centered inside; their clearance is erased by the stock CLEAR blend mechanism.
+/** Packaged SystemUI geometry from the 4.0.4.0 base: digit-style body with the original system marks
+ * centered inside. Theme overlays are intentionally not consulted.
  * Parsed lazily once when first enabled. No bitmap, offscreen layer or per-frame path operations.
  */
 final class BatteryFrameGeometry {

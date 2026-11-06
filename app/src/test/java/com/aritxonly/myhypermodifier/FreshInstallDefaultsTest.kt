@@ -38,6 +38,10 @@ class FreshInstallDefaultsTest {
             assertFalse(settings.statusBarSolidBatteryFrame)
             assertFalse(settings.roundedNetworkIcons)
             assertFalse(settings.controlCenterShowBatteryPercent)
+            assertEquals(
+                ControlCenterBatteryPercentPolicy.PLACEMENT_OUTSIDE,
+                settings.controlCenterBatteryPercentPlacement,
+            )
             assertFalse(settings.notificationClockShowSeconds)
             assertFalse(settings.statusBarHideClockLeadingZero)
             assertFalse(settings.lowerLockscreenPasswordPage)

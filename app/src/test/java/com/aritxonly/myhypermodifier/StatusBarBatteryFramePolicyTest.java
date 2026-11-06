@@ -4,13 +4,6 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class StatusBarBatteryFramePolicyTest {
-    @Test public void preservesLegacyAndPortraitThemeRendering() {
-        assertTrue(StatusBarBatteryFramePolicy.supported(false, false));
-        assertFalse(StatusBarBatteryFramePolicy.supported(true, false));
-        assertFalse(StatusBarBatteryFramePolicy.supported(false, true));
-        assertFalse(StatusBarBatteryFramePolicy.supported(true, true));
-    }
-
     @Test public void zeroIsEmptyAndFullCoversTheWholeBodyForBothDirections() {
         assertEquals(-46f, StatusBarBatteryFramePolicy.maskShift(0, true), .0001f);
         assertEquals(46f, StatusBarBatteryFramePolicy.maskShift(0, false), .0001f);
