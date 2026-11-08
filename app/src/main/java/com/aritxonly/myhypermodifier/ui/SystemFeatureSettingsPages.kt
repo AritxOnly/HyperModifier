@@ -431,6 +431,9 @@ import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
             settings.statusBarSolidBatteryFrame,
             { update(settings.copy(statusBarSolidBatteryFrame = it)) },
         )
+        BatteryIconScaleSetting(settings.statusBarBatteryIconScale) {
+            update(settings.copy(statusBarBatteryIconScale = it))
+        }
         SettingsSwitchItem(
             "控制中心展开时显示电量",
             "收起后自动隐藏",

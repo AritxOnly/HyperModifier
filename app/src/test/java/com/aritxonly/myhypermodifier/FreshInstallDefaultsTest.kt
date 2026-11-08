@@ -36,6 +36,11 @@ class FreshInstallDefaultsTest {
             assertFalse(settings.superIslandWhitelistDisabled)
             assertFalse(settings.statusBarShowSeconds)
             assertFalse(settings.statusBarSolidBatteryFrame)
+            assertEquals(
+                StatusBarBatteryIconSizePolicy.DEFAULT,
+                settings.statusBarBatteryIconScale,
+                0.0001f,
+            )
             assertFalse(settings.roundedNetworkIcons)
             assertFalse(settings.controlCenterShowBatteryPercent)
             assertEquals(
