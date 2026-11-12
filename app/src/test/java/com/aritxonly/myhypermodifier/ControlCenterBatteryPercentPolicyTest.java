@@ -75,4 +75,26 @@ public class ControlCenterBatteryPercentPolicyTest {
         assertEquals(3, policy.resolve(0, true, true));
         assertEquals(0, policy.resolve(3, true, false));
     }
+
+    @Test public void insidePlacementKeepsTheSolidFrameStyle() {
+        ControlCenterBatteryPercentPolicy policy = new ControlCenterBatteryPercentPolicy();
+        assertEquals(ControlCenterBatteryPercentPolicy.PLACEMENT_OUTSIDE,
+                ControlCenterBatteryPercentPolicy.normalizePlacement(9));
+        assertEquals(ControlCenterBatteryPercentPolicy.PLACEMENT_INSIDE,
+                ControlCenterBatteryPercentPolicy.normalizePlacement(
+                        ControlCenterBatteryPercentPolicy.PLACEMENT_INSIDE));
+        assertTrue(ControlCenterBatteryPercentPolicy.drawsInside(
+                true, ControlCenterBatteryPercentPolicy.PLACEMENT_INSIDE));
+        assertFalse(ControlCenterBatteryPercentPolicy.drawsInside(
+                false, ControlCenterBatteryPercentPolicy.PLACEMENT_INSIDE));
+        assertEquals(0, policy.resolve(0, true, true, false));
+        assertFalse(policy.hasOverride());
+    }
+
+    @Test public void externalPercentTranslationAlignsContainerCenterToIconCenter() {
+        assertEquals(-15f, ControlCenterBatteryPercentPolicy.centeredTranslationY(
+                3f, 220f, 202f), .0001f);
+        assertEquals(0f, ControlCenterBatteryPercentPolicy.centeredTranslationY(
+                0f, 200f, 200f), .0001f);
+    }
 }

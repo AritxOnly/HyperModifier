@@ -3,10 +3,6 @@ package com.aritxonly.myhypermodifier;
 final class StatusBarBatteryFramePolicy {
     private StatusBarBatteryFramePolicy() {}
 
-    static boolean supported(boolean legacy, boolean portrait) {
-        return !legacy && !portrait;
-    }
-
     static float maskShift(int level, boolean start) {
         int bounded = Math.max(0, Math.min(100, level));
         float shift = -23f * (1f - bounded / 100f);

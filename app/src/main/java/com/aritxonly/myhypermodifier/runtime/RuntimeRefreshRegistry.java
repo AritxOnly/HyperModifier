@@ -225,6 +225,7 @@ final class RuntimeRefreshRegistry {
         LockscreenNotificationBottomHooks.refresh();
         GestureHandleHooks.refresh();
         StatusBarClockSecondsHooks.refresh();
+        StatusBarBatteryIconSizeHooks.refresh();
         StatusBarBatteryFrameHooks.refresh();
         ControlCenterBatteryPercentHooks.refresh();
         StatusBarNetworkVisibilityHooks.refresh();
