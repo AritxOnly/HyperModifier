@@ -431,11 +431,40 @@ import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
             settings.statusBarSolidBatteryFrame,
             { update(settings.copy(statusBarSolidBatteryFrame = it)) },
         )
+        BatteryIconScaleSetting(settings.statusBarBatteryIconScale) {
+            update(settings.copy(statusBarBatteryIconScale = it))
+        }
         SettingsSwitchItem(
-            "控制中心展开时外显电量",
-            "仅展开时显示，收起恢复隐藏",
+            "控制中心展开时显示电量",
+            "收起后自动隐藏",
             settings.controlCenterShowBatteryPercent,
             { update(settings.copy(controlCenterShowBatteryPercent = it)) },
+        )
+        WindowDropdownPreference(
+            title = "控制中心电量位置",
+            summary = when (
+                ControlCenterBatteryPercentPolicy.normalizePlacement(
+                    settings.controlCenterBatteryPercentPlacement,
+                )
+            ) {
+                ControlCenterBatteryPercentPolicy.PLACEMENT_INSIDE ->
+                    "数字显示在实心电池框内部"
+                else -> "数字显示在电池框右侧并垂直居中"
+            },
+            items = listOf("电池框外", "电池框内"),
+            selectedIndex = ControlCenterBatteryPercentPolicy.normalizePlacement(
+                settings.controlCenterBatteryPercentPlacement,
+            ),
+            onSelectedIndexChange = {
+                update(
+                    settings.copy(
+                        controlCenterBatteryPercentPlacement =
+                            ControlCenterBatteryPercentPolicy.normalizePlacement(it),
+                    ),
+                )
+            },
+            enabled = settings.statusBarSolidBatteryFrame &&
+                settings.controlCenterShowBatteryPercent,
         )
     }
     SettingsSection(topLabel = "状态栏时间") {

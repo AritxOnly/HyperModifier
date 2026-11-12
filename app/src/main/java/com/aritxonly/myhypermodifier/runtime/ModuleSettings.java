@@ -142,8 +142,11 @@ final class ModuleSettings {
     static volatile boolean notificationClockShowSeconds = false;
     static volatile boolean statusBarShowSeconds = false;
     static volatile boolean statusBarSolidBatteryFrame = false;
+    static volatile float statusBarBatteryIconScale = StatusBarBatteryIconSizePolicy.DEFAULT;
     static volatile boolean roundedNetworkIcons = false;
     static volatile boolean controlCenterShowBatteryPercent = false;
+    static volatile int controlCenterBatteryPercentPlacement =
+            ControlCenterBatteryPercentPolicy.PLACEMENT_OUTSIDE;
     static volatile boolean statusBarHideClockLeadingZero = false;
     static volatile boolean statusBarHideWifiStandard = false;
     static volatile float statusBarMobileActivityOffsetX = 0f;
@@ -684,8 +687,14 @@ final class ModuleSettings {
             notificationClockShowSeconds = values.getBoolean("notification_clock_show_seconds", false);
             statusBarShowSeconds = values.getBoolean("status_bar_show_seconds", false);
             statusBarSolidBatteryFrame = values.getBoolean("status_bar_solid_battery_frame", false);
+            statusBarBatteryIconScale = StatusBarBatteryIconSizePolicy.normalize(
+                    values.getFloat("status_bar_battery_icon_scale",
+                            StatusBarBatteryIconSizePolicy.DEFAULT));
             roundedNetworkIcons = values.getBoolean("rounded_network_icons", false);
             controlCenterShowBatteryPercent = values.getBoolean("control_center_show_battery_percent", false);
+            controlCenterBatteryPercentPlacement = ControlCenterBatteryPercentPolicy.normalizePlacement(
+                    values.getInt("control_center_battery_percent_placement",
+                            ControlCenterBatteryPercentPolicy.PLACEMENT_OUTSIDE));
             statusBarHideClockLeadingZero = values.getBoolean("status_bar_hide_clock_leading_zero", false);
             statusBarHideWifiStandard = values.getBoolean("status_bar_hide_wifi_standard", false);
             statusBarMobileActivityOffsetX = values.getFloat("status_bar_mobile_activity_offset_x", 0f);

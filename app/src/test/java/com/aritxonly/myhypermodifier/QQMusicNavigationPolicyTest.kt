@@ -92,6 +92,31 @@ class QQMusicNavigationPolicyTest {
     }
 
     @Test
+    fun exactTwoTabContainerDoesNotDuplicateDescriptionAndText() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val root = FrameLayout(activity)
+        val bar = MainDeskNavigateContainer(activity)
+        listOf("首页", "我的").forEach { label ->
+            val tab = FrameLayout(activity).apply {
+                contentDescription = label
+                isClickable = true
+                addView(TextView(activity).apply { text = label })
+            }
+            bar.addView(tab, LinearLayout.LayoutParams(200, 90))
+        }
+        root.addView(bar, FrameLayout.LayoutParams(1000, 90))
+        activity.setContentView(root)
+        layout(root, 1200, 2400)
+        bar.layout(0, 2200, 1200, 2290)
+
+        assertSame(bar, findQQMusicBottomBar(root))
+        assertEquals(
+            listOf("首页", "我的"),
+            qqMusicTabViews(bar).map { it.contentDescription?.toString() },
+        )
+    }
+
+    @Test
     fun movesSharedChromeRootWithoutChangingMediaCardTranslation() {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         val root = FrameLayout(activity)

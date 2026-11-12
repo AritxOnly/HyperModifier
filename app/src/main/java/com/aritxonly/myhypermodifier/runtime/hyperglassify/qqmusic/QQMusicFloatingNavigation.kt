@@ -172,7 +172,9 @@ internal fun qqMusicTabViews(root: View): List<View> {
     if (root.javaClass.name == QQMusicNavigationContainerClass) {
         val directTabs = visibleChildren(root as ViewGroup)
             .filter { it.isClickable || it.hasClickableDescendant() }
-        if (directTabs.size in 3..6) return directTabs
+        // Some accounts/experiments expose only Home and Mine. Accepting two prevents the
+        // semantic fallback from counting both each item's contentDescription and its text.
+        if (directTabs.size in 2..6) return directTabs
     }
     val minimumY = root.height * 0.60f
     val semantic = buildList {

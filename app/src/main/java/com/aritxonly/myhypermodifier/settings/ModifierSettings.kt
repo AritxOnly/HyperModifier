@@ -131,8 +131,11 @@ data class ModifierSettings(
     val statusBarHideWifiActivity: Boolean = false,
     val statusBarShowSeconds: Boolean = false,
     val statusBarSolidBatteryFrame: Boolean = false,
+    val statusBarBatteryIconScale: Float = StatusBarBatteryIconSizePolicy.DEFAULT,
     val roundedNetworkIcons: Boolean = false,
     val controlCenterShowBatteryPercent: Boolean = false,
+    val controlCenterBatteryPercentPlacement: Int =
+        ControlCenterBatteryPercentPolicy.PLACEMENT_OUTSIDE,
     val notificationClockShowSeconds: Boolean = false,
     val statusBarHideClockLeadingZero: Boolean = false,
     val statusBarHideWifiStandard: Boolean = false,
@@ -350,8 +353,10 @@ object ModifierSettingsPresets {
         statusBarHideWifiActivity = false,
         statusBarShowSeconds = false,
         statusBarSolidBatteryFrame = false,
+        statusBarBatteryIconScale = StatusBarBatteryIconSizePolicy.DEFAULT,
         roundedNetworkIcons = false,
         controlCenterShowBatteryPercent = false,
+        controlCenterBatteryPercentPlacement = ControlCenterBatteryPercentPolicy.PLACEMENT_OUTSIDE,
         notificationClockShowSeconds = false,
         statusBarHideClockLeadingZero = false,
         statusBarHideWifiStandard = false,
@@ -563,8 +568,11 @@ object ModifierSettingsStore {
     private const val KEY_STATUS_BAR_HIDE_WIFI_ACTIVITY = "status_bar_hide_wifi_activity"
     private const val KEY_STATUS_BAR_SHOW_SECONDS = "status_bar_show_seconds"
     private const val KEY_STATUS_BAR_SOLID_BATTERY_FRAME = "status_bar_solid_battery_frame"
+    private const val KEY_STATUS_BAR_BATTERY_ICON_SCALE = "status_bar_battery_icon_scale"
     private const val KEY_ROUNDED_NETWORK_ICONS = "rounded_network_icons"
     private const val KEY_CONTROL_CENTER_SHOW_BATTERY_PERCENT = "control_center_show_battery_percent"
+    private const val KEY_CONTROL_CENTER_BATTERY_PERCENT_PLACEMENT =
+        "control_center_battery_percent_placement"
     private const val KEY_NOTIFICATION_CLOCK_SHOW_SECONDS = "notification_clock_show_seconds"
     private const val KEY_STATUS_BAR_HIDE_CLOCK_LEADING_ZERO = "status_bar_hide_clock_leading_zero"
     private const val KEY_STATUS_BAR_HIDE_WIFI_STANDARD = "status_bar_hide_wifi_standard"
@@ -879,8 +887,20 @@ object ModifierSettingsStore {
             statusBarHideWifiActivity = prefs.getBoolean(KEY_STATUS_BAR_HIDE_WIFI_ACTIVITY, false),
             statusBarShowSeconds = prefs.getBoolean(KEY_STATUS_BAR_SHOW_SECONDS, false),
             statusBarSolidBatteryFrame = prefs.getBoolean(KEY_STATUS_BAR_SOLID_BATTERY_FRAME, false),
+            statusBarBatteryIconScale = StatusBarBatteryIconSizePolicy.normalize(
+                prefs.getFloat(
+                    KEY_STATUS_BAR_BATTERY_ICON_SCALE,
+                    StatusBarBatteryIconSizePolicy.DEFAULT,
+                ),
+            ),
             roundedNetworkIcons = prefs.getBoolean(KEY_ROUNDED_NETWORK_ICONS, false),
             controlCenterShowBatteryPercent = prefs.getBoolean(KEY_CONTROL_CENTER_SHOW_BATTERY_PERCENT, false),
+            controlCenterBatteryPercentPlacement = ControlCenterBatteryPercentPolicy.normalizePlacement(
+                prefs.getInt(
+                    KEY_CONTROL_CENTER_BATTERY_PERCENT_PLACEMENT,
+                    ControlCenterBatteryPercentPolicy.PLACEMENT_OUTSIDE,
+                ),
+            ),
             notificationClockShowSeconds = prefs.getBoolean(KEY_NOTIFICATION_CLOCK_SHOW_SECONDS, false),
             statusBarHideClockLeadingZero = prefs.getBoolean(KEY_STATUS_BAR_HIDE_CLOCK_LEADING_ZERO, false),
             statusBarHideWifiStandard = prefs.getBoolean(KEY_STATUS_BAR_HIDE_WIFI_STANDARD, false),
@@ -1257,8 +1277,18 @@ object ModifierSettingsStore {
             .putBoolean(KEY_STATUS_BAR_HIDE_WIFI_ACTIVITY, value.statusBarHideWifiActivity)
             .putBoolean(KEY_STATUS_BAR_SHOW_SECONDS, value.statusBarShowSeconds)
             .putBoolean(KEY_STATUS_BAR_SOLID_BATTERY_FRAME, value.statusBarSolidBatteryFrame)
+            .putFloat(
+                KEY_STATUS_BAR_BATTERY_ICON_SCALE,
+                StatusBarBatteryIconSizePolicy.normalize(value.statusBarBatteryIconScale),
+            )
             .putBoolean(KEY_ROUNDED_NETWORK_ICONS, value.roundedNetworkIcons)
             .putBoolean(KEY_CONTROL_CENTER_SHOW_BATTERY_PERCENT, value.controlCenterShowBatteryPercent)
+            .putInt(
+                KEY_CONTROL_CENTER_BATTERY_PERCENT_PLACEMENT,
+                ControlCenterBatteryPercentPolicy.normalizePlacement(
+                    value.controlCenterBatteryPercentPlacement,
+                ),
+            )
             .putBoolean(KEY_NOTIFICATION_CLOCK_SHOW_SECONDS, value.notificationClockShowSeconds)
             .putBoolean(KEY_STATUS_BAR_HIDE_CLOCK_LEADING_ZERO, value.statusBarHideClockLeadingZero)
             .putBoolean(KEY_STATUS_BAR_HIDE_WIFI_STANDARD, value.statusBarHideWifiStandard)
@@ -1714,8 +1744,18 @@ object ModifierSettingsStore {
         putBoolean(KEY_STATUS_BAR_HIDE_WIFI_ACTIVITY, value.statusBarHideWifiActivity)
         putBoolean(KEY_STATUS_BAR_SHOW_SECONDS, value.statusBarShowSeconds)
         putBoolean(KEY_STATUS_BAR_SOLID_BATTERY_FRAME, value.statusBarSolidBatteryFrame)
+        putFloat(
+            KEY_STATUS_BAR_BATTERY_ICON_SCALE,
+            StatusBarBatteryIconSizePolicy.normalize(value.statusBarBatteryIconScale),
+        )
         putBoolean(KEY_ROUNDED_NETWORK_ICONS, value.roundedNetworkIcons)
         putBoolean(KEY_CONTROL_CENTER_SHOW_BATTERY_PERCENT, value.controlCenterShowBatteryPercent)
+        putInt(
+            KEY_CONTROL_CENTER_BATTERY_PERCENT_PLACEMENT,
+            ControlCenterBatteryPercentPolicy.normalizePlacement(
+                value.controlCenterBatteryPercentPlacement,
+            ),
+        )
         putBoolean(KEY_NOTIFICATION_CLOCK_SHOW_SECONDS, value.notificationClockShowSeconds)
         putBoolean(KEY_STATUS_BAR_HIDE_CLOCK_LEADING_ZERO, value.statusBarHideClockLeadingZero)
         putBoolean(KEY_STATUS_BAR_HIDE_WIFI_STANDARD, value.statusBarHideWifiStandard)
