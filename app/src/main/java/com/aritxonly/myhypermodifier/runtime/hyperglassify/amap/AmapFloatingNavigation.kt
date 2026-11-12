@@ -193,7 +193,10 @@ private class AmapNavigationHost private constructor(
     private val windowManager = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val composeView = ComposeView(activity)
     private val visibility = FloatingNavigationVisibility(composeView, windowManager)
-    private val overlayAnchor = NativeTabOverlayAnchor(overlayParent, composeView, windowManager)
+    // Amap owns the horizontal pane. The floating dock keeps its window-bottom placement.
+    private val overlayAnchor = NativeTabOverlayAnchor(
+        overlayParent, composeView, windowManager, followNativeBottom = false,
+    )
     private var composeWindowAttached = false
     private val settingsRefreshRunnable = object : Runnable {
         override fun run() {
@@ -249,6 +252,7 @@ private class AmapNavigationHost private constructor(
             WindowManager.LayoutParams.TYPE_APPLICATION_PANEL,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT,
         ).apply {
@@ -498,7 +502,6 @@ private fun AmapNavigationContent(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .navigationEdgeMask()
                         .then(navigationPadding)
                         .padding(
                             start = 16.dp,

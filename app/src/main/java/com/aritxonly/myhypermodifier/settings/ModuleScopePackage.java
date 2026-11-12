@@ -28,6 +28,7 @@ public final class ModuleScopePackage {
     public static final String KUAISHOU = "com.smile.gifmaker";
     public static final String KUAISHOU_LITE = "com.kuaishou.nebula";
     public static final String WECHAT = "com.tencent.mm";
+    public static final String AUTHENTICATOR = "com.google.android.apps.authenticator2";
     public static final String QQ = "com.tencent.mobileqq";
     public static final String QQ_MUSIC = "com.tencent.qqmusic";
     public static final String PINDUODUO = "com.xunmeng.pinduoduo";
@@ -40,7 +41,7 @@ public final class ModuleScopePackage {
     public static final String BILIBILI = "tv.danmaku.bili";
     public static final Set<String> PACKAGES = Set.of(INCALL_UI, VOICE_ASSIST, SETTINGS, SYSTEM_FRAMEWORK, SYSTEM_UI, PLUGIN, XMSF, MILINK, XIAOMI_HEALTH, MI_MUSIC, NIO,
             MARKET, MI_HOME, AMAP, XIAOMI_COMMUNITY, BILIBILI, SPOTIFY, DOUYIN, ALIPAY,
-            DOUYIN_LITE, KUAISHOU, KUAISHOU_LITE, WECHAT, QQ, QQ_MUSIC,
+            DOUYIN_LITE, KUAISHOU, KUAISHOU_LITE, WECHAT, QQ, QQ_MUSIC, AUTHENTICATOR,
             PINDUODUO, TAOBAO, JINGDONG, XIANYU, DOUYIN_MALL, CAINIAO, PILIPLUS,
             LAUNCHER, PERSONAL_ASSISTANT);
 

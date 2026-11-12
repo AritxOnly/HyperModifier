@@ -165,13 +165,64 @@ final class RuntimeRefreshRegistry {
         }
     }
 
+    private static List<Object> lastMediaSettings, lastIslandSettings;
+    private static boolean normalMediaChanged, islandMediaChanged;
+
+    private static boolean mediaSettingsChanged() { return changedMediaSurfaces() != 0; }
+
+    private static synchronized int changedMediaSurfaces() {
+        List<Object> normal = java.util.Arrays.asList(disableMediaIslandHooks, mediaLayoutPreset, mediaNotificationGlowEnabled, notificationsEnabled, notificationRadius,
+                mediaEnabled, expandedHeight, collapsedHeight, fullAodHeight, hideAodActions, hideAodSeamless, islandProgressBar,
+                systemMediaHeight, compactMediaHeight, largeCoverMediaHeight, standardMediaHeight, customMediaHeight,
+                systemMediaXml, compactMediaXml, largeCoverMediaXml, standardMediaXml,
+                customMediaConstraintSetEnabled, customMediaConstraintSetXml);
+        List<Object> island = java.util.Arrays.asList(disableMediaIslandHooks, activeMediaPreset(true), notificationsEnabled, notificationRadius,
+                islandEnabled, islandHeight, islandProgressBar,
+                activeIslandHeight("system"), activeIslandHeight("compact"), activeIslandHeight("large_cover"),
+                activeIslandHeight("standard"), activeIslandHeight("custom"),
+                systemMediaIslandXml, compactMediaIslandXml, largeCoverMediaIslandXml, standardMediaIslandXml,
+                customMediaIslandConstraintSetEnabled, customMediaIslandConstraintSetXml);
+        normalMediaChanged = !normal.equals(lastMediaSettings);
+        islandMediaChanged = !island.equals(lastIslandSettings);
+        lastMediaSettings = normal; lastIslandSettings = island;
+        return (normalMediaChanged ? 1 : 0) | (islandMediaChanged ? 2 : 0);
+    }
+
+    private static int activeIslandHeight(String preset) {
+        return switch (preset) {
+            case "system" -> systemMediaIslandHeight > 0 ? systemMediaIslandHeight : systemMediaHeight;
+            case "compact" -> compactMediaIslandHeight > 0 ? compactMediaIslandHeight : compactMediaHeight;
+            case "large_cover" -> largeCoverMediaIslandHeight > 0 ? largeCoverMediaIslandHeight : largeCoverMediaHeight;
+            case "standard" -> standardMediaIslandHeight > 0 ? standardMediaIslandHeight : standardMediaHeight;
+            default -> customMediaIslandHeight > 0 ? customMediaIslandHeight : customMediaHeight;
+        };
+    }
+
+    /** Only run at an actual AOD transition, before the native callback resizes/hides its views. */
+    static void refreshMediaAodLayouts() {
+        List<Map.Entry<Object, PendingMediaConstraint>> constraints;
+        synchronized (PENDING_MEDIA_CONSTRAINTS) { constraints = new ArrayList<>(PENDING_MEDIA_CONSTRAINTS.entrySet()); }
+        for (var entry : constraints) {
+            PendingMediaConstraint pending = entry.getValue();
+            if (entry.getKey() != null && pending != null && pending.xmlId != XML_MEDIA_ISLAND_NORMAL) {
+                pending.reapplyImmediately(entry.getKey());
+            }
+        }
+    }
+
     /**
      * Settings arrive on a worker after SystemUI has often completed its first layout. Re-run
      * only setters and ConstraintSet applications we previously observed, on their own views'
      * main queues. This changes no process-start or class-loader timing.
      */
     static void refreshViewsAfterSettingsLoad() {
+        int mediaChanges = changedMediaSurfaces();
+        boolean mediaChanged = mediaChanges != 0;
+        boolean normalChanged = (mediaChanges & 1) != 0, islandChanged = (mediaChanges & 2) != 0;
         HyperMusicCoverExtensions.refresh();
+        LockscreenShortcutGlassHooks.refresh();
+        NotificationWidthHooks.refresh();
+        LockscreenNotificationBottomHooks.refresh();
         GestureHandleHooks.refresh();
         StatusBarClockSecondsHooks.refresh();
         StatusBarBatteryFrameHooks.refresh();
@@ -181,7 +232,7 @@ final class RuntimeRefreshRegistry {
         StatusBarNetworkMarginsHooks.refresh();
         // Player Island is constructed before remote preferences are often available. Its main
         // and dummy backgrounds must both be remeasured after the actual height arrives.
-        if (!disableMediaIslandHooks) refreshMediaIslandRoots();
+        if (islandChanged && !disableMediaIslandHooks) refreshMediaIslandRoots();
         List<Map.Entry<View, List<Method>>> setters;
         synchronized (CONTROL_CENTER_REFRESH_METHODS) {
             setters = new ArrayList<>(CONTROL_CENTER_REFRESH_METHODS.entrySet());
@@ -229,7 +280,7 @@ final class RuntimeRefreshRegistry {
             setDrawableCornerRadius(drawable, pixels);
         }
 
-        if (disableMediaIslandHooks) return;
+        if (disableMediaIslandHooks || !mediaChanged) return;
         List<Map.Entry<Object, PendingMediaConstraint>> constraints;
         synchronized (PENDING_MEDIA_CONSTRAINTS) {
             constraints = new ArrayList<>(PENDING_MEDIA_CONSTRAINTS.entrySet());
@@ -238,7 +289,7 @@ final class RuntimeRefreshRegistry {
             Object constraintSet = entry.getKey();
             PendingMediaConstraint pending = entry.getValue();
             if (constraintSet == null || pending == null) continue;
-            pending.reapply(constraintSet);
+            if (pending.xmlId == XML_MEDIA_ISLAND_NORMAL ? islandChanged : normalChanged) pending.reapply(constraintSet);
         }
     }
 
@@ -263,14 +314,15 @@ final class RuntimeRefreshRegistry {
     }
 
     static final class PendingMediaConstraint {
-        private final Context context;
-        private final boolean island;
+        private final WeakReference<Context> context;
+        final int xmlId;
         private final List<WeakReference<View>> targets = new ArrayList<>();
         private Method applyMethod;
+        private final Set<View> queuedTargets = Collections.newSetFromMap(new WeakHashMap<>());
 
-        PendingMediaConstraint(Context context, boolean island) {
-            this.context = context;
-            this.island = island;
+        PendingMediaConstraint(Context context, int xmlId) {
+            this.context = new WeakReference<>(context);
+            this.xmlId = xmlId;
         }
 
         synchronized void addTarget(View target, Method method) {
@@ -281,21 +333,42 @@ final class RuntimeRefreshRegistry {
             targets.add(new WeakReference<>(target));
         }
 
+        private static final ClassValue<Method> LOAD = new ClassValue<>() {
+            @Override protected Method computeValue(Class<?> type) {
+                try { return type.getMethod("load", Context.class, int.class); }
+                catch (NoSuchMethodException ignored) { return null; }
+            }
+        };
+
+        private void reload(Object constraintSet, View target) throws ReflectiveOperationException {
+            Method load = LOAD.get(constraintSet.getClass());
+            if (load == null || applyMethod == null) return;
+            Context owner = context.get();
+            load.invoke(constraintSet, owner != null ? owner : target.getContext(), xmlId);
+            applyMethod.invoke(constraintSet, target);
+        }
+
+        synchronized void reapplyImmediately(Object constraintSet) {
+            for (WeakReference<View> ref : targets) {
+                View target = ref.get();
+                if (target == null || !target.isAttachedToWindow()) continue;
+                try { reload(constraintSet, target); }
+                catch (ReflectiveOperationException | RuntimeException ignored) { }
+            }
+        }
+
         synchronized void reapply(Object constraintSet) {
             for (WeakReference<View> reference : new ArrayList<>(targets)) {
                 View target = reference.get();
-                if (target == null || applyMethod == null) continue;
+                if (target == null || applyMethod == null || !queuedTargets.add(target)) continue;
                 target.post(() -> {
+                    synchronized (PendingMediaConstraint.this) { queuedTargets.remove(target); }
                     if (!target.isAttachedToWindow()) return;
                     try {
                         // Rebuild from the stock XML before applying a different preset. A
                         // previously selected compact preset marks several views GONE; merely
                         // patching the same ConstraintSet cannot restore omitted attributes.
-                        Method load = constraintSet.getClass().getMethod(
-                                "load", Context.class, int.class);
-                        load.invoke(constraintSet, context,
-                                island ? XML_MEDIA_ISLAND_NORMAL : XML_MEDIA_NORMAL);
-                        applyMethod.invoke(constraintSet, target);
+                        reload(constraintSet, target);
                         target.requestLayout();
                     } catch (ReflectiveOperationException | RuntimeException ignored) {
                         // A stale card is safely refreshed by SystemUI's next media update.

@@ -1,0 +1,8 @@
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="cover_adaptation" android:enabled="true"
+        android:icon="@drawable/ic_cover_adaptation" android:shortcutShortLabel="@string/cover_adaptation_label">
+        <intent android:action="android.intent.action.VIEW"
+            android:targetPackage="com.aritxonly.myhypermodifier"
+            android:targetClass="com.aritxonly.myhypermodifier.CoverAdaptationActivity" />
+    </shortcut>
+</shortcuts>

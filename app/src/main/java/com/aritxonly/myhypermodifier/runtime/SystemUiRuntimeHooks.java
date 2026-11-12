@@ -68,6 +68,7 @@ final class SystemUiRuntimeHooks {
 
     private static final int XML_MEDIA_ISLAND_NORMAL = 0x7f180018;
     private static final int XML_MEDIA_NORMAL = 0x7f180019;
+    private static final int XML_MEDIA_ALBUM_NORMAL = 0x7f180016; // OS4.0.2.0 baseline
     private static final String PLAYER_ISLAND_CONSTRAINT_LAYOUT =
             "com.android.systemui.statusbar.notification.mediaisland.PlayerIslandConstraintLayout";
     private static final String MIUI_ISLAND_MEDIA_VIEW_BINDER =
@@ -187,14 +188,24 @@ final class SystemUiRuntimeHooks {
             tryInstallSystemUiPart("锁屏密码壁纸", () ->
                     new LockscreenHooks(module).installLockscreenPasswordWallpaperRatioHook(classLoader));
         }
+        tryInstallSystemUiPart("内屏隐藏手势条与占位", () -> FoldGestureBarHooks.install(module, classLoader));
+        tryInstallSystemUiPart("外屏适配侧栏", () -> CoverSidebarHooks.install(module, classLoader, application));
         boolean retryLateClasses = !disableMediaIslandHooks && !tryInstallKnownClass(
                 "androidx.constraintlayout.widget.ConstraintSet", classLoader);
         retryLateClasses |= !disableMediaIslandHooks && !tryInstallKnownClass(
                 "com.android.systemui.statusbar.notification.mediacontrol."
                         + "MiuiMediaViewControllerImpl", classLoader);
+        retryLateClasses |= !disableMediaIslandHooks && !tryInstallKnownClass(
+                "com.android.systemui.statusbar.notification.mediacontrol.MiuiMediaNotificationControllerImpl", classLoader);
         retryLateClasses |= !disableMediaIslandHooks && !tryInstallKnownClass(PLAYER_ISLAND_CONSTRAINT_LAYOUT, classLoader);
         retryLateClasses |= !disableMediaIslandHooks && !tryInstallKnownClass(MIUI_ISLAND_MEDIA_VIEW_BINDER, classLoader);
+        retryLateClasses |= !disableMediaIslandHooks && !tryInstallKnownClass(
+                "com.android.keyguard.panel.KeyguardPanelViewController", classLoader);
         tryInstallSystemUiPart("悬浮通知玻璃效果", () -> installHeadsUpGlassEffectHooks(classLoader));
+        tryInstallSystemUiPart("锁屏通知底部距离", () -> LockscreenNotificationBottomHooks.install(module, classLoader));
+        tryInstallSystemUiPart("通知卡片限宽", () -> NotificationWidthHooks.install(module, classLoader));
+        tryInstallSystemUiPart("锁屏快捷方式柔光玻璃", () -> LockscreenShortcutGlassHooks.install(module, classLoader));
+        tryInstallSystemUiPart("现有锁屏实例接管", () -> LockscreenTargetBootstrap.install(classLoader));
         tryInstallSystemUiPart("全局背景模糊", this::installGlobalBackgroundBlurHook);
         tryInstallSystemUiPart("控制中心 MiLink 背景", () ->
                 installControlCenterMiLinkBackgroundMaterialHook(classLoader));
@@ -257,6 +268,13 @@ final class SystemUiRuntimeHooks {
     void installSystemUiHookForLoadedClass(String className, Class<?> loadedClass) {
         if (disableMediaIslandHooks) return;
         try {
+            if ("com.android.keyguard.panel.KeyguardPanelViewController".equals(className)) {
+                for (Method method : loadedClass.getDeclaredMethods()) {
+                    if ("startNotificationWakeAnimation".equals(method.getName()) && method.getParameterCount() == 2
+                            && method.getParameterTypes()[0] == boolean.class) hookMediaAodPreparation(method);
+                }
+                return;
+            }
             if ("androidx.constraintlayout.widget.ConstraintSet".equals(className)) {
                 hookMediaConstraintSetLoad(loadedClass.getDeclaredMethod(
                         "load", Context.class, int.class));
@@ -273,10 +291,19 @@ final class SystemUiRuntimeHooks {
                         "onMeasure", int.class, int.class));
                 return;
             }
+            if ("com.android.systemui.statusbar.notification.mediacontrol.MiuiMediaNotificationControllerImpl".equals(className)) {
+                hookMediaPresetBinding(loadedClass.getDeclaredMethod("updateLayout$1"));
+                return;
+            }
             if (MIUI_ISLAND_MEDIA_VIEW_BINDER.equals(className)) {
                 for (Method method : loadedClass.getDeclaredMethods()) {
                     if ("attach".equals(method.getName()) && method.getParameterCount() == 2) {
                         hookMediaIslandAttach(method);
+                    } else if ("onMediaDataChanged".equals(method.getName()) && method.getParameterCount() == 2
+                            && method.getParameterTypes()[1] == int.class) {
+                        hookMediaGlowSeed(method);
+                    } else if ("bindMediaData".equals(method.getName()) || "setSeamless".equals(method.getName())) {
+                        hookMediaPresetBinding(method);
                     }
                 }
                 return;
@@ -290,6 +317,9 @@ final class SystemUiRuntimeHooks {
             for (Method method : loadedClass.getDeclaredMethods()) {
                 if ("setSeamless".equals(method.getName()) && method.getParameterCount() == 1) {
                     hookSeamlessVisibility(method);
+                } else if (("bindMediaData".equals(method.getName()) && method.getParameterCount() == 1)
+                        || "setInfoText".equals(method.getName())) {
+                    hookMediaPresetBinding(method);
                 } else if ("attach".equals(method.getName()) && method.getParameterCount() == 1
                         && "com.android.systemui.statusbar.notification.mediacontrol."
                         .concat("MiuiMediaViewHolder").equals(
@@ -715,12 +745,16 @@ final class SystemUiRuntimeHooks {
                     .intercept(chain -> {
                         Object result = chain.proceed();
                         int xmlId = (Integer) chain.getArg(1);
-                        if (xmlId == XML_MEDIA_NORMAL || xmlId == XML_MEDIA_ISLAND_NORMAL) {
+                        if (xmlId == XML_MEDIA_NORMAL || xmlId == XML_MEDIA_ISLAND_NORMAL
+                                || xmlId == XML_MEDIA_ALBUM_NORMAL) {
                             Context context = (Context) chain.getArg(0);
                             boolean island = xmlId == XML_MEDIA_ISLAND_NORMAL;
                             synchronized (PENDING_MEDIA_CONSTRAINTS) {
-                                PENDING_MEDIA_CONSTRAINTS.put(chain.getThisObject(),
-                                        new RuntimeRefreshRegistry.PendingMediaConstraint(context, island));
+                                RuntimeRefreshRegistry.PendingMediaConstraint pending = PENDING_MEDIA_CONSTRAINTS.get(chain.getThisObject());
+                                if (pending == null || pending.xmlId != xmlId) {
+                                    PENDING_MEDIA_CONSTRAINTS.put(chain.getThisObject(),
+                                            new RuntimeRefreshRegistry.PendingMediaConstraint(context, xmlId));
+                                }
                             }
                             patchMediaConstraintSet(context, chain.getThisObject(), island);
                         }
@@ -745,6 +779,7 @@ final class SystemUiRuntimeHooks {
                         }
                         Object target = chain.getArg(0);
                         if (pending != null && target instanceof View) {
+                            MediaPresetViewProperties.apply((View) target);
                             pending.addTarget((View) target, method);
                         }
                         return result;
@@ -835,7 +870,39 @@ final class SystemUiRuntimeHooks {
         View root = (View) player;
         rememberMediaIslandRoot(root);
         synchronizeMediaIslandRootHeight(root);
+        MediaPresetViewProperties.apply(root);
         root.requestLayout();
+    }
+
+    private void hookMediaGlowSeed(Method method) throws Throwable {
+        if (!claimSystemUiMethod(method)) return;
+        try {
+            module.hook(method).setId("media-notification-native-glow-palette")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        Object result = chain.proceed();
+                        MediaNotificationGlow.recordSeed(chain.getArg(0), (Integer) chain.getArg(1));
+                        return result;
+                    });
+        } catch (Throwable error) {
+            INSTALLED_SYSTEM_UI_METHOD_HOOKS.remove(method); throw error;
+        }
+    }
+
+    private void hookMediaAodPreparation(Method method) throws Throwable {
+        if (!claimSystemUiMethod(method)) return;
+        try {
+            module.hook(method).setId("media-aod-before-native-wake-animation")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        MediaAodPreparation.beforeWakeAnimation(chain.getThisObject(),
+                                (Boolean) chain.getArg(0), chain.getArg(1));
+                        return chain.proceed();
+                    });
+        } catch (Throwable error) {
+            INSTALLED_SYSTEM_UI_METHOD_HOOKS.remove(method);
+            throw error;
+        }
     }
 
     private void hookFullAodStateChanged(Method method) throws Throwable {
@@ -846,10 +913,18 @@ final class SystemUiRuntimeHooks {
                     .intercept(chain -> {
                         if (disableMediaIslandHooks) return chain.proceed();
                         ensureLoaded();
-                        inFullAod = (Boolean) chain.getArg(0);
+                        boolean nextAod = (Boolean) chain.getArg(0);
+                        boolean changed = inFullAod != nextAod;
+                        if (changed) MediaAodLayoutTransition.begin(chain.getThisObject());
+                        inFullAod = nextAod;
+                        if (changed) {
+                            MediaPresetViewProperties.applyController(chain.getThisObject());
+                            RuntimeRefreshRegistry.refreshMediaAodLayouts();
+                        }
                         Object result = chain.proceed();
                         setAodActionsVisibility(chain.getThisObject(), inFullAod);
                         setAodSeamlessVisibility(chain.getThisObject(), inFullAod);
+                        MediaPresetViewProperties.applyController(chain.getThisObject());
                         return result;
                     });
         } catch (Throwable throwable) {
@@ -867,6 +942,23 @@ final class SystemUiRuntimeHooks {
                         if (disableMediaIslandHooks) return chain.proceed();
                         Object result = chain.proceed();
                         setAodSeamlessVisibility(chain.getThisObject(), inFullAod);
+                        MediaPresetViewProperties.applyController(chain.getThisObject());
+                        return result;
+                    });
+        } catch (Throwable throwable) {
+            INSTALLED_SYSTEM_UI_METHOD_HOOKS.remove(method);
+            throw throwable;
+        }
+    }
+
+    private void hookMediaPresetBinding(Method method) throws Throwable {
+        if (!claimSystemUiMethod(method)) return;
+        try {
+            module.hook(method).setId("media-preset-binding")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        Object result = chain.proceed();
+                        MediaPresetViewProperties.applyController(chain.getThisObject());
                         return result;
                     });
         } catch (Throwable throwable) {
@@ -885,6 +977,7 @@ final class SystemUiRuntimeHooks {
                         if (islandProgressBar) replaceNormalSeekBar(chain.getArg(0));
                         Object result = chain.proceed();
                         if (islandProgressBar) configureSeekBar(chain.getArg(0));
+                        MediaNotificationGlow.bind(chain.getThisObject());
                         setAodSeamlessVisibility(chain.getThisObject(), inFullAod);
                         return result;
                     });

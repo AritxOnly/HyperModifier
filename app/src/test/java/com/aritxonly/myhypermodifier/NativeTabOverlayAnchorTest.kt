@@ -58,7 +58,7 @@ class NativeTabOverlayAnchorTest {
         anchor.dispose()
     }
 
-    @Test fun amapPanelMovesItsTouchableWindowOnlyWhenNativeGeometryChanges() {
+    @Test fun amapPanelFollowsHorizontalPaneWhileKeepingItsWindowBottomPlacement() {
         val panel = View(activity)
         val panelParams = WindowManager.LayoutParams().apply {
             type = WindowManager.LayoutParams.TYPE_APPLICATION_PANEL
@@ -76,23 +76,42 @@ class NativeTabOverlayAnchorTest {
         manager.addView(panel, panelParams)
         shadowOf(Looper.getMainLooper()).idle()
         root.layout(0, 0, 1200, 800)
-        bar.layout(16, 720, 496, 800)
+        bar.layout(16, 320, 496, 400)
         val originalFlags = panelParams.flags
-        val panelAnchor = NativeTabOverlayAnchor(root, panel, countingManager)
+        val panelAnchor = NativeTabOverlayAnchor(root, panel, countingManager, followNativeBottom = false)
         panelAnchor.align(bar)
         assertEquals(480, panelParams.width)
         assertEquals(16, panelParams.x)
         assertEquals(0, panelParams.y)
+        assertEquals(WRAP_CONTENT, panelParams.height)
         assertEquals(originalFlags, panelParams.flags)
         panelAnchor.onGlobalLayout()
         panelAnchor.align(bar)
         assertEquals(1, updates)
 
-        bar.layout(660, 720, 1140, 800)
+        // Native tab height/position changes must not lift or resize the floating panel.
+        bar.layout(16, 100, 496, 160)
+        panelAnchor.onGlobalLayout()
+        panelAnchor.align(bar)
+        assertEquals(0, panelParams.y)
+        assertEquals(WRAP_CONTENT, panelParams.height)
+        assertEquals(1, updates)
+
+        bar.layout(660, 300, 1140, 380)
         panelAnchor.onGlobalLayout()
         panelAnchor.align(bar)
         assertEquals(660, panelParams.x)
+        assertEquals(0, panelParams.y)
         assertEquals(2, updates)
+
+        root.layout(0, 0, 480, 1000)
+        bar.layout(0, 700, 480, 780)
+        panelAnchor.onGlobalLayout()
+        panelAnchor.align(bar)
+        assertEquals(0, panelParams.x)
+        assertEquals(MATCH_PARENT, panelParams.width)
+        assertEquals(0, panelParams.y)
+        assertEquals(3, updates)
         panelAnchor.dispose()
         manager.removeViewImmediate(panel)
     }

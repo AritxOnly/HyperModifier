@@ -111,6 +111,16 @@ public final class MyHyperModifier extends XposedModule {
         }
         if (serverPreferences != null) {
             try {
+                CoverAdaptationHooks.install(this, param.getClassLoader(), serverPreferences);
+            } catch (Throwable error) {
+                log(Log.ERROR, TAG, "Could not install experimental cover adaptation", error);
+            }
+            try {
+                SystemBarCompatibilityHooks.install(this, param.getClassLoader(), serverPreferences);
+            } catch (Throwable error) {
+                log(Log.ERROR, TAG, "Could not install system bar compatibility transparency", error);
+            }
+            try {
                 KeyShortcutHooks.install(this, param.getClassLoader(), serverPreferences);
             } catch (Throwable error) {
                 log(Log.ERROR, TAG, "Could not install key shortcut hooks", error);
@@ -126,6 +136,12 @@ public final class MyHyperModifier extends XposedModule {
 
     // Package callbacks also arrive for embedded WebView/shared libraries. Isolate by process,
     // otherwise a library callback installs global View hooks inside the Douyin-only adapter.
+    private static boolean isAuthenticatorProcess() {
+        String process = Application.getProcessName();
+        return ModuleScopePackage.AUTHENTICATOR.equals(process)
+                || (process != null && process.startsWith(ModuleScopePackage.AUTHENTICATOR + ":"));
+    }
+
     private static boolean isNioProcess() {
         String process = Application.getProcessName();
         return ModuleScopePackage.NIO.equals(process)
@@ -150,6 +166,9 @@ public final class MyHyperModifier extends XposedModule {
     @Override
     public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
         String packageName = param.getPackageName();
+        // Isolate every callback in this process, including embedded/shared library callbacks.
+        if (isAuthenticatorProcess()) return;
+
         if (!ModuleScopePackage.INCALL_UI.equals(packageName)
                 && ModuleScopePackage.INCALL_UI.equals(Application.getProcessName())) return;
         if (ModuleScopePackage.NIO.equals(packageName) || isNioProcess()) return;
@@ -178,6 +197,18 @@ public final class MyHyperModifier extends XposedModule {
             if (!packageName.equals(Application.getProcessName())) return;
             installSafely(packageName, "QQ音乐悬浮底栏提前注入",
                     () -> QQMusicHooks.install(this, param.getDefaultClassLoader()));
+            return;
+        }
+        if (ModuleScopePackage.QQ.equals(packageName)) {
+            if (!packageName.equals(Application.getProcessName())) return;
+            try {
+                var preferences = getRemotePreferences("modifier_settings");
+                ModuleSettings.setRemotePreferences(preferences);
+                installSafely(packageName, "QQ 独立功能", () ->
+                        QQRuntimeHooks.install(this, param.getDefaultClassLoader(), preferences));
+            } catch (Throwable error) {
+                HookDiagnostics.failure(packageName, "QQ 独立功能", error);
+            }
             return;
         }
         if (SocialHooks.isTarget(packageName)) {
@@ -267,6 +298,18 @@ public final class MyHyperModifier extends XposedModule {
     @Override
     public void onPackageReady(XposedModuleInterface.PackageReadyParam param) {
         String packageName = param.getPackageName();
+        if (isAuthenticatorProcess()) {
+            if (!ModuleScopePackage.AUTHENTICATOR.equals(packageName)
+                    || !packageName.equals(Application.getProcessName())) return;
+            try {
+                AuthenticatorGridHooks.install(this, param.getClassLoader(),
+                        getRemotePreferences("modifier_settings"));
+            } catch (Throwable error) {
+                log(Log.ERROR, TAG, "Authenticator grid unavailable", error);
+            }
+            return;
+        }
+
         if (!ModuleScopePackage.INCALL_UI.equals(packageName)
                 && ModuleScopePackage.INCALL_UI.equals(Application.getProcessName())) return;
         if (isDouyinProcess() && !packageName.equals(Application.getProcessName())) return;
@@ -300,6 +343,18 @@ public final class MyHyperModifier extends XposedModule {
                 HookDiagnostics.ready(packageName);
             } catch (Throwable error) {
                 HookDiagnostics.failure(packageName, "小米音乐手机版悬浮底栏注入", error);
+            }
+            return;
+        }
+        if (ModuleScopePackage.QQ.equals(packageName)) {
+            if (!packageName.equals(Application.getProcessName())) return;
+            try {
+                var preferences = getRemotePreferences("modifier_settings");
+                ModuleSettings.setRemotePreferences(preferences);
+                installSafely(packageName, "QQ 独立功能", () ->
+                        QQRuntimeHooks.install(this, param.getClassLoader(), preferences));
+            } catch (Throwable error) {
+                HookDiagnostics.failure(packageName, "QQ 独立功能", error);
             }
             return;
         }

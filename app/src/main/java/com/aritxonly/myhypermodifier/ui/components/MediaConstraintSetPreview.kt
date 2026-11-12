@@ -41,13 +41,14 @@ fun MediaConstraintSetPreview(
     xml: String,
     defaultCardHeight: Float,
     modifier: Modifier = Modifier,
+    notificationRadius: Float = 28f,
 ) {
     val spec = remember(xml, defaultCardHeight) {
         MediaPreviewConstraintSpec.fromXml(xml, defaultCardHeight)
     }
-    val cardHeight = spec.cardHeight.coerceIn(84f, 240f)
-    val artSize = spec.artSize.coerceIn(42f, 116f)
-    val previewHeight = cardHeight.coerceIn(84f, 180f)
+    val cardHeight = spec.cardHeight.coerceIn(80f, 240f)
+    val artSize = spec.artSize.coerceIn(42f, 160f)
+    val previewHeight = cardHeight.coerceIn(80f, 180f)
     val coverSize = artSize.coerceIn(48f, 62f)
     val white = Color.White
     val secondaryWhite = white.copy(alpha = 0.62f)
@@ -61,11 +62,97 @@ fun MediaConstraintSetPreview(
                 .clip(RoundedCornerShape(20.dp))
                 .background(Brush.verticalGradient(listOf(Color(0xFF2B2B34), Color(0xFF121216)))),
         ) {
-            Column(
+            if (spec.islandActionsBelow) {
+                Column(Modifier.fillMaxWidth().height(previewHeight.dp).padding(12.dp)) {
+                    Row(Modifier.fillMaxWidth().height(artSize.dp)) {
+                        Box(Modifier.size(artSize.dp)
+                            .clip(RoundedCornerShape(MediaLargeCoverStyle.coverRadius(notificationRadius,
+                                12f, 12f, artSize, artSize).dp))
+                            .background(Brush.linearGradient(listOf(Color(0xFF7D62FF), Color(0xFF232348)))),
+                            contentAlignment = Alignment.Center) {
+                            Text("♫", color = white, fontSize = 32.sp)
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f).height(artSize.dp)) {
+                            Row(verticalAlignment = Alignment.Top) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Cause you know", color = white, fontSize = 17.sp,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("G.E.M. 邓紫棋", color = secondaryWhite, fontSize = 11.sp,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                if (spec.showSeamless) Text("⌁", color = secondaryWhite, fontSize = 22.sp)
+                            }
+                            Spacer(Modifier.weight(1f))
+                            Box(Modifier.fillMaxWidth().height(if (spec.showTime) 6.dp else 38.dp), contentAlignment = Alignment.Center) {
+                                Box(Modifier.fillMaxWidth().height(6.dp).background(trackWhite)) {
+                                    Box(Modifier.fillMaxWidth(.48f).height(6.dp).background(secondaryWhite))
+                                }
+                            }
+                            if (spec.showTime) Spacer(Modifier.height(4.dp))
+                            if (spec.showTime) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("02:46", color = secondaryWhite, fontSize = 10.sp)
+                                Text("05:54", color = secondaryWhite, fontSize = 10.sp)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth().height(40.dp), horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text("♡", color = secondaryWhite, fontSize = 18.sp)
+                        Text("◀", color = white, fontSize = 22.sp)
+                        Text("▶", color = white, fontSize = 26.sp)
+                        Text("▶", color = white, fontSize = 22.sp)
+                        Text("⤨", color = secondaryWhite, fontSize = 18.sp)
+                    }
+                }
+            } else if (spec.largeCover) {
+                Row(Modifier.fillMaxWidth().height(previewHeight.dp).padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(artSize.coerceAtMost(previewHeight - 22f).dp)
+                        .clip(RoundedCornerShape(MediaLargeCoverStyle.coverRadius(notificationRadius, 12f,
+                            (previewHeight - artSize) / 2f, artSize, artSize).dp))
+                        .background(Brush.linearGradient(listOf(Color(0xFF7D62FF), Color(0xFF232348)))),
+                        contentAlignment = Alignment.Center) {
+                        Text("♫", color = white, fontSize = 32.sp)
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f).height((previewHeight - 24f).dp)) {
+                        Row(verticalAlignment = Alignment.Top) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Cause you know", color = white, fontSize = 17.sp,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("G.E.M. 邓紫棋", color = secondaryWhite, fontSize = 11.sp,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            if (spec.showSeamless) Text("⌁", color = secondaryWhite, fontSize = 22.sp)
+                        }
+                        Row(Modifier.fillMaxWidth().weight(1f),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically) {
+                            if (spec.showExtraActions) Text("♡", color = secondaryWhite, fontSize = 20.sp)
+                            Text("◀", color = white, fontSize = 22.sp)
+                            Text("▶", color = white, fontSize = 26.sp)
+                            Text("▶", color = white, fontSize = 22.sp)
+                            if (spec.showExtraActions) Text("⤨", color = secondaryWhite, fontSize = 20.sp)
+                        }
+                        Box(Modifier.fillMaxWidth().height(if (spec.showTime) 6.dp else 38.dp), contentAlignment = Alignment.Center) {
+                            Box(Modifier.fillMaxWidth().height(6.dp).background(trackWhite)) {
+                                Box(Modifier.fillMaxWidth(.48f).height(6.dp).background(secondaryWhite))
+                            }
+                        }
+                        if (spec.showTime) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("02:46", color = secondaryWhite, fontSize = 11.sp)
+                            Text("05:54", color = secondaryWhite, fontSize = 11.sp)
+                        }
+                    }
+                }
+            } else Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(previewHeight.dp)
-                    .padding(horizontal = 15.dp, vertical = 12.dp),
+                    .padding(horizontal = if (spec.compact) 9.dp else 15.dp,
+                        vertical = if (spec.compact) 9.dp else 12.dp),
             ) {
                 Row(verticalAlignment = Alignment.Top) {
                     Box(
@@ -161,6 +248,10 @@ private data class MediaPreviewConstraintSpec(
     val actionsBelowProgress: Boolean,
     val showSeamless: Boolean,
     val compact: Boolean,
+    val largeCover: Boolean = false,
+    val showExtraActions: Boolean = true,
+    val showTime: Boolean = true,
+    val islandActionsBelow: Boolean = false,
     val parseError: String? = null,
 ) {
     val status: String
@@ -189,9 +280,15 @@ private data class MediaPreviewConstraintSpec(
                 val background = (constraints["media_bg_view"] ?: constraints["media_bg"]).orEmpty()
                 val seamless = constraints["media_seamless"].orEmpty()
                 val compact = progress["visibility"] == "gone"
+                val islandActionsBelow = (constraints["action2"]?.get("layout_constraintBottom_toBottomOf")
+                    ?.let { it.references("media_bg") || it.references("media_bg_view") } == true) &&
+                    art["layout_constraintBottom_toTopOf"].references("action2")
+                val artSize = if (islandActionsBelow) (defaultCardHeight - 72f).coerceAtLeast(1f)
+                    else art["layout_width"].asDpOr(fallback.artSize)
                 fallback.copy(
-                    cardHeight = background["layout_height"].asDpOr(defaultCardHeight),
-                    artSize = art["layout_width"].asDpOr(fallback.artSize),
+                    cardHeight = background["layout_height"].asDpOr(defaultCardHeight).takeIf { it > 0 } ?: defaultCardHeight,
+                    artSize = artSize,
+                    islandActionsBelow = islandActionsBelow,
                     artStart = art["layout_marginStart"].asDpOr(fallback.artStart),
                     artTop = art["layout_marginTop"].asDpOr(fallback.artTop),
                     titleBesideArt = title["layout_constraintStart_toEndOf"].references("album_art"),
@@ -199,6 +296,11 @@ private data class MediaPreviewConstraintSpec(
                     actionsBelowProgress = actions["layout_constraintTop_toBottomOf"].references("media_progress_bar"),
                     showSeamless = seamless.isNotEmpty() && seamless["visibility"] != "gone",
                     compact = compact,
+                    showTime = constraints["media_elapsed_time"]?.get("visibility") != "gone",
+                    showExtraActions = constraints["action0"]?.get("visibility") != "gone" ||
+                        constraints["action4"]?.get("visibility") != "gone",
+                    largeCover = !compact && (islandActionsBelow || art["layout_width"].asDpOr(0f) >= 88f) &&
+                        title["layout_constraintStart_toEndOf"].references("album_art"),
                 )
             } catch (_: Throwable) {
                 fallback.copy(parseError = "XML 尚未完整，当前显示安全回退布局")

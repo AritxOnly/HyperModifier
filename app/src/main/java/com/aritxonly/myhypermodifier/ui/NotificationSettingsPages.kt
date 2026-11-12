@@ -135,6 +135,16 @@ internal fun NotificationControlCenterSettingsPage(
         )
     }
     SettingsSection(topLabel = "通知中心") {
+        NotificationWidthSettings(
+            enabled = settings.notificationMaxWidthEnabled,
+            mode = settings.notificationWidthMode,
+            width = settings.notificationMaxWidth,
+            margin = settings.notificationSideMargin,
+            onEnabled = { update(settings.copy(notificationMaxWidthEnabled = it)) },
+            onMode = { update(settings.copy(notificationWidthMode = it)) },
+            onWidth = { update(settings.copy(notificationMaxWidth = it)) },
+            onMargin = { update(settings.copy(notificationSideMargin = it)) },
+        )
         SettingsSwitchItem("通知圆角", "", settings.notificationsEnabled, { update(settings.copy(notificationsEnabled = it)) })
         SettingsSliderItemWithLabel("圆角大小", settings.notificationRadius, 12f..48f, { update(settings.copy(notificationRadius = it)) }, steps = 17, enabled = settings.notificationsEnabled)
     }

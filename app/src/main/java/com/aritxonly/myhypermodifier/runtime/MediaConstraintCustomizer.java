@@ -62,9 +62,17 @@ final class MediaConstraintCustomizer {
     /** Reproduces the edited miui_media_session_normal.xml ConstraintSet in the reference APK. */
     static void patchMediaConstraintSet(Context context, Object constraintSet, boolean island) {
         if (disableMediaIslandHooks) return;
-        String preset = mediaLayoutPreset;
+        if (!island && inFullAod) {
+            if ("large_cover".equals(activeMediaPreset(false)) || "compact".equals(activeMediaPreset(false))) {
+                MediaConstraintPlan.apply(context, constraintSet, MediaPresetDefaults.AOD_XML, false);
+            }
+            // Full AOD shrinks the native background: never reuse an expanded cover/layout.
+            setHeight(constraintSet, id(context, "media_bg"), dp(context, Math.round(mediaEnabled ? fullAodHeight : 80)));
+            return;
+        }
+        String preset = activeMediaPreset(island);
         if ("system".equals(preset) || "compact".equals(preset)
-                || "standard".equals(preset) || "custom".equals(preset)) {
+                || "large_cover".equals(preset) || "standard".equals(preset) || "custom".equals(preset)) {
             if ("standard".equals(preset)) {
                 patchLegacyMediaConstraintSet(context, constraintSet, island);
             }
@@ -72,7 +80,7 @@ final class MediaConstraintCustomizer {
             if (xml != null && !xml.trim().isEmpty()) {
                 applyCustomMediaConstraintSet(context, constraintSet, xml, island);
             }
-            int heightDp = presetHeight(preset);
+            int heightDp = activeMediaPresetHeight(island);
             // This device's normal media stock resource is 185dp, while the island is 168dp.
             // The requested "system default" preset is explicitly 168dp for both surfaces.
             if (!island || !"system".equals(preset) || heightDp != 168
@@ -85,17 +93,20 @@ final class MediaConstraintCustomizer {
         patchLegacyMediaConstraintSet(context, constraintSet, island);
     }
 
-    private static String presetXml(String preset, boolean island) {
+    static String presetXml(String preset, boolean island) {
         switch (preset) {
             case "system": return island ? systemMediaIslandXml : systemMediaXml;
-            case "compact": return island ? compactMediaIslandXml : compactMediaXml;
+            case "compact": {
+                String saved = island ? compactMediaIslandXml : compactMediaXml;
+                return saved == null || saved.isBlank() ? MediaPresetDefaults.COMPACT_XML : saved;
+            }
+            case "large_cover": {
+                String saved = island ? largeCoverMediaIslandXml : largeCoverMediaXml;
+                return saved == null || saved.isBlank() ? (island ? MediaPresetDefaults.LARGE_COVER_ISLAND_XML : MediaPresetDefaults.LARGE_COVER_XML) : saved;
+            }
             case "standard": return island ? standardMediaIslandXml : standardMediaXml;
             default: return island ? customMediaIslandConstraintSetXml : customMediaConstraintSetXml;
         }
-    }
-
-    private static int presetHeight(String preset) {
-        return activeMediaPresetHeight();
     }
 
     private static void patchLegacyMediaConstraintSet(Context context, Object constraintSet,
@@ -127,7 +138,7 @@ final class MediaConstraintCustomizer {
             setHeight(constraintSet, mediaBackground, height);
             setHeight(constraintSet, mediaBackgroundFallback, height);
         }
-        if (!mediaEnabled) return;
+        if (!(island ? islandEnabled : mediaEnabled)) return;
         // ConstraintSet.load() only accepts an APK resource id, therefore an XML string saved by
         // the companion app is parsed after the stock set has loaded.
         if (!island && customMediaConstraintSetEnabled
@@ -209,61 +220,7 @@ final class MediaConstraintCustomizer {
 
     private static boolean applyCustomMediaConstraintSet(Context context, Object constraintSet,
                                                          String source, boolean island) {
-        if (source == null || source.trim().isEmpty() || source.length() > 64 * 1024) {
-            return false;
-        }
-        try {
-            XmlPullParser parser = Xml.newPullParser();
-            parser.setInput(new StringReader(source));
-            boolean changed = false;
-            int constraintCount = 0;
-            while (parser.next() != XmlPullParser.END_DOCUMENT) {
-                if (parser.getEventType() != XmlPullParser.START_TAG
-                        || !"Constraint".equals(parser.getName())) {
-                    continue;
-                }
-                if (++constraintCount > 48) {
-                    throw new IllegalArgumentException("Too many Constraint elements");
-                }
-                int viewId = parseConstraintTarget(context, parser.getAttributeValue(
-                        "http://schemas.android.com/apk/res/android", "id"));
-                if (island && viewId == id(context, "media_bg")) {
-                    viewId = id(context, "media_bg_view");
-                }
-                Object targetLayout = layout(constraintSet, viewId);
-                if (targetLayout == null) {
-                    continue;
-                }
-                for (int index = 0; index < parser.getAttributeCount(); index++) {
-                    if ("visibility".equals(parser.getAttributeName(index))) {
-                        setConstraintVisibility(constraintSet, viewId,
-                                parser.getAttributeValue(index));
-                        continue;
-                    }
-                    applyCustomConstraintAttribute(context, targetLayout,
-                            parser.getAttributeName(index), parser.getAttributeValue(index));
-                }
-                changed = true;
-            }
-            return changed;
-        } catch (Throwable throwable) {
-            Log.w(TAG, "Invalid custom media ConstraintSet XML; using bundled layout", throwable);
-            return false;
-        }
-    }
-
-    private static void setConstraintVisibility(Object constraintSet, int viewId, String value) {
-        int visibility;
-        if ("gone".equals(value) || "8".equals(value)) visibility = View.GONE;
-        else if ("invisible".equals(value) || "4".equals(value)) visibility = View.INVISIBLE;
-        else if ("visible".equals(value) || "0".equals(value)) visibility = View.VISIBLE;
-        else return;
-        try {
-            constraintSet.getClass().getMethod("setVisibility", int.class, int.class)
-                    .invoke(constraintSet, viewId, visibility);
-        } catch (ReflectiveOperationException error) {
-            Log.w(TAG, "ConstraintSet visibility override unavailable", error);
-        }
+        return MediaConstraintPlan.apply(context, constraintSet, source, island);
     }
 
     /**
@@ -311,10 +268,10 @@ final class MediaConstraintCustomizer {
     /** Zero means leave the stock host geometry untouched. */
     static int requestedMediaIslandHeight(Context context) {
         if (disableMediaIslandHooks) return 0;
-        String preset = mediaLayoutPreset;
+        String preset = activeMediaPreset(true);
         if ("system".equals(preset) || "compact".equals(preset)
-                || "standard".equals(preset) || "custom".equals(preset)) {
-            int height = presetHeight(preset);
+                || "large_cover".equals(preset) || "standard".equals(preset) || "custom".equals(preset)) {
+            int height = activeMediaPresetHeight(true);
             return "system".equals(preset) && height == 168 ? 0 : dp(context, height);
         }
         int customHeight = customMediaIslandHeight(context);

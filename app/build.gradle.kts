@@ -108,6 +108,10 @@ dependencies {
     implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4-rc01")
     implementation("io.github.kyant0:shapes:1.2.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    // Debug-only so local solver tests receive AndroidX resource classes; absent from release.
+    debugImplementation("androidx.constraintlayout:constraintlayout:2.2.1") {
+        exclude(group = "androidx.appcompat", module = "appcompat")
+    }
     testImplementation("junit:junit:4.13.2")
     testImplementation("io.github.libxposed:api:102.0.0")
     testImplementation("org.robolectric:robolectric:4.14.1")

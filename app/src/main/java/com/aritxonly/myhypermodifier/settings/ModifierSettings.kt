@@ -102,7 +102,10 @@ data class ModifierSettings(
     val foldPortraitIconPercent: Int = 100,
     val foldPortraitDualPageEnabled: Boolean = false,
     val foldIslandPosition: Int = 0,
+    val foldInnerHideGestureBar: Boolean = false,
+    val coverAdaptationEnabled: Boolean = false,
     val desktopStatusBarIconMode: Int = 0,
+    val systemBarCompatibilityScrimDisabled: Boolean = false,
     val androidWidgetStackEnabled: Boolean = false,
     val androidWidgetGlassEnabled: Boolean = false,
     val androidWidgetClockGlassEnabled: Boolean = false,
@@ -123,6 +126,19 @@ data class ModifierSettings(
     /** Absolute value returned by SystemUI's wallpaperBlurRatio coroutine, from 0.0 to 1.0. */
     val lockscreenPasswordBackgroundOpacity: Float = 0f,
     val lockscreenPasswordBackgroundFollowShadeBlend: Boolean = true,
+    val notificationMaxWidthEnabled: Boolean = false,
+    val notificationWidthMode: Int = NotificationWidthPolicy.FIXED,
+    val notificationSideMargin: Float = NotificationWidthPolicy.DEFAULT_MARGIN_DP,
+    val notificationMaxWidth: Float = NotificationWidthPolicy.DEFAULT_DP,
+    val lockscreenNotificationMaxWidthEnabled: Boolean = false,
+    val lockscreenNotificationWidthMode: Int = NotificationWidthPolicy.FIXED,
+    val lockscreenNotificationSideMargin: Float = NotificationWidthPolicy.DEFAULT_MARGIN_DP,
+    val lockscreenNotificationMaxWidth: Float = NotificationWidthPolicy.DEFAULT_DP,
+    val lockscreenShortcutGlassSize: Float = LockscreenBottomPolicy.DEFAULT_SIZE,
+    val lockscreenNotificationBottomEnabled: Boolean = false,
+    val lockscreenNotificationBottomAnchor: Int = LockscreenBottomPolicy.SCREEN,
+    val lockscreenNotificationBottomGap: Float = LockscreenBottomPolicy.DEFAULT_GAP,
+    val lockscreenShortcutSoftGlassEnabled: Boolean = false,
     val lockscreenPinKeySoftGlassEnabled: Boolean = false,
     val lockscreenPinKeyGlassExtraRadius: Float = 6f,
     val lockscreenPinKeyGlassVerticalGap: Float = 16f,
@@ -191,6 +207,9 @@ data class ModifierSettings(
     val wechatNavigationBadgesEnabled: Boolean = true,
     val qqFloatingNavigationEnabled: Boolean = ModuleDefaultValues.QQ_FLOATING_NAVIGATION_ENABLED,
     val qqNavigationBadgesEnabled: Boolean = true,
+    val authenticatorGridEnabled: Boolean = false,
+    val qqFoldSplitRatioEnabled: Boolean = false,
+    val qqFoldNavigationImmersionEnabled: Boolean = false,
     val qqMusicFloatingNavigationEnabled: Boolean =
         ModuleDefaultValues.QQ_MUSIC_FLOATING_NAVIGATION_ENABLED,
     val xiaomiCommunityFloatingNavigationEnabled: Boolean = ModuleDefaultValues.XIAOMI_COMMUNITY_FLOATING_NAVIGATION_ENABLED,
@@ -228,15 +247,25 @@ data class ModifierSettings(
     val customMediaIslandConstraintSetXml: String = "",
     /** Missing stored selectors still preserve legacy media installations when loading. */
     val mediaLayoutPreset: String = ModuleDefaultValues.MEDIA_LAYOUT_PRESET,
+    val mediaIslandLayoutPreset: String = "",
+    val mediaNotificationGlowEnabled: Boolean = true,
     val systemMediaHeight: Float = 168f,
-    val compactMediaHeight: Float = 84f,
+    val systemMediaIslandHeight: Float = 0f,
+    val compactMediaHeight: Float = 80f,
+    val compactMediaIslandHeight: Float = 0f,
     val standardMediaHeight: Float = 150f,
+    val standardMediaIslandHeight: Float = 0f,
+    val largeCoverMediaHeight: Float = 132f,
+    val largeCoverMediaIslandHeight: Float = 144f,
     val customMediaHeight: Float = 150f,
+    val customMediaIslandHeight: Float = 0f,
     val systemMediaXml: String = "",
     val systemMediaIslandXml: String = "",
     val compactMediaXml: String = "",
     val compactMediaIslandXml: String = "",
     val standardMediaXml: String = "",
+    val largeCoverMediaXml: String = "",
+    val largeCoverMediaIslandXml: String = "",
     val standardMediaIslandXml: String = "",
 )
 
@@ -330,6 +359,8 @@ object ModifierSettingsPresets {
         foldPortraitIconPercent = 100,
         foldPortraitDualPageEnabled = false,
         foldIslandPosition = 0,
+        foldInnerHideGestureBar = false,
+        coverAdaptationEnabled = false,
         androidWidgetStackEnabled = false,
         androidWidgetGlassEnabled = false,
         androidWidgetClockGlassEnabled = false,
@@ -344,6 +375,10 @@ object ModifierSettingsPresets {
         aodClockWeightEnabled = false,
         lockscreenPasswordBackgroundBlurEnabled = false,
         lockscreenPasswordBackgroundFollowShadeBlend = true,
+        notificationMaxWidthEnabled = false,
+        lockscreenNotificationMaxWidthEnabled = false,
+        lockscreenNotificationBottomEnabled = false,
+        lockscreenShortcutSoftGlassEnabled = false,
         lockscreenPinKeySoftGlassEnabled = false,
         statusBarHideMobileTypeOnWifi = false,
         statusBarHideMobileActivity = false,
@@ -394,6 +429,9 @@ object ModifierSettingsPresets {
         wechatNavigationBadgesEnabled = false,
         qqFloatingNavigationEnabled = false,
         qqNavigationBadgesEnabled = false,
+        authenticatorGridEnabled = false,
+        qqFoldSplitRatioEnabled = false,
+        qqFoldNavigationImmersionEnabled = false,
         qqMusicFloatingNavigationEnabled = false,
         xiaomiCommunityFloatingNavigationEnabled = false,
         xiaomiCommunityMiuixIconsEnabled = false,
@@ -415,15 +453,25 @@ object ModifierSettingsPresets {
         customMediaIslandConstraintSetEnabled = false,
         customMediaIslandConstraintSetXml = "",
         mediaLayoutPreset = "system",
+        mediaIslandLayoutPreset = "system",
+        mediaNotificationGlowEnabled = false,
         systemMediaHeight = 168f,
-        compactMediaHeight = 84f,
+        systemMediaIslandHeight = 168f,
+        compactMediaHeight = 80f,
+        compactMediaIslandHeight = 80f,
         standardMediaHeight = 150f,
+        standardMediaIslandHeight = 150f,
+        largeCoverMediaHeight = 132f,
+        largeCoverMediaIslandHeight = 144f,
         customMediaHeight = 150f,
+        customMediaIslandHeight = 150f,
         systemMediaXml = "",
         systemMediaIslandXml = "",
         compactMediaXml = "",
         compactMediaIslandXml = "",
         standardMediaXml = "",
+        largeCoverMediaXml = "",
+        largeCoverMediaIslandXml = "",
         standardMediaIslandXml = "",
     )
 }
@@ -552,6 +600,8 @@ object ModifierSettingsStore {
         "lockscreen_password_background_opacity"
     private const val KEY_LOCKSCREEN_PASSWORD_BACKGROUND_FOLLOW_SHADE_BLEND =
         "lockscreen_password_background_follow_shade_blend"
+    private const val KEY_LOCKSCREEN_SHORTCUT_SOFT_GLASS_ENABLED =
+        "lockscreen_shortcut_soft_glass_enabled"
     private const val KEY_LOCKSCREEN_PIN_KEY_SOFT_GLASS_ENABLED =
         "lockscreen_pin_key_soft_glass_enabled"
     private const val KEY_LOCKSCREEN_PIN_KEY_GLASS_EXTRA_RADIUS =
@@ -625,6 +675,9 @@ object ModifierSettingsStore {
     private const val KEY_WECHAT_FLOATING_NAVIGATION = "wechat_floating_navigation_enabled"
     private const val KEY_WECHAT_NAVIGATION_BADGES = "wechat_navigation_badges_enabled"
     private const val KEY_QQ_FLOATING_NAVIGATION = "qq_floating_navigation_enabled"
+    private const val KEY_QQ_FOLD_NAVIGATION_IMMERSION = "qq_fold_navigation_immersion_enabled"
+    private const val KEY_AUTHENTICATOR_GRID = "authenticator_grid_enabled"
+    private const val KEY_QQ_FOLD_SPLIT_RATIO = "qq_fold_split_ratio_enabled"
     private const val KEY_QQ_NAVIGATION_BADGES = "qq_navigation_badges_enabled"
     private const val KEY_QQ_MUSIC_FLOATING_NAVIGATION = "qq_music_floating_navigation_enabled"
     private const val KEY_XIAOMI_COMMUNITY_FLOATING_NAVIGATION =
@@ -663,19 +716,31 @@ object ModifierSettingsStore {
     private const val KEY_CUSTOM_MEDIA_ISLAND_CONSTRAINT_SET_XML =
         "custom_media_island_constraint_set_xml"
     private const val KEY_MEDIA_LAYOUT_PRESET = "media_layout_preset"
+    private const val KEY_MEDIA_ISLAND_LAYOUT_PRESET = "media_island_layout_preset"
+    private const val KEY_SYSTEM_MEDIA_ISLAND_HEIGHT = "system_media_island_height"
+    private const val KEY_COMPACT_MEDIA_ISLAND_HEIGHT = "compact_media_island_height"
+    private const val KEY_STANDARD_MEDIA_ISLAND_HEIGHT = "standard_media_island_height"
+    private const val KEY_LARGE_COVER_MEDIA_ISLAND_HEIGHT = "large_cover_media_island_height"
+    private const val KEY_CUSTOM_MEDIA_ISLAND_HEIGHT = "custom_media_island_height"
+    private const val KEY_MEDIA_NOTIFICATION_GLOW = "media_notification_glow_enabled"
+    private const val KEY_MEDIA_LAYOUT_VERSION = "media_layout_version"
     private const val KEY_SYSTEM_MEDIA_HEIGHT = "system_media_height"
     private const val KEY_COMPACT_MEDIA_HEIGHT = "compact_media_height"
     private const val KEY_STANDARD_MEDIA_HEIGHT = "standard_media_height"
+    private const val KEY_LARGE_COVER_MEDIA_HEIGHT = "large_cover_media_height"
     private const val KEY_CUSTOM_MEDIA_HEIGHT = "custom_media_height"
     private const val KEY_SYSTEM_MEDIA_XML = "system_media_xml"
     private const val KEY_SYSTEM_MEDIA_ISLAND_XML = "system_media_island_xml"
     private const val KEY_COMPACT_MEDIA_XML = "compact_media_xml"
     private const val KEY_COMPACT_MEDIA_ISLAND_XML = "compact_media_island_xml"
     private const val KEY_STANDARD_MEDIA_XML = "standard_media_xml"
+    private const val KEY_LARGE_COVER_MEDIA_XML = "large_cover_media_xml"
+    private const val KEY_LARGE_COVER_MEDIA_ISLAND_XML = "large_cover_media_island_xml"
     private const val KEY_STANDARD_MEDIA_ISLAND_XML = "standard_media_island_xml"
 
     fun load(context: Context): ModifierSettings {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val migrateMediaLayout = prefs.getInt(KEY_MEDIA_LAYOUT_VERSION, 0) < 1
         val regularGlass = HeadsUpGlassParameters.parseSerializedOrDefault(
             prefs.getString(KEY_HEADS_UP_GLASS_PARAMETERS, null),
             HeadsUpGlassParameters.regularDefault,
@@ -829,7 +894,10 @@ object ModifierSettingsStore {
             foldPortraitIconPercent = prefs.getInt(KEY_FOLD_PORTRAIT_ICON_PERCENT, 100).coerceIn(70, 100),
             foldPortraitDualPageEnabled = prefs.getBoolean(KEY_FOLD_PORTRAIT_DUAL_PAGE, false),
             foldIslandPosition = FoldIslandPlacement.normalize(prefs.getInt(FoldIslandPlacement.KEY, 0)),
+            foldInnerHideGestureBar = prefs.getBoolean(FoldGestureBarHooks.KEY, false),
+            coverAdaptationEnabled = prefs.getBoolean(CoverAdaptationContract.KEY, false),
             desktopStatusBarIconMode = DesktopStatusBarPolicy.normalize(prefs.getInt(KEY_DESKTOP_STATUS_BAR_ICON_MODE, 0)),
+            systemBarCompatibilityScrimDisabled = prefs.getBoolean(SystemBarCompatibilityHooks.KEY, false),
             androidWidgetStackEnabled = prefs.getBoolean(KEY_DEADLINER_WIDGET_STACK, false),
             androidWidgetGlassEnabled = prefs.getBoolean(KEY_DEADLINER_WIDGET_GLASS, false),
             androidWidgetClockGlassEnabled = prefs.getBoolean(KEY_DEADLINER_CLOCK_GLASS, false),
@@ -862,6 +930,19 @@ object ModifierSettingsStore {
                 KEY_LOCKSCREEN_PASSWORD_BACKGROUND_FOLLOW_SHADE_BLEND,
                 true,
             ),
+            notificationMaxWidthEnabled = prefs.getBoolean("notification_max_width_enabled", false),
+            notificationWidthMode = NotificationWidthPolicy.mode(prefs.getInt("notification_width_mode", NotificationWidthPolicy.FIXED)),
+            notificationSideMargin = NotificationWidthPolicy.normalizeMargin(prefs.getFloat("notification_side_margin", NotificationWidthPolicy.DEFAULT_MARGIN_DP)),
+            notificationMaxWidth = NotificationWidthPolicy.normalize(prefs.getFloat("notification_max_width", NotificationWidthPolicy.DEFAULT_DP)),
+            lockscreenNotificationMaxWidthEnabled = prefs.getBoolean("lockscreen_notification_max_width_enabled", false),
+            lockscreenNotificationWidthMode = NotificationWidthPolicy.mode(prefs.getInt("lockscreen_notification_width_mode", NotificationWidthPolicy.FIXED)),
+            lockscreenNotificationSideMargin = NotificationWidthPolicy.normalizeMargin(prefs.getFloat("lockscreen_notification_side_margin", NotificationWidthPolicy.DEFAULT_MARGIN_DP)),
+            lockscreenNotificationMaxWidth = NotificationWidthPolicy.normalize(prefs.getFloat("lockscreen_notification_max_width", NotificationWidthPolicy.DEFAULT_DP)),
+            lockscreenShortcutGlassSize = LockscreenBottomPolicy.size(prefs.getFloat("lockscreen_shortcut_glass_size", LockscreenBottomPolicy.DEFAULT_SIZE)),
+            lockscreenNotificationBottomEnabled = prefs.getBoolean("lockscreen_notification_bottom_enabled", false),
+            lockscreenNotificationBottomAnchor = LockscreenBottomPolicy.anchor(prefs.getInt("lockscreen_notification_bottom_anchor", LockscreenBottomPolicy.SCREEN)),
+            lockscreenNotificationBottomGap = LockscreenBottomPolicy.gap(prefs.getFloat("lockscreen_notification_bottom_gap", LockscreenBottomPolicy.DEFAULT_GAP)),
+            lockscreenShortcutSoftGlassEnabled = prefs.getBoolean(KEY_LOCKSCREEN_SHORTCUT_SOFT_GLASS_ENABLED, false),
             lockscreenPinKeySoftGlassEnabled = prefs.getBoolean(
                 KEY_LOCKSCREEN_PIN_KEY_SOFT_GLASS_ENABLED,
                 false,
@@ -964,6 +1045,9 @@ object ModifierSettingsStore {
                 ModuleDefaultValues.QQ_FLOATING_NAVIGATION_ENABLED,
             ),
             qqNavigationBadgesEnabled = prefs.getBoolean(KEY_QQ_NAVIGATION_BADGES, true),
+            authenticatorGridEnabled = prefs.getBoolean(KEY_AUTHENTICATOR_GRID, false),
+            qqFoldSplitRatioEnabled = prefs.getBoolean(KEY_QQ_FOLD_SPLIT_RATIO, false),
+            qqFoldNavigationImmersionEnabled = prefs.getBoolean(KEY_QQ_FOLD_NAVIGATION_IMMERSION, false),
             qqMusicFloatingNavigationEnabled = prefs.getBoolean(
                 KEY_QQ_MUSIC_FLOATING_NAVIGATION,
                 ModuleDefaultValues.QQ_MUSIC_FLOATING_NAVIGATION_ENABLED,
@@ -1035,15 +1119,38 @@ object ModifierSettingsStore {
                 if (prefs.contains(KEY_MEDIA) || prefs.contains(KEY_ISLAND)
                     || prefs.contains(KEY_CUSTOM_MEDIA_CONSTRAINT_SET)) ""
                 else ModuleDefaultValues.MEDIA_LAYOUT_PRESET).orEmpty(),
+            mediaNotificationGlowEnabled = prefs.getBoolean(KEY_MEDIA_NOTIFICATION_GLOW, true),
+            mediaIslandLayoutPreset = prefs.getString(KEY_MEDIA_ISLAND_LAYOUT_PRESET, "").orEmpty(),
             systemMediaHeight = prefs.getFloat(KEY_SYSTEM_MEDIA_HEIGHT, 168f),
-            compactMediaHeight = prefs.getFloat(KEY_COMPACT_MEDIA_HEIGHT, 84f),
+            compactMediaHeight = if (!migrateMediaLayout) prefs.getFloat(KEY_COMPACT_MEDIA_HEIGHT, 80f)
+            else MediaPresetDefaults.migrateCompactHeight(
+                prefs.getFloat(KEY_COMPACT_MEDIA_HEIGHT, 80f),
+                prefs.getString(KEY_COMPACT_MEDIA_XML, "").orEmpty(),
+                prefs.getString(KEY_COMPACT_MEDIA_ISLAND_XML, "").orEmpty()),
             standardMediaHeight = prefs.getFloat(KEY_STANDARD_MEDIA_HEIGHT, 150f),
+            largeCoverMediaHeight = MediaPresetDefaults.migrateLargeCoverHeight(
+                prefs.getInt(KEY_MEDIA_LAYOUT_VERSION, 0), prefs.getFloat(KEY_LARGE_COVER_MEDIA_HEIGHT, 132f),
+                prefs.getString(KEY_LARGE_COVER_MEDIA_XML, ""), prefs.getString(KEY_LARGE_COVER_MEDIA_ISLAND_XML, "")),
             customMediaHeight = prefs.getFloat(KEY_CUSTOM_MEDIA_HEIGHT, 150f),
+            systemMediaIslandHeight = prefs.getFloat(KEY_SYSTEM_MEDIA_ISLAND_HEIGHT, 0f),
+            compactMediaIslandHeight = prefs.getFloat(KEY_COMPACT_MEDIA_ISLAND_HEIGHT, 0f),
+            standardMediaIslandHeight = prefs.getFloat(KEY_STANDARD_MEDIA_ISLAND_HEIGHT, 0f),
+            largeCoverMediaIslandHeight = MediaPresetDefaults.migrateLargeCoverIslandHeight(
+                prefs.getInt(KEY_MEDIA_LAYOUT_VERSION, 0), prefs.getFloat(KEY_LARGE_COVER_MEDIA_ISLAND_HEIGHT,
+                    prefs.getFloat(KEY_LARGE_COVER_MEDIA_HEIGHT, 136f)),
+                prefs.getString(KEY_LARGE_COVER_MEDIA_XML, ""), prefs.getString(KEY_LARGE_COVER_MEDIA_ISLAND_XML, "")),
+            customMediaIslandHeight = prefs.getFloat(KEY_CUSTOM_MEDIA_ISLAND_HEIGHT, 0f),
             systemMediaXml = prefs.getString(KEY_SYSTEM_MEDIA_XML, "").orEmpty(),
             systemMediaIslandXml = prefs.getString(KEY_SYSTEM_MEDIA_ISLAND_XML, "").orEmpty(),
-            compactMediaXml = prefs.getString(KEY_COMPACT_MEDIA_XML, "").orEmpty(),
-            compactMediaIslandXml = prefs.getString(KEY_COMPACT_MEDIA_ISLAND_XML, "").orEmpty(),
+            compactMediaXml = prefs.getString(KEY_COMPACT_MEDIA_XML, "").orEmpty().let {
+                if (migrateMediaLayout) MediaPresetDefaults.migrateCompactXml(it) else it
+            },
+            compactMediaIslandXml = prefs.getString(KEY_COMPACT_MEDIA_ISLAND_XML, "").orEmpty().let {
+                if (migrateMediaLayout) MediaPresetDefaults.migrateCompactXml(it) else it
+            },
             standardMediaXml = prefs.getString(KEY_STANDARD_MEDIA_XML, "").orEmpty(),
+            largeCoverMediaXml = prefs.getString(KEY_LARGE_COVER_MEDIA_XML, "").orEmpty(),
+            largeCoverMediaIslandXml = prefs.getString(KEY_LARGE_COVER_MEDIA_ISLAND_XML, "").orEmpty(),
             standardMediaIslandXml = prefs.getString(KEY_STANDARD_MEDIA_ISLAND_XML, "").orEmpty(),
         )
     }
@@ -1204,6 +1311,7 @@ object ModifierSettingsStore {
             .putBoolean(KEY_FORCE_LOCKSCREEN_CLOCK_COLON, value.forceLockscreenClockColon)
             .putBoolean(KEY_HIDE_LOCKSCREEN_CLOCK_LEADING_ZERO, value.hideLockscreenClockLeadingZero)
             .putInt(KEY_DESKTOP_STATUS_BAR_ICON_MODE, DesktopStatusBarPolicy.normalize(value.desktopStatusBarIconMode))
+            .putBoolean(SystemBarCompatibilityHooks.KEY, value.systemBarCompatibilityScrimDisabled)
             .putBoolean(KEY_HIDE_DESKTOP_CLOCK_LEADING_ZERO, value.hideDesktopClockLeadingZero)
             .putInt(KEY_DESKTOP_CLOCK_MATERIAL, value.desktopClockMaterial.let { if (it in 0..2) it else 0 })
             .putInt(KEY_DESKTOP_CLOCK_BLUR_RADIUS, value.desktopClockBlurRadius.coerceIn(2, 40))
@@ -1212,6 +1320,8 @@ object ModifierSettingsStore {
             .putInt(KEY_FOLD_PORTRAIT_ICON_PERCENT, value.foldPortraitIconPercent)
             .putBoolean(KEY_FOLD_PORTRAIT_DUAL_PAGE, value.foldPortraitDualPageEnabled)
             .putInt(FoldIslandPlacement.KEY, value.foldIslandPosition)
+            .putBoolean(FoldGestureBarHooks.KEY, value.foldInnerHideGestureBar)
+            .putBoolean(CoverAdaptationContract.KEY, value.coverAdaptationEnabled)
             .putBoolean(KEY_DEADLINER_WIDGET_STACK, value.androidWidgetStackEnabled)
             .putBoolean(KEY_DEADLINER_WIDGET_GLASS, value.androidWidgetGlassEnabled)
             .putBoolean(KEY_DEADLINER_CLOCK_GLASS, value.androidWidgetClockGlassEnabled)
@@ -1240,6 +1350,19 @@ object ModifierSettingsStore {
                 KEY_LOCKSCREEN_PASSWORD_BACKGROUND_FOLLOW_SHADE_BLEND,
                 value.lockscreenPasswordBackgroundFollowShadeBlend,
             )
+            .putBoolean("notification_max_width_enabled", value.notificationMaxWidthEnabled)
+            .putInt("notification_width_mode", NotificationWidthPolicy.mode(value.notificationWidthMode))
+            .putFloat("notification_side_margin", NotificationWidthPolicy.normalizeMargin(value.notificationSideMargin))
+            .putFloat("notification_max_width", NotificationWidthPolicy.normalize(value.notificationMaxWidth))
+            .putBoolean("lockscreen_notification_max_width_enabled", value.lockscreenNotificationMaxWidthEnabled)
+            .putInt("lockscreen_notification_width_mode", NotificationWidthPolicy.mode(value.lockscreenNotificationWidthMode))
+            .putFloat("lockscreen_notification_side_margin", NotificationWidthPolicy.normalizeMargin(value.lockscreenNotificationSideMargin))
+            .putFloat("lockscreen_notification_max_width", NotificationWidthPolicy.normalize(value.lockscreenNotificationMaxWidth))
+            .putFloat("lockscreen_shortcut_glass_size", LockscreenBottomPolicy.size(value.lockscreenShortcutGlassSize))
+            .putBoolean("lockscreen_notification_bottom_enabled", value.lockscreenNotificationBottomEnabled)
+            .putInt("lockscreen_notification_bottom_anchor", LockscreenBottomPolicy.anchor(value.lockscreenNotificationBottomAnchor))
+            .putFloat("lockscreen_notification_bottom_gap", LockscreenBottomPolicy.gap(value.lockscreenNotificationBottomGap))
+            .putBoolean(KEY_LOCKSCREEN_SHORTCUT_SOFT_GLASS_ENABLED, value.lockscreenShortcutSoftGlassEnabled)
             .putBoolean(
                 KEY_LOCKSCREEN_PIN_KEY_SOFT_GLASS_ENABLED,
                 value.lockscreenPinKeySoftGlassEnabled,
@@ -1378,6 +1501,9 @@ object ModifierSettingsStore {
             .putBoolean(KEY_WECHAT_NAVIGATION_BADGES, value.wechatNavigationBadgesEnabled)
             .putBoolean(KEY_QQ_FLOATING_NAVIGATION, value.qqFloatingNavigationEnabled)
             .putBoolean(KEY_QQ_NAVIGATION_BADGES, value.qqNavigationBadgesEnabled)
+            .putBoolean(KEY_AUTHENTICATOR_GRID, value.authenticatorGridEnabled)
+            .putBoolean(KEY_QQ_FOLD_SPLIT_RATIO, value.qqFoldSplitRatioEnabled)
+            .putBoolean(KEY_QQ_FOLD_NAVIGATION_IMMERSION, value.qqFoldNavigationImmersionEnabled)
             .putBoolean(KEY_QQ_MUSIC_FLOATING_NAVIGATION, value.qqMusicFloatingNavigationEnabled)
             .putBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, value.spotifyFloatingNavigationEnabled)
             .putBoolean(KEY_SPOTIFY_FAVORITE_BUTTON, value.spotifyFavoriteButtonEnabled)
@@ -1392,16 +1518,27 @@ object ModifierSettingsStore {
                 KEY_CUSTOM_MEDIA_ISLAND_CONSTRAINT_SET_XML,
                 value.customMediaIslandConstraintSetXml,
             )
+            .putInt(KEY_MEDIA_LAYOUT_VERSION, MediaPresetDefaults.LAYOUT_VERSION)
+            .putFloat(KEY_SYSTEM_MEDIA_ISLAND_HEIGHT, MediaLayoutPresets.height(value, "system", true))
+            .putFloat(KEY_COMPACT_MEDIA_ISLAND_HEIGHT, MediaLayoutPresets.height(value, "compact", true))
+            .putFloat(KEY_STANDARD_MEDIA_ISLAND_HEIGHT, MediaLayoutPresets.height(value, "standard", true))
+            .putFloat(KEY_LARGE_COVER_MEDIA_ISLAND_HEIGHT, MediaLayoutPresets.height(value, "large_cover", true))
+            .putFloat(KEY_CUSTOM_MEDIA_ISLAND_HEIGHT, MediaLayoutPresets.height(value, "custom", true))
+            .putBoolean(KEY_MEDIA_NOTIFICATION_GLOW, value.mediaNotificationGlowEnabled)
+            .putString(KEY_MEDIA_ISLAND_LAYOUT_PRESET, value.mediaIslandLayoutPreset.ifBlank { value.mediaLayoutPreset })
             .putString(KEY_MEDIA_LAYOUT_PRESET, value.mediaLayoutPreset)
             .putFloat(KEY_SYSTEM_MEDIA_HEIGHT, value.systemMediaHeight)
             .putFloat(KEY_COMPACT_MEDIA_HEIGHT, value.compactMediaHeight)
             .putFloat(KEY_STANDARD_MEDIA_HEIGHT, value.standardMediaHeight)
+            .putFloat(KEY_LARGE_COVER_MEDIA_HEIGHT, value.largeCoverMediaHeight)
             .putFloat(KEY_CUSTOM_MEDIA_HEIGHT, value.customMediaHeight)
             .putString(KEY_SYSTEM_MEDIA_XML, value.systemMediaXml)
             .putString(KEY_SYSTEM_MEDIA_ISLAND_XML, value.systemMediaIslandXml)
             .putString(KEY_COMPACT_MEDIA_XML, value.compactMediaXml)
             .putString(KEY_COMPACT_MEDIA_ISLAND_XML, value.compactMediaIslandXml)
             .putString(KEY_STANDARD_MEDIA_XML, value.standardMediaXml)
+            .putString(KEY_LARGE_COVER_MEDIA_XML, value.largeCoverMediaXml)
+            .putString(KEY_LARGE_COVER_MEDIA_ISLAND_XML, value.largeCoverMediaIslandXml)
             .putString(KEY_STANDARD_MEDIA_ISLAND_XML, value.standardMediaIslandXml)
         // Recovery switches and preset changes must survive an immediate process restart.
         if (presetChanged || safetyGateChanged) {
@@ -1428,7 +1565,12 @@ object ModifierSettingsStore {
 
     internal fun restoreBackup(context: Context, values: Map<String, Any>) {
         // Validate everything before opening an editor, including calls outside the import UI.
-        val validated = SettingsBackupCodec.decode(SettingsBackupCodec.encode(values), backupSchema())
+        val validated = SettingsBackupCodec.decode(SettingsBackupCodec.encode(values), backupSchema()).toMutableMap()
+        if (KEY_MEDIA_LAYOUT_VERSION !in validated &&
+            (KEY_COMPACT_MEDIA_HEIGHT in validated || KEY_COMPACT_MEDIA_XML in validated || KEY_COMPACT_MEDIA_ISLAND_XML in validated ||
+                KEY_LARGE_COVER_MEDIA_HEIGHT in validated || KEY_LARGE_COVER_MEDIA_XML in validated || KEY_LARGE_COVER_MEDIA_ISLAND_XML in validated)) {
+            validated[KEY_MEDIA_LAYOUT_VERSION] = 0
+        }
         val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val previous = preferences.all
         val changed = validated.filter { (key, value) -> previous[key] != value }
@@ -1661,6 +1803,7 @@ object ModifierSettingsStore {
         putBoolean(KEY_FORCE_LOCKSCREEN_CLOCK_COLON, value.forceLockscreenClockColon)
         putBoolean(KEY_HIDE_LOCKSCREEN_CLOCK_LEADING_ZERO, value.hideLockscreenClockLeadingZero)
         putInt(KEY_DESKTOP_STATUS_BAR_ICON_MODE, DesktopStatusBarPolicy.normalize(value.desktopStatusBarIconMode))
+        putBoolean(SystemBarCompatibilityHooks.KEY, value.systemBarCompatibilityScrimDisabled)
         putBoolean(KEY_HIDE_DESKTOP_CLOCK_LEADING_ZERO, value.hideDesktopClockLeadingZero)
         putInt(KEY_DESKTOP_CLOCK_MATERIAL, value.desktopClockMaterial.let { if (it in 0..2) it else 0 })
         putInt(KEY_DESKTOP_CLOCK_BLUR_RADIUS, value.desktopClockBlurRadius.coerceIn(2, 40))
@@ -1669,6 +1812,8 @@ object ModifierSettingsStore {
         putInt(KEY_FOLD_PORTRAIT_ICON_PERCENT, value.foldPortraitIconPercent)
         putBoolean(KEY_FOLD_PORTRAIT_DUAL_PAGE, value.foldPortraitDualPageEnabled)
         putInt(FoldIslandPlacement.KEY, value.foldIslandPosition)
+        putBoolean(FoldGestureBarHooks.KEY, value.foldInnerHideGestureBar)
+        putBoolean(CoverAdaptationContract.KEY, value.coverAdaptationEnabled)
         putBoolean(KEY_DEADLINER_WIDGET_STACK, value.androidWidgetStackEnabled)
         putBoolean(KEY_DEADLINER_WIDGET_GLASS, value.androidWidgetGlassEnabled)
         putBoolean(KEY_DEADLINER_CLOCK_GLASS, value.androidWidgetClockGlassEnabled)
@@ -1697,6 +1842,19 @@ object ModifierSettingsStore {
             KEY_LOCKSCREEN_PASSWORD_BACKGROUND_FOLLOW_SHADE_BLEND,
             value.lockscreenPasswordBackgroundFollowShadeBlend,
         )
+        putBoolean("notification_max_width_enabled", value.notificationMaxWidthEnabled)
+        putInt("notification_width_mode", NotificationWidthPolicy.mode(value.notificationWidthMode))
+        putFloat("notification_side_margin", NotificationWidthPolicy.normalizeMargin(value.notificationSideMargin))
+        putFloat("notification_max_width", NotificationWidthPolicy.normalize(value.notificationMaxWidth))
+        putBoolean("lockscreen_notification_max_width_enabled", value.lockscreenNotificationMaxWidthEnabled)
+        putInt("lockscreen_notification_width_mode", NotificationWidthPolicy.mode(value.lockscreenNotificationWidthMode))
+        putFloat("lockscreen_notification_side_margin", NotificationWidthPolicy.normalizeMargin(value.lockscreenNotificationSideMargin))
+        putFloat("lockscreen_notification_max_width", NotificationWidthPolicy.normalize(value.lockscreenNotificationMaxWidth))
+        putFloat("lockscreen_shortcut_glass_size", LockscreenBottomPolicy.size(value.lockscreenShortcutGlassSize))
+        putBoolean("lockscreen_notification_bottom_enabled", value.lockscreenNotificationBottomEnabled)
+        putInt("lockscreen_notification_bottom_anchor", LockscreenBottomPolicy.anchor(value.lockscreenNotificationBottomAnchor))
+        putFloat("lockscreen_notification_bottom_gap", LockscreenBottomPolicy.gap(value.lockscreenNotificationBottomGap))
+        putBoolean(KEY_LOCKSCREEN_SHORTCUT_SOFT_GLASS_ENABLED, value.lockscreenShortcutSoftGlassEnabled)
         putBoolean(
             KEY_LOCKSCREEN_PIN_KEY_SOFT_GLASS_ENABLED,
             value.lockscreenPinKeySoftGlassEnabled,
@@ -1833,6 +1991,9 @@ object ModifierSettingsStore {
         putBoolean(KEY_WECHAT_NAVIGATION_BADGES, value.wechatNavigationBadgesEnabled)
         putBoolean(KEY_QQ_FLOATING_NAVIGATION, value.qqFloatingNavigationEnabled)
         putBoolean(KEY_QQ_NAVIGATION_BADGES, value.qqNavigationBadgesEnabled)
+        putBoolean(KEY_AUTHENTICATOR_GRID, value.authenticatorGridEnabled)
+        putBoolean(KEY_QQ_FOLD_SPLIT_RATIO, value.qqFoldSplitRatioEnabled)
+        putBoolean(KEY_QQ_FOLD_NAVIGATION_IMMERSION, value.qqFoldNavigationImmersionEnabled)
         putBoolean(KEY_QQ_MUSIC_FLOATING_NAVIGATION, value.qqMusicFloatingNavigationEnabled)
         putBoolean(KEY_SPOTIFY_FLOATING_NAVIGATION, value.spotifyFloatingNavigationEnabled)
         putBoolean(KEY_SPOTIFY_FAVORITE_BUTTON, value.spotifyFavoriteButtonEnabled)
@@ -1847,16 +2008,27 @@ object ModifierSettingsStore {
             KEY_CUSTOM_MEDIA_ISLAND_CONSTRAINT_SET_XML,
             value.customMediaIslandConstraintSetXml,
         )
+        putInt(KEY_MEDIA_LAYOUT_VERSION, MediaPresetDefaults.LAYOUT_VERSION)
+        putFloat(KEY_SYSTEM_MEDIA_ISLAND_HEIGHT, MediaLayoutPresets.height(value, "system", true))
+        putFloat(KEY_COMPACT_MEDIA_ISLAND_HEIGHT, MediaLayoutPresets.height(value, "compact", true))
+        putFloat(KEY_STANDARD_MEDIA_ISLAND_HEIGHT, MediaLayoutPresets.height(value, "standard", true))
+        putFloat(KEY_LARGE_COVER_MEDIA_ISLAND_HEIGHT, MediaLayoutPresets.height(value, "large_cover", true))
+        putFloat(KEY_CUSTOM_MEDIA_ISLAND_HEIGHT, MediaLayoutPresets.height(value, "custom", true))
+        putBoolean(KEY_MEDIA_NOTIFICATION_GLOW, value.mediaNotificationGlowEnabled)
+        putString(KEY_MEDIA_ISLAND_LAYOUT_PRESET, value.mediaIslandLayoutPreset.ifBlank { value.mediaLayoutPreset })
         putString(KEY_MEDIA_LAYOUT_PRESET, value.mediaLayoutPreset)
         putFloat(KEY_SYSTEM_MEDIA_HEIGHT, value.systemMediaHeight)
         putFloat(KEY_COMPACT_MEDIA_HEIGHT, value.compactMediaHeight)
         putFloat(KEY_STANDARD_MEDIA_HEIGHT, value.standardMediaHeight)
+        putFloat(KEY_LARGE_COVER_MEDIA_HEIGHT, value.largeCoverMediaHeight)
         putFloat(KEY_CUSTOM_MEDIA_HEIGHT, value.customMediaHeight)
         putString(KEY_SYSTEM_MEDIA_XML, value.systemMediaXml)
         putString(KEY_SYSTEM_MEDIA_ISLAND_XML, value.systemMediaIslandXml)
         putString(KEY_COMPACT_MEDIA_XML, value.compactMediaXml)
         putString(KEY_COMPACT_MEDIA_ISLAND_XML, value.compactMediaIslandXml)
         putString(KEY_STANDARD_MEDIA_XML, value.standardMediaXml)
+        putString(KEY_LARGE_COVER_MEDIA_XML, value.largeCoverMediaXml)
+        putString(KEY_LARGE_COVER_MEDIA_ISLAND_XML, value.largeCoverMediaIslandXml)
         putString(KEY_STANDARD_MEDIA_ISLAND_XML, value.standardMediaIslandXml)
     }
 

@@ -164,6 +164,8 @@ final class GestureHandleHooks {
     }
 
     private static Object draw(XposedInterface.Chain chain) throws Throwable {
+        if (FoldGestureBarHooks.hidden() && ((View) chain.getThisObject()).getDisplay() != null
+                && ((View) chain.getThisObject()).getDisplay().getDisplayId() == 0) return null;
         if (!ModuleSettings.gestureHandleEnabled) return chain.proceed();
         View view = (View) chain.getThisObject();
         if (view.getDisplay() == null || view.getDisplay().getDisplayId() != 0) return chain.proceed();
@@ -507,7 +509,7 @@ final class GestureHandleHooks {
     }
 
     private static boolean needsInputMonitor() {
-        return ModuleSettings.gestureHandleEnabled
+        return !FoldGestureBarHooks.hidden() && ModuleSettings.gestureHandleEnabled
                 && (ModuleSettings.gestureHandleTouchReveal
                     || ModuleSettings.gestureHandleSwipeMotion);
     }
@@ -604,7 +606,7 @@ final class GestureHandleHooks {
         dispatch(() -> {
             POLICY.configure(ModuleSettings.gestureHandleAppModes, ModuleSettings.gestureHandlePreset,
                     ModuleSettings.gestureHandleScopePackages, SystemClock.uptimeMillis());
-            if (!ModuleSettings.gestureHandleEnabled) {
+            if (!ModuleSettings.gestureHandleEnabled || FoldGestureBarHooks.hidden()) {
                 POLICY.clearTouchReveal();
                 POLICY.clearSwipeReveal();
                 activeTouchHandle = null;
@@ -670,7 +672,7 @@ final class GestureHandleHooks {
     }
 
     private static boolean hasPolicies() {
-        return ModuleSettings.gestureHandleEnabled && ((GestureHandlePresets.valid(ModuleSettings.gestureHandlePreset)
+        return !FoldGestureBarHooks.hidden() && ModuleSettings.gestureHandleEnabled && ((GestureHandlePresets.valid(ModuleSettings.gestureHandlePreset)
                 && !GestureHandlePresets.STOCK.equals(ModuleSettings.gestureHandlePreset))
                 || !ModuleSettings.gestureHandleAppModes.isEmpty()
                 || ModuleSettings.gestureHandleTouchReveal || ModuleSettings.gestureHandleSwipeMotion);

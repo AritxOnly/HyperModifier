@@ -1,5 +1,9 @@
 # 项目文档
 
+- [Google Authenticator 7.2 多列布局](investigations/AUTHENTICATOR_GRID_7_2.md)
+
+- [外屏应用适配实验版](investigations/COVER_APP_ADAPTATION.md)
+
 - [1.5.3 更新日志](../RELEASE_NOTES_v1.5.3.md)
 - [1.5.3 发布候选检查](testing/RELEASE_1.5.3_CHECKLIST.md)
 

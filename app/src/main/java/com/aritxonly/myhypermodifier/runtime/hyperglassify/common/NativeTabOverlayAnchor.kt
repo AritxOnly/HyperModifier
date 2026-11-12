@@ -13,6 +13,7 @@ internal class NativeTabOverlayAnchor(
     private val decor: ViewGroup,
     private val overlay: View,
     private val manager: WindowManager? = null,
+    private val followNativeBottom: Boolean = true,
 ) : ViewTreeObserver.OnGlobalLayoutListener {
     private val location = IntArray(2)
     private var dirty = true
@@ -65,10 +66,12 @@ internal class NativeTabOverlayAnchor(
         val width = if (left == start && right == end) ViewGroup.LayoutParams.MATCH_PARENT else right - left
         val height = if (matchNativeHeight) bar.height else ViewGroup.LayoutParams.WRAP_CONTENT
         // Bottom-dock content already includes the system navigation inset in its own padding.
-        val inset = if (matchNativeHeight) 0 else
+        val inset = if (!followNativeBottom || matchNativeHeight) 0 else
             decor.rootWindowInsets?.getInsets(WindowInsets.Type.navigationBars())?.bottom ?: 0
-        val bottom = (decor.height - stripBottom - inset - if (inTree) decor.paddingBottom else 0)
-            .coerceAtLeast(0)
+        val bottom = if (followNativeBottom) {
+            (decor.height - stripBottom - inset - if (inTree) decor.paddingBottom else 0)
+                .coerceAtLeast(0)
+        } else 0
         val x = left - start
         val gravity = Gravity.LEFT or Gravity.BOTTOM
         dirty = false

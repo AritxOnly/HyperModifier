@@ -27,6 +27,39 @@ internal fun FoldSettingsPage(
         message = result.first
         if (!result.second) pending = -1
     }
+    if (android.os.Build.DEVICE == "lhasa") {
+        SettingsSection(topLabel = "全面屏手势") {
+            SettingsSwitchItem(
+                "内屏隐藏手势条与底部占位",
+                "展开时使用系统隐藏手势提示线的行为，折叠后恢复系统设置。首次使用需重启系统界面。",
+                settings.foldInnerHideGestureBar,
+                { update(settings.copy(foldInnerHideGestureBar = it)) },
+                enabled = settings.moduleHooksEnabled && !settings.systemUiCompatibilityMode,
+            )
+        }
+    }
+    SettingsSection(topLabel = "外屏应用适配 · 实验功能") {
+        SettingsSwitchItem(
+            "启用外屏适配",
+            "折叠外屏使用竖屏 9:16 应用区，侧栏显示时间、电量、网络和最近应用。首次启用或重新启用被跳过的 Hook 后需重启手机。",
+            settings.coverAdaptationEnabled,
+            { update(settings.copy(coverAdaptationEnabled = it)) },
+            enabled = settings.moduleHooksEnabled && !settings.systemUiCompatibilityMode,
+        )
+        SettingItem(
+            "使用方法",
+            "启用 Android 系统和系统界面作用域并重启后，在普通应用中点击“外屏适配”快捷磁贴，或将桌面长按快捷方式绑定到手势。侧栏底部可换边、退出。展开内屏后恢复。部分旧版应用暂不支持。",
+        )
+    }
+    SettingsSection(topLabel = "Google Authenticator") {
+        SettingsSwitchItem(
+            "验证码多列布局",
+            "适配 7.2（7002015）。宽窗口自动使用双列或三列，窄窗口恢复单列。请在 LSPosed 勾选 Google Authenticator 作用域并重启该应用；之后开关实时生效。",
+            settings.authenticatorGridEnabled,
+            { update(settings.copy(authenticatorGridEnabled = it)) },
+            enabled = settings.moduleHooksEnabled,
+        )
+    }
     SettingsSection(topLabel = "修改 wm density") {
         SettingsSliderItemWithLabel("目标密度", dpi.toFloat(), 320f..520f,
             { dpi = it.roundToInt() }, steps = 39, valueText = { "${it.roundToInt()} dpi" })

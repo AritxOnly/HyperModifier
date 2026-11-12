@@ -118,45 +118,41 @@ import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
     }
     if (settings.disableMediaIslandHooks) return@SettingsScrollPage
     val context = LocalContext.current
-    val selectedPreset = MediaLayoutPresets.selected(settings)
-    SettingsSection(topLabel = "媒体布局预设") {
-        if (settings.mediaLayoutPreset.isBlank()) {
+    listOf(false, true).forEach { island ->
+        val selectedPreset = MediaLayoutPresets.selected(settings, island)
+        SettingsSection(topLabel = if (island) "超级岛布局预设" else "媒体通知布局预设") {
             Text(
-                "当前沿用旧配置，选择预设后切换。",
+                if (island) "独立控制超级岛媒体，标准布局保留五个动作槽。"
+                else "用于锁屏和通知中心；大封面使用三键布局，息屏时恢复系统紧凑排版。",
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
             )
-        }
-        Text(
-            "普通媒体与超级岛共用预设，点击名称编辑布局。",
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-        )
-        MediaLayoutPresets.all.forEach { preset ->
-            NavigationSettingItem(
-                title = MediaLayoutPresets.label(preset),
-                summary = "${settingNumber(MediaLayoutPresets.height(settings, preset))} dp · 点击编辑布局",
-                onClick = { onOpenConstraintEditor(preset) },
-                leadingContent = {
-                    DeadlinerCheckbox(
-                        checked = selectedPreset == preset,
-                        onCheckedChange = { update(MediaLayoutPresets.select(settings, preset, context)) },
-                    )
-                },
+            MediaLayoutPresets.all.forEach { preset ->
+                NavigationSettingItem(
+                    title = MediaLayoutPresets.label(preset),
+                    summary = "${settingNumber(MediaLayoutPresets.height(settings, preset, island))} dp · 点击编辑布局",
+                    onClick = { onOpenConstraintEditor(preset) },
+                    leadingContent = {
+                        DeadlinerCheckbox(
+                            checked = selectedPreset == preset,
+                            onCheckedChange = { update(MediaLayoutPresets.select(settings, preset, context, island)) },
+                        )
+                    },
+                )
+            }
+            SettingsSliderItemWithLabel(
+                "${MediaLayoutPresets.label(selectedPreset)}高度",
+                MediaLayoutPresets.height(settings, selectedPreset, island),
+                80f..240f,
+                { update(MediaLayoutPresets.withHeight(
+                    MediaLayoutPresets.select(settings, selectedPreset, context, island), selectedPreset, it, island)) },
+                steps = 159,
             )
         }
-        SettingsSliderItemWithLabel(
-            "${MediaLayoutPresets.label(selectedPreset)}高度",
-            MediaLayoutPresets.height(settings, selectedPreset),
-            84f..240f,
-            {
-                update(MediaLayoutPresets.withHeight(
-                    MediaLayoutPresets.select(settings, selectedPreset, context), selectedPreset, it))
-            },
-            steps = 155,
-        )
     }
     SettingsSection(topLabel = "锁屏媒体") {
+        SettingsSwitchItem("媒体通知底部浮光", "复用超级岛原生光效；播放且可见时运行，息屏时停止",
+            settings.mediaNotificationGlowEnabled, { update(settings.copy(mediaNotificationGlowEnabled = it)) })
         SettingsSliderItemWithLabel("息屏收起高度", settings.collapsedHeight, 80f..160f, { update(settings.copy(collapsedHeight = it)) }, steps = 19, enabled = settings.mediaEnabled)
         SettingsSliderItemWithLabel("息屏常显高度", settings.fullAodHeight, 56f..120f, { update(settings.copy(fullAodHeight = it)) }, steps = 15, enabled = settings.mediaEnabled)
         SettingsSwitchItem("息屏时隐藏操作按钮", "", settings.hideAodActions, { update(settings.copy(hideAodActions = it)) })
@@ -362,7 +358,37 @@ import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
             enabled = settings.aodClockWeightEnabled,
         )
     }
+    SettingsSection(topLabel = "锁屏快捷方式") {
+        SettingsSwitchItem(
+            "锁屏快捷方式柔光玻璃",
+            "54dp 外框保留原始图标大小，其他尺寸等比缩放",
+            settings.lockscreenShortcutSoftGlassEnabled,
+            { update(settings.copy(lockscreenShortcutSoftGlassEnabled = it)) },
+        )
+        SettingsSliderItemWithLabel("玻璃直径", settings.lockscreenShortcutGlassSize, 32f..96f, { update(settings.copy(lockscreenShortcutGlassSize = it)) }, steps = 63, enabled = settings.lockscreenShortcutSoftGlassEnabled)
+    }
     SettingsSection(topLabel = "锁屏通知") {
+        SettingsSwitchItem("自定义通知底部距离", "调整通知堆叠与滚动边界，受系统容器可用范围限制", settings.lockscreenNotificationBottomEnabled, { update(settings.copy(lockscreenNotificationBottomEnabled = it)) })
+        WindowDropdownPreference(
+            title = "底部距离基准",
+            summary = if (settings.lockscreenNotificationBottomAnchor == LockscreenBottomPolicy.SHORTCUTS && !settings.lockscreenShortcutSoftGlassEnabled) "快捷方式玻璃未开启，当前保留系统边界" else "",
+            items = listOf("屏幕底边", "快捷方式玻璃上沿"),
+            selectedIndex = LockscreenBottomPolicy.anchor(settings.lockscreenNotificationBottomAnchor),
+            onSelectedIndexChange = { update(settings.copy(lockscreenNotificationBottomAnchor = it)) },
+            enabled = settings.lockscreenNotificationBottomEnabled,
+        )
+        SettingsSliderItemWithLabel("底部间距", settings.lockscreenNotificationBottomGap, 0f..480f, { update(settings.copy(lockscreenNotificationBottomGap = it)) }, steps = 95, enabled = settings.lockscreenNotificationBottomEnabled)
+
+        NotificationWidthSettings(
+            enabled = settings.lockscreenNotificationMaxWidthEnabled,
+            mode = settings.lockscreenNotificationWidthMode,
+            width = settings.lockscreenNotificationMaxWidth,
+            margin = settings.lockscreenNotificationSideMargin,
+            onEnabled = { update(settings.copy(lockscreenNotificationMaxWidthEnabled = it)) },
+            onMode = { update(settings.copy(lockscreenNotificationWidthMode = it)) },
+            onWidth = { update(settings.copy(lockscreenNotificationMaxWidth = it)) },
+            onMargin = { update(settings.copy(lockscreenNotificationSideMargin = it)) },
+        )
         SettingsSwitchItem(
             "锁屏通知下沉",
             "移至指纹图标下方",
@@ -424,6 +450,16 @@ import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
 }
 
 @Composable internal fun StatusBarSettingsPage(padding: PaddingValues, settings: ModifierSettings, update: (ModifierSettings) -> Unit, onScroll: (Float) -> Unit) = SettingsScrollPage(padding, onScroll) {
+    SettingsSection(topLabel = "系统栏兼容处理") {
+        SettingsSwitchItem(
+            "移除系统栏半透明遮罩",
+            "允许旧版应用的状态栏和导航栏完全透明。需系统框架作用域，首次安装后重启手机。",
+            settings.systemBarCompatibilityScrimDisabled,
+            { update(settings.copy(systemBarCompatibilityScrimDisabled = it)) },
+            enabled = settings.moduleHooksEnabled,
+        )
+    }
+
     SettingsSection(topLabel = "状态栏电池") {
         SettingsSwitchItem(
             "无数字电池使用实心框",
@@ -606,14 +642,15 @@ internal fun MediaConstraintSetSettingsPage(padding: PaddingValues, settings: Mo
         ?: MediaLayoutPresets.selected(settings)
     val normalSaved = MediaLayoutPresets.xml(settings, preset, island = false)
     val islandSaved = MediaLayoutPresets.xml(settings, preset, island = true)
-    val compactTemplate = remember(context) { MediaLayoutPresets.compactSource(context) }
+    val bundledNormal = remember(preset) { MediaLayoutPresets.bundledXml(preset, island = false) }
+    val bundledIsland = remember(preset) { MediaLayoutPresets.bundledXml(preset, island = true) }
     val normalTemplate = when (preset) {
-        MediaLayoutPresets.COMPACT -> compactTemplate
+        MediaLayoutPresets.COMPACT, MediaLayoutPresets.LARGE_COVER -> bundledNormal
         MediaLayoutPresets.SYSTEM -> MEDIA_SYSTEM_NORMAL_TEMPLATE
         else -> MEDIA_CONSTRAINT_SET_TEMPLATE
     }
     val islandTemplate = when (preset) {
-        MediaLayoutPresets.COMPACT -> compactTemplate.replace("@id/media_bg\"", "@id/media_bg_view\"")
+        MediaLayoutPresets.COMPACT, MediaLayoutPresets.LARGE_COVER -> bundledIsland
         else -> MEDIA_ISLAND_CONSTRAINT_SET_TEMPLATE
     }
     var xml by remember(preset, normalSaved) {
@@ -623,16 +660,17 @@ internal fun MediaConstraintSetSettingsPage(padding: PaddingValues, settings: Mo
         mutableStateOf(islandSaved.ifBlank { islandTemplate })
     }
     Text(
-        "正在编辑：${MediaLayoutPresets.label(preset)}。保存只修改这个预设；勾选该预设后才会生效。高度由媒体布局预设页单独调整。",
+        "正在编辑：${MediaLayoutPresets.label(preset)}。保存只修改这个预设；勾选该预设后才会生效。两种表面分别选择预设和高度。",
         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
     )
     MediaConstraintSetPreview(
         xml = xml,
         defaultCardHeight = MediaLayoutPresets.height(settings, preset),
+        notificationRadius = if (settings.notificationsEnabled) settings.notificationRadius else 28f,
         modifier = Modifier.padding(vertical = 8.dp),
     )
-    SettingsSection(topLabel = "普通锁屏媒体 XML") {
+    SettingsSection(topLabel = "媒体通知布局 XML") {
         Text("支持 Constraint / android:layout_* / app:layout_constraint* 属性。未写出的属性保持系统原值。", color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
         TextField(
             value = xml,
@@ -652,17 +690,23 @@ internal fun MediaConstraintSetSettingsPage(padding: PaddingValues, settings: Mo
             {
                 xml = normalTemplate
                 update(MediaLayoutPresets.withXml(settings, preset, island = false,
-                    if (preset == MediaLayoutPresets.COMPACT) normalTemplate else ""))
+                    ""))
             },
             modifier = Modifier.weight(1f),
         )
         Button(
             { update(MediaLayoutPresets.withXml(settings, preset, island = false,
-                if (preset == MediaLayoutPresets.COMPACT) xml.ifBlank { normalTemplate } else xml)) },
+                if (bundledNormal.isNotBlank() && xml == normalTemplate) "" else xml)) },
             modifier = Modifier.weight(1f),
             colors = ButtonDefaults.buttonColorsPrimary(),
         ) { Text("保存 XML") }
     }
+    MediaConstraintSetPreview(
+        xml = islandXml,
+        defaultCardHeight = MediaLayoutPresets.height(settings, preset, true),
+        notificationRadius = if (settings.notificationsEnabled) settings.notificationRadius else 28f,
+        modifier = Modifier.padding(vertical = 8.dp),
+    )
     SettingsSection(topLabel = "超级岛媒体布局") {
         Text(
             "对应 miui_media_session_island_normal。背景 ID 为 @id/media_bg_view；最终高度以预设高度为准。",
@@ -687,13 +731,13 @@ internal fun MediaConstraintSetSettingsPage(padding: PaddingValues, settings: Mo
             {
                 islandXml = islandTemplate
                 update(MediaLayoutPresets.withXml(settings, preset, island = true,
-                    if (preset == MediaLayoutPresets.COMPACT) islandTemplate else ""))
+                    ""))
             },
             modifier = Modifier.weight(1f),
         )
         Button(
             { update(MediaLayoutPresets.withXml(settings, preset, island = true,
-                if (preset == MediaLayoutPresets.COMPACT) islandXml.ifBlank { islandTemplate } else islandXml)) },
+                if (bundledIsland.isNotBlank() && islandXml == islandTemplate) "" else islandXml)) },
             modifier = Modifier.weight(1f),
             colors = ButtonDefaults.buttonColorsPrimary(),
         ) { Text("保存 XML") }

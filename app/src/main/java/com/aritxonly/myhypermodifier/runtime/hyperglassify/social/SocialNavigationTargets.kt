@@ -199,6 +199,7 @@ internal object SocialNavigationTargets {
             pixelCopyRetryDelayMs = 1_000L,
             stableNavigationInset = true,
             lateAttachWindowMs = 30_000L,
+            // QQ gesture-area transparency has its own opt-in and window owner.
             manageWindowImmersion = false,
             // The application-panel window can briefly move focus away from its own Activity.
             // Lifecycle foreground state already prevents this overlay from living over another

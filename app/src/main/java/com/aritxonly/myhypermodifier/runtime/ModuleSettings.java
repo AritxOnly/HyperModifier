@@ -85,6 +85,8 @@ final class ModuleSettings {
     static volatile float miLinkMainCardRadius = ModuleDefaultValues.MI_LINK_MAIN_CARD_RADIUS;
     static volatile boolean disableMediaIslandHooks = false;
     static volatile int foldIslandPosition;
+    static volatile boolean foldInnerHideGestureBar;
+    static volatile boolean coverAdaptationEnabled;
     static volatile boolean mediaEnabled = ModuleDefaultValues.MEDIA_ENABLED;
     static volatile float expandedHeight = 152f;
     static volatile float collapsedHeight = 120f;
@@ -133,6 +135,19 @@ final class ModuleSettings {
     static volatile boolean lockscreenPasswordBackgroundBlurEnabled = false;
     static volatile float lockscreenPasswordBackgroundOpacity = 0f;
     static volatile boolean lockscreenPasswordBackgroundFollowShadeBlend = true;
+    static volatile boolean notificationMaxWidthEnabled;
+    static volatile int notificationWidthMode;
+    static volatile float notificationSideMargin = NotificationWidthPolicy.DEFAULT_MARGIN_DP;
+    static volatile float notificationMaxWidth = NotificationWidthPolicy.DEFAULT_DP;
+    static volatile boolean lockscreenNotificationMaxWidthEnabled;
+    static volatile int lockscreenNotificationWidthMode;
+    static volatile float lockscreenNotificationSideMargin = NotificationWidthPolicy.DEFAULT_MARGIN_DP;
+    static volatile float lockscreenNotificationMaxWidth = NotificationWidthPolicy.DEFAULT_DP;
+    static volatile float lockscreenShortcutGlassSize = LockscreenBottomPolicy.DEFAULT_SIZE;
+    static volatile boolean lockscreenNotificationBottomEnabled;
+    static volatile int lockscreenNotificationBottomAnchor;
+    static volatile float lockscreenNotificationBottomGap = LockscreenBottomPolicy.DEFAULT_GAP;
+    static volatile boolean lockscreenShortcutSoftGlassEnabled;
     static volatile boolean lockscreenPinKeySoftGlassEnabled = false;
     static volatile float lockscreenPinKeyGlassExtraRadius = 6f;
     static volatile float lockscreenPinKeyGlassVerticalGap = 16f;
@@ -203,6 +218,8 @@ final class ModuleSettings {
     static volatile boolean qqFloatingNavigationEnabled =
             ModuleDefaultValues.QQ_FLOATING_NAVIGATION_ENABLED;
     static volatile boolean qqNavigationBadgesEnabled = true;
+    static volatile boolean qqFoldSplitRatioEnabled = false;
+    static volatile boolean qqFoldNavigationImmersionEnabled = false;
     static volatile boolean qqMusicFloatingNavigationEnabled =
             ModuleDefaultValues.QQ_MUSIC_FLOATING_NAVIGATION_ENABLED;
     static volatile boolean xiaomiCommunityFloatingNavigationEnabled = ModuleDefaultValues.XIAOMI_COMMUNITY_FLOATING_NAVIGATION_ENABLED;
@@ -233,14 +250,24 @@ final class ModuleSettings {
     static volatile boolean customMediaIslandConstraintSetEnabled = false;
     static volatile String customMediaIslandConstraintSetXml = "";
     static volatile String mediaLayoutPreset = ModuleDefaultValues.MEDIA_LAYOUT_PRESET;
+    static volatile String mediaIslandLayoutPreset = "";
+    static volatile boolean mediaNotificationGlowEnabled = true;
     static volatile int systemMediaHeight = 168;
-    static volatile int compactMediaHeight = 84;
+    static volatile int systemMediaIslandHeight;
+    static volatile int compactMediaHeight = 80;
+    static volatile int compactMediaIslandHeight;
+    static volatile int largeCoverMediaHeight = 132;
+    static volatile int largeCoverMediaIslandHeight = 144;
     static volatile int standardMediaHeight = 150;
+    static volatile int standardMediaIslandHeight;
     static volatile int customMediaHeight = 150;
+    static volatile int customMediaIslandHeight;
     static volatile String systemMediaXml = "";
     static volatile String systemMediaIslandXml = "";
     static volatile String compactMediaXml = "";
     static volatile String compactMediaIslandXml = "";
+    static volatile String largeCoverMediaXml = "";
+    static volatile String largeCoverMediaIslandXml = "";
     static volatile String standardMediaXml = "";
     static volatile String standardMediaIslandXml = "";
     private static volatile String lastLoadStatus = "not-requested";
@@ -276,6 +303,7 @@ final class ModuleSettings {
         // provider IPC is needed: LSPosed has already supplied the preferences snapshot.
         try {
             moduleHooksEnabled = preferences.getBoolean("module_hooks_enabled", true);
+            coverAdaptationEnabled = preferences.getBoolean(CoverAdaptationContract.KEY, false);
             deviceModeOverride = LargeScreenDevicePolicy.normalizeOverride(
                     preferences.getInt("device_mode_override", LargeScreenDevicePolicy.AUTO));
             navigationBarGeometry = preferences.getString("navigation_bar_geometry", "");
@@ -432,6 +460,12 @@ final class ModuleSettings {
         }
     }
 
+    /** QQ's framework-supplied preferences need no Application/Context or provider IPC.
+     * Queue once on the existing settings worker, even if PackageReady precedes attach(). */
+    static void loadRemoteAsync() {
+        scheduleLoad(null);
+    }
+
     private static void scheduleLoad(Context context) {
         if (SETTINGS_LOADED.get() || remotePreferences == null) {
             return;
@@ -552,6 +586,8 @@ final class ModuleSettings {
             shadeCardGlassParametersEnabled = values.getBoolean("shade_card_glass_parameters_enabled", false);
             disableMediaIslandHooks = values.getBoolean("disable_media_island_hooks", false);
             foldIslandPosition = FoldIslandPlacement.normalize(values.getInt(FoldIslandPlacement.KEY, 0));
+            foldInnerHideGestureBar = values.getBoolean(FoldGestureBarHooks.KEY, false);
+            coverAdaptationEnabled = values.getBoolean(CoverAdaptationContract.KEY, false);
             disableShadeGlassHooks = values.getBoolean("disable_shade_glass_hooks", false);
             unifiedGlassParameters = UnifiedGlassPolicy.sanitize(parseHeadsUpGlassParameters(
                     values.getString("unified_glass_parameters", ""), ShadeCardGlassPolicy.defaults()));
@@ -672,6 +708,20 @@ final class ModuleSettings {
                     "lockscreen_password_background_opacity", 0f)));
             lockscreenPasswordBackgroundFollowShadeBlend = values.getBoolean(
                     "lockscreen_password_background_follow_shade_blend", true);
+            notificationMaxWidthEnabled = values.getBoolean("notification_max_width_enabled", false);
+            notificationWidthMode = NotificationWidthPolicy.mode(values.getInt("notification_width_mode", NotificationWidthPolicy.FIXED));
+            notificationSideMargin = NotificationWidthPolicy.normalizeMargin(values.getFloat("notification_side_margin", NotificationWidthPolicy.DEFAULT_MARGIN_DP));
+            notificationMaxWidth = NotificationWidthPolicy.normalize(values.getFloat("notification_max_width", NotificationWidthPolicy.DEFAULT_DP));
+            lockscreenNotificationMaxWidthEnabled = values.getBoolean("lockscreen_notification_max_width_enabled", false);
+            lockscreenNotificationWidthMode = NotificationWidthPolicy.mode(values.getInt("lockscreen_notification_width_mode", NotificationWidthPolicy.FIXED));
+            lockscreenNotificationSideMargin = NotificationWidthPolicy.normalizeMargin(values.getFloat("lockscreen_notification_side_margin", NotificationWidthPolicy.DEFAULT_MARGIN_DP));
+            lockscreenNotificationMaxWidth = NotificationWidthPolicy.normalize(values.getFloat("lockscreen_notification_max_width", NotificationWidthPolicy.DEFAULT_DP));
+            lockscreenShortcutGlassSize = LockscreenBottomPolicy.size(values.getFloat("lockscreen_shortcut_glass_size", LockscreenBottomPolicy.DEFAULT_SIZE));
+            lockscreenNotificationBottomEnabled = values.getBoolean("lockscreen_notification_bottom_enabled", false);
+            lockscreenNotificationBottomAnchor = LockscreenBottomPolicy.anchor(values.getInt("lockscreen_notification_bottom_anchor", LockscreenBottomPolicy.SCREEN));
+            lockscreenNotificationBottomGap = LockscreenBottomPolicy.gap(values.getFloat("lockscreen_notification_bottom_gap", LockscreenBottomPolicy.DEFAULT_GAP));
+            lockscreenShortcutSoftGlassEnabled = values.getBoolean(
+                    "lockscreen_shortcut_soft_glass_enabled", false);
             lockscreenPinKeySoftGlassEnabled = values.getBoolean(
                     "lockscreen_pin_key_soft_glass_enabled", false);
             lockscreenPinKeyGlassExtraRadius = Math.max(0f, Math.min(16f, values.getFloat(
@@ -765,6 +815,8 @@ final class ModuleSettings {
                     "qq_floating_navigation_enabled",
                     ModuleDefaultValues.QQ_FLOATING_NAVIGATION_ENABLED);
             qqNavigationBadgesEnabled = values.getBoolean("qq_navigation_badges_enabled", true);
+            qqFoldSplitRatioEnabled = values.getBoolean("qq_fold_split_ratio_enabled", false);
+            qqFoldNavigationImmersionEnabled = values.getBoolean("qq_fold_navigation_immersion_enabled", false);
             qqMusicFloatingNavigationEnabled = values.getBoolean(
                     "qq_music_floating_navigation_enabled",
                     ModuleDefaultValues.QQ_MUSIC_FLOATING_NAVIGATION_ENABLED);
@@ -815,14 +867,35 @@ final class ModuleSettings {
                     values.containsKey("media_enabled") || values.containsKey("island_enabled")
                             || values.containsKey("custom_media_constraint_set_enabled")
                             ? "" : ModuleDefaultValues.MEDIA_LAYOUT_PRESET);
+            mediaNotificationGlowEnabled = values.getBoolean("media_notification_glow_enabled", true);
+            mediaIslandLayoutPreset = values.getString("media_island_layout_preset", "");
             systemMediaHeight = boundedMediaHeight(values.getFloat("system_media_height", 168f), 168);
-            compactMediaHeight = boundedMediaHeight(values.getFloat("compact_media_height", 84f), 84);
+            boolean migrateMediaLayout = values.getInt("media_layout_version", 0) < 1;
+            compactMediaHeight = boundedMediaHeight(migrateMediaLayout ? MediaPresetDefaults.migrateCompactHeight(
+                    values.getFloat("compact_media_height", 80f),
+                    values.getString("compact_media_xml", ""),
+                    values.getString("compact_media_island_xml", "")) : values.getFloat("compact_media_height", 80f), 80);
+            largeCoverMediaHeight = boundedMediaHeight(MediaPresetDefaults.migrateLargeCoverHeight(
+                    values.getInt("media_layout_version", 0), values.getFloat("large_cover_media_height", 132f),
+                    values.getString("large_cover_media_xml", ""), values.getString("large_cover_media_island_xml", "")), 132);
             standardMediaHeight = boundedMediaHeight(values.getFloat("standard_media_height", 150f), 150);
             customMediaHeight = boundedMediaHeight(values.getFloat("custom_media_height", 150f), 150);
+            systemMediaIslandHeight = boundedMediaHeight(values.getFloat("system_media_island_height", systemMediaHeight), systemMediaHeight);
+            compactMediaIslandHeight = boundedMediaHeight(values.getFloat("compact_media_island_height", compactMediaHeight), compactMediaHeight);
+            largeCoverMediaIslandHeight = boundedMediaHeight(MediaPresetDefaults.migrateLargeCoverIslandHeight(
+                    values.getInt("media_layout_version", 0), values.getFloat("large_cover_media_island_height",
+                        values.getFloat("large_cover_media_height", 136f)), values.getString("large_cover_media_xml", ""),
+                    values.getString("large_cover_media_island_xml", "")), 144);
+            standardMediaIslandHeight = boundedMediaHeight(values.getFloat("standard_media_island_height", standardMediaHeight), standardMediaHeight);
+            customMediaIslandHeight = boundedMediaHeight(values.getFloat("custom_media_island_height", customMediaHeight), customMediaHeight);
             systemMediaXml = values.getString("system_media_xml", "");
             systemMediaIslandXml = values.getString("system_media_island_xml", "");
             compactMediaXml = values.getString("compact_media_xml", "");
+            if (migrateMediaLayout) compactMediaXml = MediaPresetDefaults.migrateCompactXml(compactMediaXml);
             compactMediaIslandXml = values.getString("compact_media_island_xml", "");
+            if (migrateMediaLayout) compactMediaIslandXml = MediaPresetDefaults.migrateCompactXml(compactMediaIslandXml);
+            largeCoverMediaXml = values.getString("large_cover_media_xml", "");
+            largeCoverMediaIslandXml = values.getString("large_cover_media_island_xml", "");
             standardMediaXml = values.getString("standard_media_xml", "");
             standardMediaIslandXml = values.getString("standard_media_island_xml", "");
             if (disableMediaIslandHooks) {
@@ -848,14 +921,33 @@ final class ModuleSettings {
 
     private static int boundedMediaHeight(float requested, int fallback) {
         if (Float.isNaN(requested) || Float.isInfinite(requested)) return fallback;
-        return Math.max(84, Math.min(240, Math.round(requested)));
+        return Math.max(80, Math.min(240, Math.round(requested)));
     }
 
-    static int activeMediaPresetHeight() {
+    static String activeMediaPreset(boolean island) {
+        return island && mediaIslandLayoutPreset != null && !mediaIslandLayoutPreset.isBlank()
+                ? mediaIslandLayoutPreset : mediaLayoutPreset;
+    }
+
+    static int activeMediaPresetHeight() { return activeMediaPresetHeight(false); }
+
+    static int activeMediaPresetHeight(boolean island) {
         if (disableMediaIslandHooks) return 0;
-        switch (mediaLayoutPreset) {
+        if (island) {
+            int height = switch (activeMediaPreset(true)) {
+                case "system" -> systemMediaIslandHeight;
+                case "compact" -> compactMediaIslandHeight;
+                case "large_cover" -> largeCoverMediaIslandHeight;
+                case "standard" -> standardMediaIslandHeight;
+                case "custom" -> customMediaIslandHeight;
+                default -> 0;
+            };
+            if (height > 0) return height;
+        }
+        switch (activeMediaPreset(island)) {
             case "system": return systemMediaHeight;
             case "compact": return compactMediaHeight;
+            case "large_cover": return largeCoverMediaHeight;
             case "standard": return standardMediaHeight;
             case "custom": return customMediaHeight;
             default: return 0;

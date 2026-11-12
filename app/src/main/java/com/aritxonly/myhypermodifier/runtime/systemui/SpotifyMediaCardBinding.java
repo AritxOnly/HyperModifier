@@ -88,7 +88,8 @@ final class SpotifyMediaCardBinding {
         });
         view.setEnabled(true);
         view.setAlpha(1f);
-        if (view.getVisibility() != View.VISIBLE) view.setVisibility(View.VISIBLE);
+        int visibility = MediaPresetViewProperties.hidesNormalView(view) ? View.GONE : View.VISIBLE;
+        if (view.getVisibility() != visibility) view.setVisibility(visibility);
     }
 
     private static String state(ImageButton view) {

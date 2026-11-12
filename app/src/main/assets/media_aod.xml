@@ -1,0 +1,23 @@
+<ConstraintSet xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <Constraint android:id="@id/album_art"
+        app:layout_constraintTop_toTopOf="@id/media_bg"
+        app:layout_constraintTop_toBottomOf="-1"
+        app:layout_constraintBottom_toTopOf="-1"
+        app:layout_constraintBottom_toBottomOf="@id/media_bg"
+        android:layout_marginTop="0dp" android:layout_marginBottom="0dp"
+        app:layout_constraintVertical_bias="0.5" />
+    <Constraint android:id="@id/header_title"
+        app:layout_constraintTop_toTopOf="@id/album_art"
+        app:layout_constraintTop_toBottomOf="-1"
+        app:layout_constraintBottom_toTopOf="@id/header_artist"
+        app:layout_constraintBottom_toBottomOf="-1"
+        android:layout_marginTop="0dp" android:layout_marginBottom="0dp"
+        app:layout_constraintVertical_chainStyle="packed"
+        app:layout_constraintVertical_bias="0.5" />
+    <Constraint android:id="@id/header_artist"
+        app:layout_constraintTop_toTopOf="-1"
+        app:layout_constraintTop_toBottomOf="@id/header_title"
+        app:layout_constraintBottom_toTopOf="-1"
+        app:layout_constraintBottom_toBottomOf="@id/album_art"
+        android:layout_marginTop="2dp" android:layout_marginBottom="0dp" />
+</ConstraintSet>

@@ -1049,7 +1049,8 @@ private fun scopeStatuses(
     ScopeStatus(
         appName = "系统框架",
         packageName = ModuleScopePackage.SYSTEM_FRAMEWORK,
-        hasModification = (settings.gestureHandleEnabled && settings.gestureHandleAttachToAppTransition) ||
+        hasModification = settings.systemBarCompatibilityScrimDisabled ||
+            (settings.gestureHandleEnabled && settings.gestureHandleAttachToAppTransition) ||
             settings.volumeUpPowerAction != KeyShortcutActions.STOCK || settings.doublePowerAction != KeyShortcutActions.STOCK,
         isActive = framework.isActive(ModuleScopePackage.SYSTEM_FRAMEWORK),
     ),
@@ -1078,13 +1079,14 @@ private fun scopeStatuses(
             settings.shadeBackgroundScaleDisabled,
             settings.globalBackgroundBlurPercent != 100f,
             (!settings.disableMediaIslandHooks && settings.mediaEnabled),
-            (!settings.disableMediaIslandHooks && settings.mediaLayoutPreset.isNotBlank()),
+            (!settings.disableMediaIslandHooks && (settings.mediaLayoutPreset.isNotBlank() || settings.mediaIslandLayoutPreset.isNotBlank())),
             (!settings.disableMediaIslandHooks && settings.hideAodActions),
             (!settings.disableMediaIslandHooks && settings.hideAodSeamless),
             settings.sinkLockscreenNotificationsForFingerprint,
             settings.hideLockscreenClockLeadingZero,
             settings.hideDesktopClockLeadingZero,
             settings.foldPortraitIconPercent < 100,
+            (settings.foldInnerHideGestureBar && android.os.Build.DEVICE == "lhasa"),
             settings.foldPortraitDualPageEnabled,
             (!settings.disableMediaIslandHooks && settings.foldIslandPosition != 0 && android.os.Build.DEVICE == "lhasa"),
             settings.desktopClockMaterial != 0,
@@ -1243,9 +1245,15 @@ private fun scopeStatuses(
         isActive = framework.isActive(ModuleScopePackage.WECHAT),
     ),
     ScopeStatus(
+        appName = "Google Authenticator",
+        packageName = ModuleScopePackage.AUTHENTICATOR,
+        hasModification = settings.authenticatorGridEnabled,
+        isActive = framework.isActive(ModuleScopePackage.AUTHENTICATOR),
+    ),
+    ScopeStatus(
         appName = "QQ",
         packageName = ModuleScopePackage.QQ,
-        hasModification = settings.qqFloatingNavigationEnabled,
+        hasModification = settings.qqFloatingNavigationEnabled || settings.qqFoldSplitRatioEnabled || settings.qqFoldNavigationImmersionEnabled,
         isActive = framework.isActive(ModuleScopePackage.QQ),
     ),
     ScopeStatus(
@@ -1293,6 +1301,7 @@ private fun scopeStatuses(
             scope.packageName != ModuleScopePackage.ALIPAY &&
             scope.packageName != ModuleScopePackage.WECHAT &&
             scope.packageName != ModuleScopePackage.NIO &&
+            scope.packageName != ModuleScopePackage.AUTHENTICATOR &&
             scope.packageName != ModuleScopePackage.QQ -> scope.copy(hasModification = true)
         else -> scope
     }
