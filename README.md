@@ -21,6 +21,10 @@ Xiaomi Community 6.6.9, and Bilibili 9.13.0 (`reference/哔哩哔哩.apk`).
 ## Included changes
 
 - Notification and Control Center corner radii: `28dp`.
+- 横屏应用的状态栏与手势条灰色遮罩（`#66000000`，`status_bar_background_semi_transparent`）
+  可一键移除：`BarTransitions$BarBackgroundDrawable` 只在半透明态跳过绘制，
+  控制中心、锁屏等不透明态保持原生。开关位于「系统界面 → 状态栏 → 系统栏兼容处理」，
+  与「移除系统栏半透明遮罩」（DisplayPolicy 路径）互补，二者独立。
 - Notification/Control Center card glass parameters use one common editor in both light and dark modes, reusing the
   heads-up sliders, numeric dialog, and JSON flow but with separate settings and preset formats.
   The hook follows HyperChanger's native `View.setMiGlass(float[])` interception approach;

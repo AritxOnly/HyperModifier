@@ -61,6 +61,7 @@ final class ModuleSettings {
     static volatile int globalBackgroundBlurPercent = 100;
     static volatile boolean shadeBackgroundScaleDisabled = true;
     static volatile boolean globalBackgroundDimEnabled = false;
+    static volatile boolean barScrimRemoved = false;
     static volatile float globalBackgroundDimPercent = 20f;
     static volatile boolean controlCenterFollowMiLinkBackgroundMaterial = true;
     private static final float[] DEFAULT_HEADS_UP_GLASS_PARAMETERS =
@@ -336,6 +337,7 @@ final class ModuleSettings {
             globalBackgroundBlurPercent = Math.max(0, Math.min(200, Math.round(preferences.getFloat(
                     "global_background_blur_percent", 100f))));
             globalBackgroundDimEnabled = preferences.getBoolean("global_background_dim_enabled", false);
+            barScrimRemoved = preferences.getBoolean(BarScrimHooks.KEY, false);
             globalBackgroundDimPercent = BackgroundDimPolicy.normalizePercent(preferences.getFloat(
                     "global_background_dim_percent", 20f));
             globalGlassBlurEnabled = preferences.getBoolean("global_glass_blur_enabled",

@@ -1076,6 +1076,7 @@ private fun scopeStatuses(
             GlassParameterScope.Unified.enabled(settings),
             !settings.disableShadeGlassHooks && settings.globalGlassBlurEnabled,
             settings.globalBackgroundDimEnabled,
+            settings.barScrimRemoved,
             settings.shadeBackgroundScaleDisabled,
             settings.globalBackgroundBlurPercent != 100f,
             (!settings.disableMediaIslandHooks && settings.mediaEnabled),
