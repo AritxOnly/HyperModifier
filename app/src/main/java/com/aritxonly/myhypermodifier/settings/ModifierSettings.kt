@@ -106,6 +106,7 @@ data class ModifierSettings(
     val coverAdaptationEnabled: Boolean = false,
     val desktopStatusBarIconMode: Int = 0,
     val systemBarCompatibilityScrimDisabled: Boolean = false,
+    val barScrimRemoved: Boolean = false,
     val androidWidgetStackEnabled: Boolean = false,
     val androidWidgetGlassEnabled: Boolean = false,
     val androidWidgetClockGlassEnabled: Boolean = false,
@@ -906,6 +907,7 @@ object ModifierSettingsStore {
             coverAdaptationEnabled = prefs.getBoolean(CoverAdaptationContract.KEY, false),
             desktopStatusBarIconMode = DesktopStatusBarPolicy.normalize(prefs.getInt(KEY_DESKTOP_STATUS_BAR_ICON_MODE, 0)),
             systemBarCompatibilityScrimDisabled = prefs.getBoolean(SystemBarCompatibilityHooks.KEY, false),
+            barScrimRemoved = prefs.getBoolean(BarScrimHooks.KEY, false),
             androidWidgetStackEnabled = prefs.getBoolean(KEY_DEADLINER_WIDGET_STACK, false),
             androidWidgetGlassEnabled = prefs.getBoolean(KEY_DEADLINER_WIDGET_GLASS, false),
             androidWidgetClockGlassEnabled = prefs.getBoolean(KEY_DEADLINER_CLOCK_GLASS, false),
@@ -1332,6 +1334,7 @@ object ModifierSettingsStore {
             .putBoolean(KEY_HIDE_LOCKSCREEN_CLOCK_LEADING_ZERO, value.hideLockscreenClockLeadingZero)
             .putInt(KEY_DESKTOP_STATUS_BAR_ICON_MODE, DesktopStatusBarPolicy.normalize(value.desktopStatusBarIconMode))
             .putBoolean(SystemBarCompatibilityHooks.KEY, value.systemBarCompatibilityScrimDisabled)
+            .putBoolean(BarScrimHooks.KEY, value.barScrimRemoved)
             .putBoolean(KEY_HIDE_DESKTOP_CLOCK_LEADING_ZERO, value.hideDesktopClockLeadingZero)
             .putInt(KEY_DESKTOP_CLOCK_MATERIAL, value.desktopClockMaterial.let { if (it in 0..2) it else 0 })
             .putInt(KEY_DESKTOP_CLOCK_BLUR_RADIUS, value.desktopClockBlurRadius.coerceIn(2, 40))
@@ -1834,6 +1837,7 @@ object ModifierSettingsStore {
         putBoolean(KEY_HIDE_LOCKSCREEN_CLOCK_LEADING_ZERO, value.hideLockscreenClockLeadingZero)
         putInt(KEY_DESKTOP_STATUS_BAR_ICON_MODE, DesktopStatusBarPolicy.normalize(value.desktopStatusBarIconMode))
         putBoolean(SystemBarCompatibilityHooks.KEY, value.systemBarCompatibilityScrimDisabled)
+        putBoolean(BarScrimHooks.KEY, value.barScrimRemoved)
         putBoolean(KEY_HIDE_DESKTOP_CLOCK_LEADING_ZERO, value.hideDesktopClockLeadingZero)
         putInt(KEY_DESKTOP_CLOCK_MATERIAL, value.desktopClockMaterial.let { if (it in 0..2) it else 0 })
         putInt(KEY_DESKTOP_CLOCK_BLUR_RADIUS, value.desktopClockBlurRadius.coerceIn(2, 40))

@@ -738,6 +738,7 @@ public final class MyHyperModifier extends XposedModule {
                     lockscreenHooks().installLockscreenPasswordWallpaperRatioHook(classLoader));
         }
         installSafely(SYSTEM_UI, "SystemUI", () -> systemUiHooks().installSystemUiHooks(classLoader));
+        installSafely(SYSTEM_UI, "横屏状态栏及小白条遮罩", () -> BarScrimHooks.install(this, classLoader));
         HookDiagnostics.ready(SYSTEM_UI);
         log(Log.INFO, TAG, "Installed deferred SystemUI hooks after startup");
     }

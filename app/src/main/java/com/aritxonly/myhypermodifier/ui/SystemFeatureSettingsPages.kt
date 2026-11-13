@@ -458,6 +458,13 @@ import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
             { update(settings.copy(systemBarCompatibilityScrimDisabled = it)) },
             enabled = settings.moduleHooksEnabled,
         )
+        SettingsSwitchItem(
+            "移除横屏状态栏及小白条灰色遮罩",
+            "横屏应用时状态栏与手势条后面那层 40% 黑遮罩不再绘制；只影响半透明态，控制中心与锁屏保持原生。",
+            settings.barScrimRemoved,
+            { update(settings.copy(barScrimRemoved = it)) },
+            enabled = settings.moduleHooksEnabled,
+        )
     }
 
     SettingsSection(topLabel = "状态栏电池") {
