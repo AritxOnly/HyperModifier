@@ -16,7 +16,7 @@ inline constexpr uint32_t context[32] = {
 };
 inline constexpr uint32_t operandMask = 0xffc003ff;
 inline constexpr uint32_t mask(unsigned word) {
-    return word == 3 || word == 11 || word == 17 || word == 25 || word == 29 ? 0xfc000000
+    return word == 3 || word == 11 || word == 12 || word == 17 || word == 25 || word == 29 ? 0xfc000000
         : word == 7 || word == 8 || word == 20 || word == 31 ? operandMask : 0xffffffff;
 }
 }
