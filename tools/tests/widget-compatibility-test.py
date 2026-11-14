@@ -80,7 +80,8 @@ int main() {
   std::fill(words.begin(),words.end(),0xd503201f);
   for(unsigned i=0;i<32;++i) {
    auto w=widget_picker::context[i];
-   if(widget_picker::mask(i)==0xfc000000) w=0x94000000|((3000-(site-16+i))&0x3ffffff);
+   if(widget_picker::mask(i)==0xfc000000)
+    w=((w&0xfc000000)==0x14000000?0x14000000:0x94000000)|((3000-(site-16+i))&0x3ffffff);
    words[site-16+i]=w;
   }
   set(-0x124,0x9100c2c4); set(0x140,0xaa0203e1); set(0x144,0xf9403f40);
@@ -109,6 +110,17 @@ int main() {
  set(0x33c,0xf85d83a0);set(0x340,0x91000404);
  assert(widget_picker::find(ranges)==address+site*4);
  for(int delta:{-0x114,-0x110,-0x10c,0x33c,0x340}) {
+  words[site+delta/4]^=1;assert(!widget_picker::find(ranges));words[site+delta/4]^=1;
+ }
+ set(-0x10,0x140000d2);assert(!widget_picker::find(ranges));
+ // 9239 moves the false initialization to -0xfc and lengthens the hidden path.
+ fixture(0);set(-0x124,0xd503201f);set(-0x10,0x140000fa);
+ assert(!widget_picker::find(ranges));
+ set(-0xfc,0x9100c2c4);
+ set(-0x108,0xb831681f);set(-0x104,0xd28029f1);set(-0x100,0xb831681f);
+ set(-0xf8,0xd2802a71);set(-0xf4,0xb8316804);
+ assert(widget_picker::find(ranges)==address+site*4);
+ for(int delta:{-0xfc,-0x108,-0x104,-0x100,-0xf8,-0xf4}) {
   words[site+delta/4]^=1;assert(!widget_picker::find(ranges));words[site+delta/4]^=1;
  }
  set(-0x10,0x140000d2);assert(!widget_picker::find(ranges));

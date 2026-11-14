@@ -35,9 +35,19 @@ inline bool contextMatches(uintptr_t start, const std::vector<Code> &ranges) {
     if (foldLayout && (!contains(ranges, site - 0x124, 0x124 + 0x344)
             || wordAt(site - 0x110) != 0xd28028f1 || wordAt(site - 0x10c) != 0xb8316804
             || wordAt(site + 0x33c) != 0xf85d83a0 || wordAt(site + 0x340) != 0x91000404)) return false;
+    // 9239 moved the false constructor to -0xfc and lengthened the hidden-item
+    // path. The surrounding field stores identify the layout unambiguously.
+    const bool longLayout = wordAt(start + 12 * 4) == 0x140000fa
+            && wordAt(site - 0xfc) == 0x9100c2c4
+            && wordAt(site - 0x108) == 0xb831681f
+            && wordAt(site - 0x104) == 0xd28029f1
+            && wordAt(site - 0x100) == 0xb831681f
+            && wordAt(site - 0xf8) == 0xd2802a71
+            && wordAt(site - 0xf4) == 0xb8316804;
+    if (longLayout && !contains(ranges, site - 0x124, 0x124 + 0x3e0)) return false;
     for (unsigned i = 0; i < 32; ++i) {
         uint32_t word = wordAt(start + i * 4), m = mask(i);
-        uint32_t expected = foldLayout && i == 12 ? 0x140000d3 : context[i];
+        uint32_t expected = context[i];
         if ((word & m) != (expected & m)) return false;
         if (m == 0xfc000000) {
             uintptr_t target = callTarget(start + i * 4, word);
@@ -46,7 +56,7 @@ inline bool contextMatches(uintptr_t start, const std::vector<Code> &ranges) {
     }
     // The branch is a compressed Dart bool read (x28 heap base, x22 NULL).
     // This false constructor is used by the same function's object setup.
-    if (wordAt(site - (foldLayout ? 0x114 : 0x124)) != 0x9100c2c4) return false; // add x4,x22,#0x30
+    if (wordAt(site - (foldLayout ? 0x114 : (longLayout ? 0xfc : 0x124))) != 0x9100c2c4) return false; // add x4,x22,#0x30
     if (wordAt(site + 0x140) != 0xaa0203e1 || wordAt(site + 0x144) != 0xf9403f40) return false;
     // Both log paths must read the same late static. Its slot can move.
     if (wordAt(site - 0x80) != 0xf9403f40 || wordAt(site - 0x7c) != wordAt(site + 0x10)) return false;
